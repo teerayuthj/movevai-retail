@@ -1,0 +1,12 @@
+dist
+node_modules
+build
+coverage
+.next
+.cache
+*.min.js
+*.min.css
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+tsconfig.tsbuildinfo

@@ -1,16 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useEffect, useMemo, useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Mailbox,
   Package,
@@ -31,7 +24,7 @@ import {
   ExternalLink,
   Ban,
   PackageCheck,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   CancelReason,
   FailNextAction,
@@ -45,11 +38,12 @@ import {
   paymentLabel,
   postalServiceLabel,
   statusLabel,
-} from "@/data/mock";
-import { cn } from "@/lib/utils";
-import { useRetailStore } from "@/state/retailStore";
-import { buildPostalCsv, downloadCsv } from "@/lib/export";
-import { ResolutionDialog } from "@/components/ResolutionDialog";
+} from '@/data/mock';
+import { cn } from '@/lib/utils';
+import { useRetailStore } from '@/state/retailStore';
+import { buildPostalCsv, downloadCsv } from '@/lib/export';
+import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { OrderTimeline } from '@/components/OrderTimeline';
 
 const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
   Object.keys(cancelReasonLabel) as CancelReason[]
@@ -63,28 +57,28 @@ const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
   Object.keys(failNextActionLabel) as FailNextAction[]
 ).map((value) => ({ value, label: failNextActionLabel[value] }));
 
-type PostalTab = "ready" | "assigned" | "in_transit" | "returning" | "closed";
+type PostalTab = 'ready' | 'assigned' | 'in_transit' | 'returning' | 'closed';
 
 const tabLabels: Record<PostalTab, string> = {
-  ready: "รอจัดแบทช์",
-  assigned: "ฝากไปรษณีย์",
-  in_transit: "กำลังจัดส่ง",
-  returning: "ส่งกลับ",
-  closed: "ปิดงาน",
+  ready: 'รอจัดแบทช์',
+  assigned: 'ฝากไปรษณีย์',
+  in_transit: 'กำลังจัดส่ง',
+  returning: 'ส่งกลับ',
+  closed: 'ปิดงาน',
 };
 
 function getPostalTab(order: Order): PostalTab | null {
-  if (order.status === "ready") return "ready";
-  if (order.status === "assigned") return "assigned";
-  if (order.status === "in_transit") return "in_transit";
-  if (order.status === "returning") return "returning";
+  if (order.status === 'ready') return 'ready';
+  if (order.status === 'assigned') return 'assigned';
+  if (order.status === 'in_transit') return 'in_transit';
+  if (order.status === 'returning') return 'returning';
   if (
-    order.status === "delivered" ||
-    order.status === "failed" ||
-    order.status === "cancelled" ||
-    order.status === "returned"
+    order.status === 'delivered' ||
+    order.status === 'failed' ||
+    order.status === 'cancelled' ||
+    order.status === 'returned'
   )
-    return "closed";
+    return 'closed';
   return null;
 }
 
@@ -107,8 +101,8 @@ function PostalOrderCard({
   return (
     <div
       className={cn(
-        "w-full rounded-lg border bg-card p-4 text-left transition-all",
-        selected ? "border-primary ring-1 ring-primary shadow-sm" : "hover:border-primary/40"
+        'w-full rounded-lg border bg-card p-4 text-left transition-all',
+        selected ? 'border-primary ring-1 ring-primary shadow-sm' : 'hover:border-primary/40',
       )}
     >
       <div className="flex items-start gap-3">
@@ -120,10 +114,10 @@ function PostalOrderCard({
               onToggle(!checked);
             }}
             className={cn(
-              "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border",
+              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border',
               checked
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-muted-foreground/30 hover:border-primary"
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-muted-foreground/30 hover:border-primary',
             )}
             aria-pressed={checked}
           >
@@ -135,11 +129,11 @@ function PostalOrderCard({
             <span className="font-mono text-xs font-medium">{order.code}</span>
             <Badge
               variant={
-                order.status === "failed"
-                  ? "warning"
-                  : order.status === "ready"
-                  ? "success"
-                  : "muted"
+                order.status === 'failed'
+                  ? 'warning'
+                  : order.status === 'ready'
+                    ? 'success'
+                    : 'muted'
               }
               className="h-5 px-1.5 text-[10px]"
             >
@@ -173,9 +167,7 @@ function PostalOrderCard({
                 {batch.trackingNumber}
               </div>
             )}
-            {batch?.batchId && (
-              <div className="text-[10px]">Batch {batch.batchId}</div>
-            )}
+            {batch?.batchId && <div className="text-[10px]">Batch {batch.batchId}</div>}
           </div>
           <div className="mt-2 flex items-center justify-between border-t pt-2">
             <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -202,7 +194,7 @@ function ServicePicker({
   value: PostalService;
   onChange: (next: PostalService) => void;
 }) {
-  const services: PostalService[] = ["ems", "registered", "cod"];
+  const services: PostalService[] = ['ems', 'registered', 'cod'];
   return (
     <div className="grid grid-cols-3 gap-1">
       {services.map((s) => {
@@ -213,10 +205,10 @@ function ServicePicker({
             type="button"
             onClick={() => onChange(s)}
             className={cn(
-              "rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors",
+              'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
               active
-                ? "border-primary bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted"
+                ? 'border-primary bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-muted',
             )}
           >
             {postalServiceLabel[s]}
@@ -242,22 +234,22 @@ export function PostalQueuePage() {
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
 
   const postalOrders = useMemo(
-    () => orders.filter((o) => o.shippingMethod === "thai_post" && getPostalTab(o)),
-    [orders]
+    () => orders.filter((o) => o.shippingMethod === 'thai_post' && getPostalTab(o)),
+    [orders],
   );
 
-  const readyOrders = postalOrders.filter((o) => o.status === "ready");
-  const assignedOrders = postalOrders.filter((o) => o.status === "assigned");
-  const inTransitOrders = postalOrders.filter((o) => o.status === "in_transit");
-  const returningOrders = postalOrders.filter((o) => o.status === "returning");
+  const readyOrders = postalOrders.filter((o) => o.status === 'ready');
+  const assignedOrders = postalOrders.filter((o) => o.status === 'assigned');
+  const inTransitOrders = postalOrders.filter((o) => o.status === 'in_transit');
+  const returningOrders = postalOrders.filter((o) => o.status === 'returning');
   const closedOrders = postalOrders.filter((o) =>
-    ["delivered", "failed", "cancelled", "returned"].includes(o.status)
+    ['delivered', 'failed', 'cancelled', 'returned'].includes(o.status),
   );
 
-  const [activeTab, setActiveTab] = useState<PostalTab>("ready");
-  const [query, setQuery] = useState("");
+  const [activeTab, setActiveTab] = useState<PostalTab>('ready');
+  const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [service, setService] = useState<PostalService>("ems");
+  const [service, setService] = useState<PostalService>('ems');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [lastExport, setLastExport] = useState<{
     batchId: string;
@@ -288,10 +280,10 @@ export function PostalQueuePage() {
       order.customer.name,
       order.customer.phone,
       order.customer.address,
-      order.postalBatch?.batchId ?? "",
-      order.postalBatch?.trackingNumber ?? "",
+      order.postalBatch?.batchId ?? '',
+      order.postalBatch?.trackingNumber ?? '',
     ]
-      .join(" ")
+      .join(' ')
       .toLowerCase()
       .includes(q);
   });
@@ -319,9 +311,7 @@ export function PostalQueuePage() {
 
   const selectedList = filteredOrders.filter((o) => selectedIds.has(o.id));
   const selectedValue = selectedList.reduce((sum, o) => sum + o.totalValue, 0);
-  const visibleSelectedCount = filteredOrders.filter((o) =>
-    selectedIds.has(o.id)
-  ).length;
+  const visibleSelectedCount = filteredOrders.filter((o) => selectedIds.has(o.id)).length;
   const allVisibleSelected =
     filteredOrders.length > 0 && visibleSelectedCount === filteredOrders.length;
 
@@ -342,21 +332,19 @@ export function PostalQueuePage() {
     if (selectedList.length === 0) return;
     const batchId = exportPostalBatch(
       selectedList.map((o) => o.id),
-      service
+      service,
     );
     const csv = buildPostalCsv(selectedList, service);
     downloadCsv(`${batchId}.csv`, csv);
     setLastExport({ batchId, count: selectedList.length });
     setSelectedIds(new Set());
-    setActiveTab("assigned");
+    setActiveTab('assigned');
   };
 
   const handleReExport = (batchId: string) => {
-    const batchOrders = postalOrders.filter(
-      (o) => o.postalBatch?.batchId === batchId
-    );
+    const batchOrders = postalOrders.filter((o) => o.postalBatch?.batchId === batchId);
     if (batchOrders.length === 0) return;
-    const svc = batchOrders[0].postalBatch?.service ?? "ems";
+    const svc = batchOrders[0].postalBatch?.service ?? 'ems';
     const csv = buildPostalCsv(batchOrders, svc);
     downloadCsv(`${batchId}.csv`, csv);
   };
@@ -365,12 +353,10 @@ export function PostalQueuePage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            คิวจัดส่งไปรษณีย์ไทย
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">คิวจัดส่งไปรษณีย์ไทย</h1>
           <p className="text-sm text-muted-foreground">
-            รวมออเดอร์ที่ส่งผ่านไปรษณีย์ · จัดแบทช์ · export CSV ให้ไปรษณีย์ ·
-            กรอกเลขติดตาม EMS หลังฝาก
+            รวมออเดอร์ที่ส่งผ่านไปรษณีย์ · จัดแบทช์ · export CSV ให้ไปรษณีย์ · กรอกเลขติดตาม EMS
+            หลังฝาก
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -393,21 +379,18 @@ export function PostalQueuePage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm">ออเดอร์ไปรษณีย์</CardTitle>
-                {activeTab === "ready" && filteredOrders.length > 0 && (
+                {activeTab === 'ready' && filteredOrders.length > 0 && (
                   <button
                     onClick={toggleSelectAll}
                     className="text-[11px] font-medium text-primary hover:underline"
                   >
                     {allVisibleSelected
-                      ? "ล้างการเลือก"
+                      ? 'ล้างการเลือก'
                       : `เลือกทั้งหมด (${filteredOrders.length})`}
                   </button>
                 )}
               </div>
-              <Tabs
-                value={activeTab}
-                onValueChange={(value) => setActiveTab(value as PostalTab)}
-              >
+              <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as PostalTab)}>
                 <TabsList className="grid h-auto w-full grid-cols-2 gap-1 lg:grid-cols-5">
                   {(Object.keys(tabLabels) as PostalTab[]).map((tab) => (
                     <TabsTrigger key={tab} value={tab} className="gap-1 text-xs">
@@ -428,7 +411,7 @@ export function PostalQueuePage() {
                   className="h-8 pl-8"
                 />
               </div>
-              {activeTab === "ready" && filteredOrders.length > 0 && (
+              {activeTab === 'ready' && filteredOrders.length > 0 && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-3 py-2">
                   <button
                     type="button"
@@ -437,16 +420,16 @@ export function PostalQueuePage() {
                   >
                     <span
                       className={cn(
-                        "flex h-4 w-4 items-center justify-center rounded border",
+                        'flex h-4 w-4 items-center justify-center rounded border',
                         allVisibleSelected
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-muted-foreground/30 bg-background"
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-muted-foreground/30 bg-background',
                       )}
                     >
                       {allVisibleSelected && <CheckCircle2 className="h-3 w-3" />}
                     </span>
                     {allVisibleSelected
-                      ? "เลือกทั้งหมดที่แสดงแล้ว"
+                      ? 'เลือกทั้งหมดที่แสดงแล้ว'
                       : `เลือกทั้งหมดที่แสดง (${filteredOrders.length})`}
                   </button>
                   <div className="text-[11px] text-muted-foreground">
@@ -464,11 +447,7 @@ export function PostalQueuePage() {
                 selected={selectedOrderId === o.id}
                 onClick={() => setSelectedOrderId(o.id)}
                 checkbox={selectedIds.has(o.id)}
-                onToggle={
-                  activeTab === "ready"
-                    ? (next) => toggleSelect(o.id, next)
-                    : undefined
-                }
+                onToggle={activeTab === 'ready' ? (next) => toggleSelect(o.id, next) : undefined}
               />
             ))}
             {filteredOrders.length === 0 && (
@@ -480,73 +459,80 @@ export function PostalQueuePage() {
           </CardContent>
         </Card>
 
-        <Card className="h-[calc(100vh-12rem)] overflow-auto">
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {activeTab === "ready"
-                ? "สร้าง Batch + Export"
-                : activeTab === "assigned"
-                ? "กรอกเลขติดตาม + ฝากไปรษณีย์"
-                : activeTab === "in_transit"
-                ? "ติดตามสถานะ"
-                : activeTab === "returning"
-                ? "รอรับคืนเข้าสาขา"
-                : "สรุปงาน"}
-            </CardTitle>
-            <CardDescription className="text-xs">
-              {activeTab === "ready"
-                ? "เลือกออเดอร์ที่จะรวมเป็น batch เดียวกัน แล้ว export CSV"
-                : activeTab === "assigned"
-                ? "หลังพิมพ์ใบฝาก + ชั่งน้ำหนัก กรอกเลข EMS ที่ไปรษณีย์ให้"
-                : activeTab === "in_transit"
-                ? "รอยืนยันผลการจัดส่งจากลูกค้า/ไปรษณีย์"
-                : activeTab === "returning"
-                ? "พัสดุถูกตีกลับ — กดรับคืนเมื่อของถึงสาขา"
-                : "งานที่ปิดแล้ว (ส่งสำเร็จ/ไม่สำเร็จ/ยกเลิก/รับคืน)"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {activeTab === "ready" && (
-              <ReadyActionPanel
-                selectedList={selectedList}
-                selectedValue={selectedValue}
-                service={service}
-                onService={setService}
-                onExport={handleExport}
-                onRequestCancel={
-                  selectedOrder ? () => setCancelTargetId(selectedOrder.id) : undefined
-                }
-                selectedOrder={selectedOrder}
-              />
-            )}
-            {activeTab === "assigned" && (
-              <AssignedActionPanel
-                order={selectedOrder}
-                onTracking={(id, tracking) => setPostalTracking(id, tracking)}
-                onHandOver={(id) => markPostalHandedOver([id])}
-                onReExport={handleReExport}
-                onRequestCancel={(id) => setCancelTargetId(id)}
-              />
-            )}
-            {activeTab === "in_transit" && (
-              <InTransitActionPanel
-                order={selectedOrder}
-                onComplete={(id) => completePostalDelivery(id, true)}
-                onRequestFail={(id) => setFailTargetId(id)}
-              />
-            )}
-            {activeTab === "returning" && (
-              <ReturningPanel
-                order={selectedOrder}
-                onMarkReturned={(id) => {
-                  markReturned(id);
-                  setActiveTab("closed");
-                }}
-              />
-            )}
-            {activeTab === "closed" && <ClosedPanel order={selectedOrder} />}
-          </CardContent>
-        </Card>
+        <div className="h-[calc(100vh-12rem)] overflow-auto space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">
+                {activeTab === 'ready'
+                  ? 'สร้าง Batch + Export'
+                  : activeTab === 'assigned'
+                    ? 'กรอกเลขติดตาม + ฝากไปรษณีย์'
+                    : activeTab === 'in_transit'
+                      ? 'ติดตามสถานะ'
+                      : activeTab === 'returning'
+                        ? 'รอรับคืนเข้าสาขา'
+                        : 'สรุปงาน'}
+              </CardTitle>
+              <CardDescription className="text-xs">
+                {activeTab === 'ready'
+                  ? 'เลือกออเดอร์ที่จะรวมเป็น batch เดียวกัน แล้ว export CSV'
+                  : activeTab === 'assigned'
+                    ? 'หลังพิมพ์ใบฝาก + ชั่งน้ำหนัก กรอกเลข EMS ที่ไปรษณีย์ให้'
+                    : activeTab === 'in_transit'
+                      ? 'รอยืนยันผลการจัดส่งจากลูกค้า/ไปรษณีย์'
+                      : activeTab === 'returning'
+                        ? 'พัสดุถูกตีกลับ — กดรับคืนเมื่อของถึงสาขา'
+                        : 'งานที่ปิดแล้ว (ส่งสำเร็จ/ไม่สำเร็จ/ยกเลิก/รับคืน)'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {activeTab === 'ready' && (
+                <ReadyActionPanel
+                  selectedList={selectedList}
+                  selectedValue={selectedValue}
+                  service={service}
+                  onService={setService}
+                  onExport={handleExport}
+                  onRequestCancel={
+                    selectedOrder ? () => setCancelTargetId(selectedOrder.id) : undefined
+                  }
+                  selectedOrder={selectedOrder}
+                />
+              )}
+              {activeTab === 'assigned' && (
+                <AssignedActionPanel
+                  order={selectedOrder}
+                  onTracking={(id, tracking) => setPostalTracking(id, tracking)}
+                  onHandOver={(id) => markPostalHandedOver([id])}
+                  onReExport={handleReExport}
+                  onRequestCancel={(id) => setCancelTargetId(id)}
+                />
+              )}
+              {activeTab === 'in_transit' && (
+                <InTransitActionPanel
+                  order={selectedOrder}
+                  onComplete={(id) => completePostalDelivery(id, true)}
+                  onRequestFail={(id) => setFailTargetId(id)}
+                />
+              )}
+              {activeTab === 'returning' && (
+                <ReturningPanel
+                  order={selectedOrder}
+                  onMarkReturned={(id) => {
+                    markReturned(id);
+                    setActiveTab('closed');
+                  }}
+                />
+              )}
+              {activeTab === 'closed' && <ClosedPanel order={selectedOrder} />}
+            </CardContent>
+          </Card>
+          <OrderTimeline
+            order={selectedOrder}
+            description="กิจกรรมและการเปลี่ยนแปลงของออเดอร์ไปรษณีย์"
+            compact
+          />
+        </div>
       </div>
 
       <ResolutionDialog
@@ -554,7 +540,7 @@ export function PostalQueuePage() {
         title="ยกเลิกออเดอร์ไปรษณีย์"
         description={
           cancelTargetId
-            ? `${orders.find((o) => o.id === cancelTargetId)?.code ?? ""} — เลือกเหตุผล`
+            ? `${orders.find((o) => o.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผล`
             : undefined
         }
         reasons={CANCEL_REASONS}
@@ -572,20 +558,20 @@ export function PostalQueuePage() {
         title="บันทึกการส่งไม่สำเร็จ"
         description={
           failTargetId
-            ? `${orders.find((o) => o.id === failTargetId)?.code ?? ""} — ระบุเหตุผลและขั้นตอนต่อไป`
+            ? `${orders.find((o) => o.id === failTargetId)?.code ?? ''} — ระบุเหตุผลและขั้นตอนต่อไป`
             : undefined
         }
         reasons={FAIL_REASONS}
         actions={{
-          label: "ขั้นตอนต่อไป",
+          label: 'ขั้นตอนต่อไป',
           options: FAIL_ACTIONS,
-          defaultValue: "return",
+          defaultValue: 'return',
           helpText: (v) =>
-            v === "retry"
-              ? "ออเดอร์จะกลับเป็นสถานะมอบหมาย รอจัดส่งรอบใหม่"
-              : v === "return"
-              ? "ออเดอร์จะถูกย้ายไปแท็บส่งกลับ รอรับคืนเข้าสาขา"
-              : "ปิดงานเป็นส่งไม่สำเร็จ",
+            v === 'retry'
+              ? 'ออเดอร์จะกลับเป็นสถานะมอบหมาย รอจัดส่งรอบใหม่'
+              : v === 'return'
+                ? 'ออเดอร์จะถูกย้ายไปแท็บส่งกลับ รอรับคืนเข้าสาขา'
+                : 'ปิดงานเป็นส่งไม่สำเร็จ',
         }}
         confirmLabel="บันทึก"
         onCancel={() => setFailTargetId(null)}
@@ -597,11 +583,7 @@ export function PostalQueuePage() {
               note,
             });
             setActiveTab(
-              action === "retry"
-                ? "assigned"
-                : action === "return"
-                ? "returning"
-                : "closed"
+              action === 'retry' ? 'assigned' : action === 'return' ? 'returning' : 'closed',
             );
           }
           setFailTargetId(null);
@@ -632,17 +614,13 @@ function ReadyActionPanel({
   return (
     <>
       <div>
-        <div className="mb-1 text-[11px] font-medium text-muted-foreground">
-          บริการไปรษณีย์
-        </div>
+        <div className="mb-1 text-[11px] font-medium text-muted-foreground">บริการไปรษณีย์</div>
         <ServicePicker value={service} onChange={onService} />
       </div>
 
       <div className="rounded-lg border bg-muted/30 p-3">
         <div className="flex items-center justify-between text-xs">
-          <span className="font-medium">
-            เลือกแล้ว {selectedList.length} ออเดอร์
-          </span>
+          <span className="font-medium">เลือกแล้ว {selectedList.length} ออเดอร์</span>
           <span className="font-semibold tabular-nums text-amber-800">
             {formatTHB(selectedValue)}
           </span>
@@ -652,15 +630,11 @@ function ReadyActionPanel({
             {selectedList.slice(0, 5).map((o) => (
               <div key={o.id} className="flex items-center justify-between">
                 <span className="font-mono">{o.code}</span>
-                <span className="line-clamp-1 ml-2 max-w-[12rem] truncate">
-                  {o.customer.name}
-                </span>
+                <span className="line-clamp-1 ml-2 max-w-[12rem] truncate">{o.customer.name}</span>
               </div>
             ))}
             {selectedList.length > 5 && (
-              <div className="text-[10px]">
-                · · · อีก {selectedList.length - 5} รายการ · · ·
-              </div>
+              <div className="text-[10px]">· · · อีก {selectedList.length - 5} รายการ · · ·</div>
             )}
           </div>
         ) : (
@@ -681,16 +655,12 @@ function ReadyActionPanel({
           </li>
           <li className="flex items-start gap-1.5">
             <ClipboardCheck className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>ออเดอร์ถูก lock เป็นสถานะ "ฝากไปรษณีย์" รอกรอกเลข EMS</span>
+            <span>ออเดอร์ถูก lock เป็นสถานะ &quot;ฝากไปรษณีย์&quot; รอกรอกเลข EMS</span>
           </li>
         </ul>
       </div>
 
-      <Button
-        className="w-full"
-        disabled={!hasSelection}
-        onClick={onExport}
-      >
+      <Button className="w-full" disabled={!hasSelection} onClick={onExport}>
         <Download className="h-4 w-4" />
         Export CSV + สร้าง Batch
       </Button>
@@ -722,10 +692,10 @@ function AssignedActionPanel({
   onReExport: (batchId: string) => void;
   onRequestCancel: (orderId: string) => void;
 }) {
-  const [draft, setDraft] = useState(order?.postalBatch?.trackingNumber ?? "");
+  const [draft, setDraft] = useState(order?.postalBatch?.trackingNumber ?? '');
 
   useEffect(() => {
-    setDraft(order?.postalBatch?.trackingNumber ?? "");
+    setDraft(order?.postalBatch?.trackingNumber ?? '');
   }, [order?.id, order?.postalBatch?.trackingNumber]);
 
   if (!order) {
@@ -739,15 +709,12 @@ function AssignedActionPanel({
   const batch = order.postalBatch;
   if (!batch) {
     return (
-      <div className="py-8 text-center text-sm text-muted-foreground">
-        ออเดอร์นี้ยังไม่มี batch
-      </div>
+      <div className="py-8 text-center text-sm text-muted-foreground">ออเดอร์นี้ยังไม่มี batch</div>
     );
   }
 
   const hasTracking = !!batch.trackingNumber;
-  const trackingDirty =
-    draft.trim().length > 0 && draft.trim() !== (batch.trackingNumber ?? "");
+  const trackingDirty = draft.trim().length > 0 && draft.trim() !== (batch.trackingNumber ?? '');
 
   return (
     <>
@@ -761,18 +728,14 @@ function AssignedActionPanel({
             </div>
             <div className="font-mono text-sm font-semibold">{batch.batchId}</div>
             <div className="mt-0.5 text-[10px] text-muted-foreground">
-              บริการ {postalServiceLabel[batch.service]} · export เมื่อ{" "}
-              {new Date(batch.exportedAt).toLocaleString("th", {
-                dateStyle: "short",
-                timeStyle: "short",
+              บริการ {postalServiceLabel[batch.service]} · export เมื่อ{' '}
+              {new Date(batch.exportedAt).toLocaleString('th', {
+                dateStyle: 'short',
+                timeStyle: 'short',
               })}
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onReExport(batch.batchId)}
-          >
+          <Button size="sm" variant="outline" onClick={() => onReExport(batch.batchId)}>
             <Download className="h-3.5 w-3.5" />
             CSV ซ้ำ
           </Button>
@@ -857,9 +820,7 @@ function InTransitActionPanel({
               <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 เลขติดตาม
               </div>
-              <div className="mt-0.5 font-mono text-sm font-semibold">
-                {batch.trackingNumber}
-              </div>
+              <div className="mt-0.5 font-mono text-sm font-semibold">{batch.trackingNumber}</div>
             </div>
             <a
               href={`https://track.thailandpost.co.th/?trackNumber=${batch.trackingNumber}`}
@@ -873,10 +834,10 @@ function InTransitActionPanel({
           {batch.handedOverAt && (
             <div className="mt-2 flex items-center gap-1.5 text-[11px] text-muted-foreground">
               <Clock className="h-3 w-3" />
-              ฝากเมื่อ{" "}
-              {new Date(batch.handedOverAt).toLocaleString("th", {
-                dateStyle: "short",
-                timeStyle: "short",
+              ฝากเมื่อ{' '}
+              {new Date(batch.handedOverAt).toLocaleString('th', {
+                dateStyle: 'short',
+                timeStyle: 'short',
               })}
             </div>
           )}
@@ -884,18 +845,11 @@ function InTransitActionPanel({
       )}
 
       <div className="flex gap-2">
-        <Button
-          className="flex-1"
-          onClick={() => onComplete(order.id)}
-        >
+        <Button className="flex-1" onClick={() => onComplete(order.id)}>
           <CheckCircle2 className="h-4 w-4" />
           ส่งสำเร็จ
         </Button>
-        <Button
-          variant="outline"
-          className="flex-1"
-          onClick={() => onRequestFail(order.id)}
-        >
+        <Button variant="outline" className="flex-1" onClick={() => onRequestFail(order.id)}>
           <XCircle className="h-4 w-4" />
           ส่งไม่สำเร็จ
         </Button>
@@ -939,23 +893,23 @@ function ClosedPanel({ order }: { order: Order | null }) {
     );
   }
   const tone =
-    order.status === "delivered"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-      : order.status === "returned"
-      ? "border-sky-200 bg-sky-50 text-sky-900"
-      : order.status === "cancelled"
-      ? "border-red-200 bg-red-50 text-red-900"
-      : "border-amber-200 bg-amber-50 text-amber-900";
+    order.status === 'delivered'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+      : order.status === 'returned'
+        ? 'border-sky-200 bg-sky-50 text-sky-900'
+        : order.status === 'cancelled'
+          ? 'border-red-200 bg-red-50 text-red-900'
+          : 'border-amber-200 bg-amber-50 text-amber-900';
   return (
     <>
       <OrderSummary order={order} />
-      <div className={cn("rounded-lg border p-3 text-xs", tone)}>
+      <div className={cn('rounded-lg border p-3 text-xs', tone)}>
         <div className="flex items-center gap-1.5 font-medium">
-          {order.status === "delivered" ? (
+          {order.status === 'delivered' ? (
             <CheckCircle2 className="h-4 w-4" />
-          ) : order.status === "returned" ? (
+          ) : order.status === 'returned' ? (
             <PackageCheck className="h-4 w-4" />
-          ) : order.status === "cancelled" ? (
+          ) : order.status === 'cancelled' ? (
             <Ban className="h-4 w-4" />
           ) : (
             <XCircle className="h-4 w-4" />
@@ -963,9 +917,7 @@ function ClosedPanel({ order }: { order: Order | null }) {
           {statusLabel[order.status]}
         </div>
         {order.postalBatch?.trackingNumber && (
-          <div className="mt-1 font-mono text-[11px]">
-            {order.postalBatch.trackingNumber}
-          </div>
+          <div className="mt-1 font-mono text-[11px]">{order.postalBatch.trackingNumber}</div>
         )}
       </div>
       {order.resolution && <ResolutionInfoBlock order={order} />}
@@ -977,24 +929,21 @@ function ResolutionInfoBlock({ order }: { order: Order }) {
   const r = order.resolution;
   if (!r) return null;
   const reasonText = r.reason
-    ? failReasonLabel[r.reason as FailReason] ??
-      cancelReasonLabel[r.reason as CancelReason]
+    ? (failReasonLabel[r.reason as FailReason] ?? cancelReasonLabel[r.reason as CancelReason])
     : undefined;
   return (
     <div className="rounded-lg border bg-muted/30 p-3 text-xs">
       <div className="font-medium">รายละเอียดการบันทึก</div>
       {reasonText && <div className="mt-1">เหตุผล: {reasonText}</div>}
       {r.nextAction && (
-        <div className="mt-0.5">
-          ขั้นตอนต่อไป: {failNextActionLabel[r.nextAction]}
-        </div>
+        <div className="mt-0.5">ขั้นตอนต่อไป: {failNextActionLabel[r.nextAction]}</div>
       )}
       {r.note && <div className="mt-0.5">หมายเหตุ: {r.note}</div>}
       <div className="mt-1 text-[10px] text-muted-foreground">
-        บันทึกโดย {r.recordedBy.name} · {r.recordedBy.department} ·{" "}
-        {new Date(r.recordedAt).toLocaleString("th", {
-          dateStyle: "short",
-          timeStyle: "short",
+        บันทึกโดย {r.recordedBy.name} · {r.recordedBy.department} ·{' '}
+        {new Date(r.recordedAt).toLocaleString('th', {
+          dateStyle: 'short',
+          timeStyle: 'short',
         })}
       </div>
     </div>
@@ -1011,9 +960,7 @@ function OrderSummary({ order }: { order: Order }) {
           <Badge variant="muted">{order.items.length} รายการ</Badge>
         </div>
         <div className="mt-1 text-sm">{order.customer.name}</div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {order.customer.address}
-        </div>
+        <div className="mt-0.5 text-xs text-muted-foreground">{order.customer.address}</div>
         <div className="mt-2 flex items-center justify-between border-t pt-2">
           <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
           <span className="text-sm font-semibold tabular-nums text-amber-800">
