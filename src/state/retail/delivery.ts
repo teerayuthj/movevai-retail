@@ -1,4 +1,5 @@
 import { failNextActionLabel, failReasonLabel } from '@/data/mock';
+import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import type { Driver, FailReason, Order } from '@/data/mock';
 import {
   appendEvent,
@@ -49,7 +50,13 @@ export function assignOrderState(
 ): RetailState {
   const target = current.orders.find((order) => order.id === orderId);
   const nextDriver = current.drivers.find((driver) => driver.id === driverId);
-  if (!target || !nextDriver || nextDriver.status === 'off_duty') return current;
+  if (
+    !target ||
+    !nextDriver ||
+    nextDriver.status === 'off_duty' ||
+    isUnreleasedPlannedOrder(target)
+  )
+    return current;
 
   const previousDriverId = target.assignedDriverId;
   const alreadyAssignedToDriver = target.status === 'assigned' && previousDriverId === driverId;
@@ -117,7 +124,7 @@ export function autoAssignReadyOrdersState(current: RetailState): RetailState {
   const at = nowIso();
 
   current.orders
-    .filter((order) => order.status === 'ready')
+    .filter((order) => order.status === 'ready' && !isUnreleasedPlannedOrder(order))
     .forEach((order) => {
       const driver = chooseDriverForOrder(order, workingDrivers);
       if (!driver) return;

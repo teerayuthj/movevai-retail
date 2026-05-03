@@ -1,10 +1,12 @@
 export type PageKey =
-  | "overview"
-  | "chat"
-  | "inbox"
-  | "queue"
-  | "postal"
-  | "drivers";
+  | 'overview'
+  | 'chat'
+  | 'inbox'
+  | 'queue'
+  | 'delivery_tracking'
+  | 'planning'
+  | 'postal'
+  | 'drivers';
 
 type RouteDefinition = {
   page: PageKey;
@@ -13,22 +15,24 @@ type RouteDefinition = {
 };
 
 const routeDefinitions: RouteDefinition[] = [
-  { page: "overview", path: "/", aliases: ["/overview"] },
-  { page: "chat", path: "/chat-intake" },
-  { page: "inbox", path: "/order-inbox" },
-  { page: "queue", path: "/driver-queue" },
-  { page: "postal", path: "/thai-post" },
-  { page: "drivers", path: "/drivers" },
+  { page: 'overview', path: '/', aliases: ['/overview'] },
+  { page: 'chat', path: '/chat-intake' },
+  { page: 'inbox', path: '/order-inbox' },
+  { page: 'queue', path: '/driver-queue' },
+  { page: 'delivery_tracking', path: '/delivery-tracking' },
+  { page: 'planning', path: '/delivery-planning' },
+  { page: 'postal', path: '/thai-post' },
+  { page: 'drivers', path: '/drivers' },
 ];
 
 const routeByPage = Object.fromEntries(
-  routeDefinitions.map((route) => [route.page, route])
+  routeDefinitions.map((route) => [route.page, route]),
 ) as Record<PageKey, RouteDefinition>;
 
 function normalizePath(pathname: string) {
-  if (!pathname) return "/";
-  if (pathname === "/") return pathname;
-  return pathname.replace(/\/+$/, "") || "/";
+  if (!pathname) return '/';
+  if (pathname === '/') return pathname;
+  return pathname.replace(/\/+$/, '') || '/';
 }
 
 export function getPathForPage(page: PageKey) {
@@ -43,7 +47,7 @@ export function getPageFromPath(pathname: string): PageKey {
     return route.aliases?.includes(normalizedPath);
   });
 
-  return matchedRoute?.page ?? "overview";
+  return matchedRoute?.page ?? 'overview';
 }
 
 export function getCanonicalPath(pathname: string) {

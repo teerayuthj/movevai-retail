@@ -1,5 +1,6 @@
 import {
   AlertTriangle,
+  CalendarClock,
   Bot,
   FileSpreadsheet,
   Image as ImageIcon,
@@ -7,8 +8,9 @@ import {
   Pencil,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Order, formatTHB, sourceLabel, statusLabel } from '@/data/mock';
+import { Order, dispatchReadinessLabel, formatTHB, sourceLabel, statusLabel } from '@/data/mock';
 import { cn } from '@/lib/utils';
+import { formatPlanningDate, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 
 const STATUS_COLORS: Partial<
   Record<
@@ -86,6 +88,21 @@ export default function OrderListItem({
               {formatTHB(order.totalValue)}
             </span>
           </div>
+          {(isUnreleasedPlannedOrder(order) || order.dispatchReadiness === 'awaiting_items') && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {isUnreleasedPlannedOrder(order) && order.deliveryPlan && (
+                <Badge variant="info" className="h-5 gap-1 px-1.5 text-[10px]">
+                  <CalendarClock className="h-3 w-3" />
+                  {formatPlanningDate(order.deliveryPlan.plannedDate)}
+                </Badge>
+              )}
+              {order.dispatchReadiness === 'awaiting_items' && (
+                <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
+                  {dispatchReadinessLabel.awaiting_items}
+                </Badge>
+              )}
+            </div>
+          )}
           {order.confidence < 80 && (
             <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
               <AlertTriangle className="h-3 w-3" />

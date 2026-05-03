@@ -66,6 +66,7 @@ export function confirmOrderState(
         ...order,
         status: 'ready',
         confidence: Math.max(order.confidence, 90),
+        dispatchReadiness: order.dispatchReadiness ?? 'ready',
         shippingMethod: nextMethod,
       };
 

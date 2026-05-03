@@ -17,8 +17,6 @@ import {
   ShieldCheck,
   IdCard,
   ClipboardCheck,
-  FileSpreadsheet,
-  Sparkles,
   Clock,
   Truck as TruckIcon,
   ExternalLink,
@@ -58,6 +56,7 @@ const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
 ).map((value) => ({ value, label: failNextActionLabel[value] }));
 
 type PostalTab = 'ready' | 'assigned' | 'in_transit' | 'returning' | 'closed';
+const DEFAULT_POSTAL_SERVICE: PostalService = 'ems';
 
 const tabLabels: Record<PostalTab, string> = {
   ready: 'รอจัดแบทช์',
@@ -187,38 +186,6 @@ function PostalOrderCard({
   );
 }
 
-function ServicePicker({
-  value,
-  onChange,
-}: {
-  value: PostalService;
-  onChange: (next: PostalService) => void;
-}) {
-  const services: PostalService[] = ['ems', 'registered', 'cod'];
-  return (
-    <div className="grid grid-cols-3 gap-1">
-      {services.map((s) => {
-        const active = value === s;
-        return (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onChange(s)}
-            className={cn(
-              'rounded-md border px-2 py-1.5 text-[11px] font-medium transition-colors',
-              active
-                ? 'border-primary bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:bg-muted',
-            )}
-          >
-            {postalServiceLabel[s]}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export function PostalQueuePage() {
   const {
     orders,
@@ -249,7 +216,6 @@ export function PostalQueuePage() {
   const [activeTab, setActiveTab] = useState<PostalTab>('ready');
   const [query, setQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [service, setService] = useState<PostalService>('ems');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [lastExport, setLastExport] = useState<{
     batchId: string;
@@ -332,9 +298,9 @@ export function PostalQueuePage() {
     if (selectedList.length === 0) return;
     const batchId = exportPostalBatch(
       selectedList.map((o) => o.id),
-      service,
+      DEFAULT_POSTAL_SERVICE,
     );
-    const csv = buildPostalCsv(selectedList, service);
+    const csv = buildPostalCsv(selectedList, DEFAULT_POSTAL_SERVICE);
     downloadCsv(`${batchId}.csv`, csv);
     setLastExport({ batchId, count: selectedList.length });
     setSelectedIds(new Set());
@@ -490,8 +456,6 @@ export function PostalQueuePage() {
                 <ReadyActionPanel
                   selectedList={selectedList}
                   selectedValue={selectedValue}
-                  service={service}
-                  onService={setService}
                   onExport={handleExport}
                   onRequestCancel={
                     selectedOrder ? () => setCancelTargetId(selectedOrder.id) : undefined
@@ -596,16 +560,12 @@ export function PostalQueuePage() {
 function ReadyActionPanel({
   selectedList,
   selectedValue,
-  service,
-  onService,
   onExport,
   selectedOrder,
   onRequestCancel,
 }: {
   selectedList: Order[];
   selectedValue: number;
-  service: PostalService;
-  onService: (next: PostalService) => void;
   onExport: () => void;
   selectedOrder?: Order | null;
   onRequestCancel?: () => void;
@@ -613,11 +573,6 @@ function ReadyActionPanel({
   const hasSelection = selectedList.length > 0;
   return (
     <>
-      <div>
-        <div className="mb-1 text-[11px] font-medium text-muted-foreground">บริการไปรษณีย์</div>
-        <ServicePicker value={service} onChange={onService} />
-      </div>
-
       <div className="rounded-lg border bg-muted/30 p-3">
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium">เลือกแล้ว {selectedList.length} ออเดอร์</span>
@@ -642,22 +597,6 @@ function ReadyActionPanel({
             เลือกออเดอร์จากรายการด้านซ้าย
           </div>
         )}
-      </div>
-
-      <div className="rounded-lg border bg-muted/20 p-3 text-[11px] text-muted-foreground">
-        <div className="flex items-center gap-1.5 font-medium text-foreground">
-          <Sparkles className="h-3 w-3" /> หลัง export จะได้
-        </div>
-        <ul className="mt-1.5 space-y-1">
-          <li className="flex items-start gap-1.5">
-            <FileSpreadsheet className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>ไฟล์ CSV (ชื่อตาม Batch ID) พร้อม import เข้าระบบไปรษณีย์</span>
-          </li>
-          <li className="flex items-start gap-1.5">
-            <ClipboardCheck className="mt-0.5 h-3 w-3 shrink-0" />
-            <span>ออเดอร์ถูก lock เป็นสถานะ &quot;ฝากไปรษณีย์&quot; รอกรอกเลข EMS</span>
-          </li>
-        </ul>
       </div>
 
       <Button className="w-full" disabled={!hasSelection} onClick={onExport}>

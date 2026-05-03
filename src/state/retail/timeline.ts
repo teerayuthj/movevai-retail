@@ -16,6 +16,7 @@ import type {
   OrderActivityEventType,
   ShippingMethod,
 } from '@/data/mock';
+import { normalizeOrderPlanning } from '@/lib/deliveryPlanning';
 
 export const DEFAULT_HANDLER: Handler = {
   name: 'พนักงาน Ausiris',
@@ -349,7 +350,10 @@ function synthesizeBaseline(order: Order): Order {
 }
 
 export function migrateOrders(orders: Order[]): Order[] {
-  return orders.map((order) =>
-    order.activityLog && order.activityLog.length > 0 ? order : synthesizeBaseline(order),
-  );
+  return orders.map((order) => {
+    const withPlanning = normalizeOrderPlanning(order);
+    return withPlanning.activityLog && withPlanning.activityLog.length > 0
+      ? withPlanning
+      : synthesizeBaseline(withPlanning);
+  });
 }

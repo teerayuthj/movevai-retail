@@ -45,6 +45,16 @@ export type PaymentMethod = 'cod' | 'prepaid' | 'transfer_on_delivery';
 
 export type ShippingMethod = 'internal_driver' | 'thai_post';
 
+export type DispatchReadiness = 'ready' | 'awaiting_items';
+
+export type DeliveryPlan = {
+  plannedDate: string; // local date key in YYYY-MM-DD
+  plannedDriverId?: string;
+  releaseState: 'planned' | 'released';
+  releasedAt?: string;
+  note?: string;
+};
+
 export type PostalService = 'ems' | 'registered' | 'cod';
 
 export type PostalBatch = {
@@ -95,7 +105,11 @@ export type OrderActivityEventType =
   | 'delivery_failed'
   | 'return_started'
   | 'return_completed'
-  | 'delivery_retried';
+  | 'delivery_retried'
+  | 'delivery_planned'
+  | 'delivery_plan_updated'
+  | 'delivery_plan_cleared'
+  | 'delivery_plan_released';
 
 export type OrderActivityActor =
   | { kind: 'system'; label: string }
@@ -109,7 +123,11 @@ export type OrderActivityChangeField =
   | 'shippingMethod'
   | 'assignedDriverId'
   | 'postalBatch.trackingNumber'
-  | 'status';
+  | 'status'
+  | 'dispatchReadiness'
+  | 'deliveryPlan.plannedDate'
+  | 'deliveryPlan.plannedDriverId'
+  | 'deliveryPlan.releaseState';
 
 export type OrderActivityChange = {
   field: OrderActivityChangeField;
@@ -149,10 +167,12 @@ export type Order = {
   rawPreview?: string;
   totalValue: number;
   payment: PaymentMethod;
+  dispatchReadiness?: DispatchReadiness;
   requiresIdCheck: boolean;
   insured: boolean;
   assignedDriverId?: string;
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
+  deliveryPlan?: DeliveryPlan;
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ
   activityLog?: OrderActivityEvent[]; // timeline กิจกรรมของออเดอร์ (newest last)
@@ -683,6 +703,11 @@ export const paymentLabel: Record<PaymentMethod, string> = {
   cod: 'เก็บเงินปลายทาง',
   prepaid: 'ชำระแล้ว',
   transfer_on_delivery: 'โอนเมื่อรับของ',
+};
+
+export const dispatchReadinessLabel: Record<DispatchReadiness, string> = {
+  ready: 'พร้อมปล่อยงาน',
+  awaiting_items: 'รอสินค้ามาครบ',
 };
 
 export const shippingMethodLabel: Record<ShippingMethod, string> = {

@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Ban,
   Bot,
+  CalendarClock,
   Check,
   Coins,
   FileSpreadsheet,
@@ -28,6 +29,7 @@ import {
   Order,
   OrderItem,
   ShippingMethod,
+  dispatchReadinessLabel,
   formatTHB,
   paymentLabel,
   sourceLabel,
@@ -37,10 +39,46 @@ import ExcelParsingView from '@/features/inbox/components/ExcelParsingView';
 import ShippingMethodSelector from '@/features/inbox/components/ShippingMethodSelector';
 import { SourceIcon } from '@/features/inbox/components/OrderListItem';
 import { buildRawText } from '@/features/inbox/utils/orderFormatting';
+import { formatPlanningDate, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { CANCELLABLE } from '@/state/retail/orders';
 
 const SHIPPING_EDITABLE_STATUSES: Order['status'][] = ['new', 'needs_review', 'ready'];
+
+function getOperationalStage(order: Order, shippingMethod: ShippingMethod) {
+  if (shippingMethod === 'thai_post') {
+    return {
+      label: 'Postal flow',
+      detail: 'order เดียวกันนี้จะไปต่อที่ไปรษณีย์ไทยหลังยืนยัน',
+      variant: 'info' as const,
+    };
+  }
+
+  if (isUnreleasedPlannedOrder(order) && order.deliveryPlan) {
+    return {
+      label: 'Planning',
+      detail: `อยู่ในแผนจัดส่งวันที่ ${formatPlanningDate(order.deliveryPlan.plannedDate)}`,
+      variant: 'info' as const,
+    };
+  }
+
+  if (
+    order.deliveryPlan?.releaseState === 'released' ||
+    ['assigned', 'in_transit'].includes(order.status)
+  ) {
+    return {
+      label: 'Queue / Dispatch',
+      detail: 'order เดียวกันนี้ถูกปล่อยเข้าคิวปฏิบัติการแล้ว',
+      variant: 'success' as const,
+    };
+  }
+
+  return {
+    label: 'Inbox',
+    detail: 'กำลังตรวจข้อมูลและเตรียมส่งต่อไป Planning หรือ Queue',
+    variant: 'secondary' as const,
+  };
+}
 
 function ItemRow({ item, index }: { item: OrderItem; index: number }) {
   const lineTotal = item.qty * item.unitPrice;
@@ -130,6 +168,7 @@ export default function OrderDetail({
       : shippingMethod === 'thai_post'
         ? 'ยืนยันเข้าคิวไปรษณีย์'
         : 'ยืนยันเข้าคิว';
+  const operationalStage = getOperationalStage(order, shippingMethod);
 
   return (
     <div className="space-y-4">
@@ -332,6 +371,65 @@ export default function OrderDetail({
         disabled={shippingLocked}
         onChange={(method) => onChangeShippingMethod(order.id, method)}
       />
+
+      <Card className="border-slate-200 bg-slate-50/60">
+        <CardContent className="space-y-3 py-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                1 order = 1 source of truth
+              </div>
+              <div className="mt-1 text-sm font-medium">
+                {order.code} ถูกใช้ต่อเนื่องใน Inbox, Planning และ Queue
+              </div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                ไม่มีการสร้าง order ใหม่เมื่อเปลี่ยนจากตรวจข้อมูล ไปวางแผน หรือปล่อยเข้าคิวส่งจริง
+              </div>
+            </div>
+            <Badge variant={operationalStage.variant} className="h-6 w-fit px-2 text-[11px]">
+              {operationalStage.label}
+            </Badge>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className="gap-1">
+              <Check className="h-3 w-3" />
+              Inbox
+            </Badge>
+            <Badge
+              variant={shippingMethod === 'internal_driver' ? 'info' : 'secondary'}
+              className="gap-1"
+            >
+              <CalendarClock className="h-3 w-3" />
+              Planning
+            </Badge>
+            <Badge
+              variant={
+                order.deliveryPlan?.releaseState === 'released' ||
+                ['assigned', 'in_transit'].includes(order.status)
+                  ? 'success'
+                  : 'secondary'
+              }
+              className="gap-1"
+            >
+              <ShieldCheck className="h-3 w-3" />
+              Queue
+            </Badge>
+            {order.deliveryPlan && (
+              <Badge variant="outline">
+                วันส่ง {formatPlanningDate(order.deliveryPlan.plannedDate)}
+              </Badge>
+            )}
+            <Badge variant={order.dispatchReadiness === 'awaiting_items' ? 'warning' : 'success'}>
+              {dispatchReadinessLabel[order.dispatchReadiness ?? 'ready']}
+            </Badge>
+          </div>
+
+          <div className="rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground">
+            {operationalStage.detail}
+          </div>
+        </CardContent>
+      </Card>
 
       {lowConfidence && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">

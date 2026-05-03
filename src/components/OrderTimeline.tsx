@@ -54,6 +54,10 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   return_started: { Icon: ShieldCheck, tone: 'warning' },
   return_completed: { Icon: PackageCheck, tone: 'info' },
   delivery_retried: { Icon: RefreshCcw, tone: 'neutral' },
+  delivery_planned: { Icon: Clock, tone: 'info' },
+  delivery_plan_updated: { Icon: Pencil, tone: 'neutral' },
+  delivery_plan_cleared: { Icon: Ban, tone: 'warning' },
+  delivery_plan_released: { Icon: CheckCircle2, tone: 'success' },
 };
 
 const TONE_CLASSES: Record<IconConfig['tone'], string> = {

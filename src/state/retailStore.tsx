@@ -27,6 +27,12 @@ import {
   markPostalHandedOverState,
   setPostalTrackingState,
 } from '@/state/retail/postal';
+import {
+  clearPlannedOrdersState,
+  planOrdersState,
+  releasePlannedOrdersState,
+  setDispatchReadinessState,
+} from '@/state/retail/planning';
 import type { RetailState, RetailStore } from '@/state/retail/types';
 
 const StoreContext = createContext<RetailStore | null>(null);
@@ -195,6 +201,38 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
     [commit],
   );
 
+  const planOrders = useCallback(
+    (orderIds: string[], input: Parameters<RetailStore['planOrders']>[1]) => {
+      commit((current) => planOrdersState(current, orderIds, input));
+    },
+    [commit],
+  );
+
+  const clearPlannedOrders = useCallback(
+    (orderIds: string[]) => {
+      commit((current) => clearPlannedOrdersState(current, orderIds));
+    },
+    [commit],
+  );
+
+  const releasePlannedOrders = useCallback(
+    (orderIds: string[]) => {
+      commit((current) => releasePlannedOrdersState(current, orderIds));
+    },
+    [commit],
+  );
+
+  const setDispatchReadiness = useCallback(
+    (
+      orderId: string,
+      readiness: Parameters<RetailStore['setDispatchReadiness']>[1],
+      note?: Parameters<RetailStore['setDispatchReadiness']>[2],
+    ) => {
+      commit((current) => setDispatchReadinessState(current, orderId, readiness, note));
+    },
+    [commit],
+  );
+
   const resetDemoData = useCallback(() => {
     commit(() => defaultState);
   }, [commit]);
@@ -222,6 +260,10 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
       markReturning,
       markReturned,
       retryDelivery,
+      planOrders,
+      clearPlannedOrders,
+      releasePlannedOrders,
+      setDispatchReadiness,
       resetDemoData,
     }),
     [
@@ -246,6 +288,10 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
       markReturning,
       markReturned,
       retryDelivery,
+      planOrders,
+      clearPlannedOrders,
+      releasePlannedOrders,
+      setDispatchReadiness,
       resetDemoData,
     ],
   );

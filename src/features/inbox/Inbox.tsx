@@ -55,12 +55,10 @@ export function InboxPage() {
     <div className="space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Order Inbox — คำสั่งซื้อทองคำ/เงิน
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Order Inbox — คำสั่งซื้อ</h1>
           <p className="text-sm text-muted-foreground">
-            รวมออเดอร์จากทุกช่องทาง intake · ระบบช่วยอ่านสลิป/ไฟล์ + จับคู่ SKU ·
-            ตรวจสอบก่อนยืนยันเข้าคิวจัดส่งของมีค่า
+            รวมออเดอร์จากทุกช่องทาง intake · ระบบช่วยอ่านสลิป/ไฟล์ + จับคู่ SKU · ตรวจสอบก่อนยืนยัน
+            โดยใช้ order เดียวกันต่อเนื่องไปยัง Planning และคิวจัดส่ง
           </p>
         </div>
 

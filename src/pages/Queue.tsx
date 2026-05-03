@@ -1,289 +1,112 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DriverAvatar } from '@/components/DriverAvatar';
-import {
-  MapPin,
-  Phone,
-  Package,
-  Clock,
-  Search,
-  Bike,
-  Car,
-  Truck as TruckIcon,
-  CheckCircle2,
-  XCircle,
-  Sparkles,
-  ShieldCheck,
-  Coins,
-  IdCard,
-  Route,
-  Ban,
-  PackageCheck,
-} from 'lucide-react';
-import {
-  CancelReason,
-  Driver,
-  FailNextAction,
-  FailReason,
-  Order,
-  cancelReasonLabel,
-  failNextActionLabel,
-  failReasonLabel,
-  formatTHB,
-  paymentLabel,
-  statusLabel,
-} from '@/data/mock';
-import { cn } from '@/lib/utils';
-import { useRetailStore } from '@/state/retailStore';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { OrderTimeline } from '@/components/OrderTimeline';
+import {
+  DriverCard,
+  DriverSummary,
+  EmptyState,
+  OrderSummary,
+  QueueAiAssessment,
+  QueueOrderCard,
+} from '@/components/delivery/DeliveryExecutionShared';
+import { DriverAvatar } from '@/components/DriverAvatar';
+import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/mock';
+import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
+import {
+  driverQueueTabLabels,
+  getDriverQueueTab,
+  type DriverQueueTab,
+} from '@/lib/deliveryExecution';
+import { useRetailStore } from '@/state/retailStore';
+import { Ban, CheckCircle2, Route, Search, Sparkles } from 'lucide-react';
 
 const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
   Object.keys(cancelReasonLabel) as CancelReason[]
 ).map((value) => ({ value, label: cancelReasonLabel[value] }));
 
-const FAIL_REASONS: { value: FailReason; label: string }[] = (
-  Object.keys(failReasonLabel) as FailReason[]
-).map((value) => ({ value, label: failReasonLabel[value] }));
-
-const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
-  Object.keys(failNextActionLabel) as FailNextAction[]
-).map((value) => ({ value, label: failNextActionLabel[value] }));
-
-function VehicleIcon({ v }: { v: Driver['vehicle'] }) {
-  if (v === 'motorcycle') return <Bike className="h-3.5 w-3.5" />;
-  if (v === 'van') return <Car className="h-3.5 w-3.5" />;
-  return <TruckIcon className="h-3.5 w-3.5" />;
-}
-
-function DriverCard({
-  driver,
-  selected,
-  onSelect,
-  recommended,
-}: {
-  driver: Driver;
-  selected: boolean;
-  onSelect: () => void;
-  recommended?: boolean;
-}) {
-  const pct = (driver.activeOrders / driver.capacity) * 100;
-  const remainingCapacity = Math.max(0, driver.capacity - driver.activeOrders);
-  return (
-    <button
-      onClick={onSelect}
-      disabled={driver.status === 'off_duty'}
-      className={cn(
-        'w-full rounded-lg border p-3 text-left transition-all',
-        selected && 'border-primary bg-primary/5 ring-1 ring-primary',
-        !selected && driver.status !== 'off_duty' && 'hover:border-primary/40 hover:bg-muted/40',
-        driver.status === 'off_duty' && 'opacity-50 cursor-not-allowed',
-      )}
-    >
-      <div className="flex items-start gap-3">
-        <DriverAvatar driver={driver} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium">{driver.name}</span>
-            {recommended && (
-              <Badge variant="muted" className="h-4 gap-0.5 px-1 text-[9px]">
-                <Sparkles className="h-2.5 w-2.5" />
-                แนะนำ
-              </Badge>
-            )}
-          </div>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <VehicleIcon v={driver.vehicle} />
-            <span>{driver.zone}</span>
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-              <span>
-                งาน {driver.activeOrders}/{driver.capacity}
-              </span>
-              <span>ว่างอีก {remainingCapacity}</span>
-            </div>
-            <Progress value={pct} className="h-1" />
-          </div>
-        </div>
-        <Badge
-          variant={
-            driver.status === 'available'
-              ? 'success'
-              : driver.status === 'on_delivery'
-                ? 'muted'
-                : 'muted'
-          }
-          className="h-5 shrink-0 px-1.5 text-[10px]"
-        >
-          {driver.status === 'available'
-            ? 'ว่าง'
-            : driver.status === 'on_delivery'
-              ? 'กำลังส่ง'
-              : 'หยุด'}
-        </Badge>
-      </div>
-    </button>
-  );
-}
-
-function QueueOrderCard({
-  order,
-  selected,
-  onClick,
-  statusText = 'พร้อมส่ง',
-}: {
-  order: Order;
-  selected: boolean;
-  onClick: () => void;
-  statusText?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'w-full rounded-lg border bg-card p-4 text-left transition-all',
-        selected ? 'border-primary ring-1 ring-primary shadow-sm' : 'hover:border-primary/40',
-      )}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-medium">{order.code}</span>
-            <Badge
-              variant={order.status === 'ready' ? 'success' : 'muted'}
-              className="h-5 px-1.5 text-[10px]"
-            >
-              {statusText}
-            </Badge>
-            {order.totalValue >= 500000 && (
-              <Badge
-                variant="warning"
-                className="h-5 gap-0.5 border-red-300 bg-red-50 px-1.5 text-[10px] text-red-700"
-              >
-                <ShieldCheck className="h-2.5 w-2.5" />
-                High-value
-              </Badge>
-            )}
-          </div>
-          <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
-        </div>
-        <Badge variant="muted" className="shrink-0">
-          <Package className="h-3 w-3" /> {order.items.length}
-        </Badge>
-      </div>
-      <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-        <div className="flex items-start gap-1.5">
-          <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
-          <span className="line-clamp-1">{order.customer.address}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Phone className="h-3 w-3" />
-          <span>{order.customer.phone}</span>
-        </div>
-      </div>
-      <div className="mt-2 flex items-center justify-between border-t pt-2">
-        <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-          <Coins className="h-3 w-3 text-amber-600" />
-          {paymentLabel[order.payment]}
-        </div>
-        <span className="text-sm font-semibold tabular-nums text-amber-800">
-          {formatTHB(order.totalValue)}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-type QueueTab = 'ready' | 'assigned' | 'in_transit' | 'returning' | 'closed';
-
-const tabLabels: Record<QueueTab, string> = {
-  ready: 'รอมอบหมาย',
-  assigned: 'รอสร้าง Route',
-  in_transit: 'กำลังจัดส่ง',
-  returning: 'ส่งกลับ',
-  closed: 'ปิดงานแล้ว',
+type QueuePageProps = {
+  locationSearch: string;
+  onOpenTracking: (search?: string) => void;
 };
 
-function getQueueTab(order: Order): QueueTab | null {
-  if (order.status === 'ready') return 'ready';
-  if (order.status === 'assigned') return 'assigned';
-  if (order.status === 'in_transit') return 'in_transit';
-  if (order.status === 'returning') return 'returning';
-  if (
-    order.status === 'delivered' ||
-    order.status === 'failed' ||
-    order.status === 'cancelled' ||
-    order.status === 'returned'
-  )
-    return 'closed';
-  return null;
+function parseQueueSearch(locationSearch: string) {
+  const params = new URLSearchParams(locationSearch);
+  const tab = params.get('tab');
+  const orderId = params.get('order');
+
+  return {
+    tab: tab === 'ready' || tab === 'assigned' ? (tab as DriverQueueTab) : null,
+    orderId: orderId || null,
+  };
 }
 
-export function QueuePage() {
-  const {
-    orders,
-    drivers,
-    assignOrder,
-    autoAssignReadyOrders,
-    startDelivery,
-    completeDelivery,
-    cancelOrder,
-    failDelivery,
-    markReturned,
-  } = useRetailStore();
+function buildTrackingSearch(orderId?: string) {
+  const params = new URLSearchParams({ tab: 'in_transit' });
+  if (orderId) params.set('order', orderId);
+  return `?${params.toString()}`;
+}
+
+export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
+  const { orders, drivers, assignOrder, autoAssignReadyOrders, startDelivery, cancelOrder } =
+    useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
-  const [failTargetId, setFailTargetId] = useState<string | null>(null);
-  const workflowOrders = orders.filter(
-    (order) =>
-      getQueueTab(order) && (order.shippingMethod ?? 'internal_driver') === 'internal_driver',
-  );
-  const queueOrders = workflowOrders.filter((o) => o.status === 'ready');
-  const assignedOrders = workflowOrders.filter((o) => o.status === 'assigned');
-  const inTransitOrders = workflowOrders.filter((o) => o.status === 'in_transit');
-  const returningOrders = workflowOrders.filter((o) => o.status === 'returning');
-  const closedOrders = workflowOrders.filter((o) =>
-    ['delivered', 'failed', 'cancelled', 'returned'].includes(o.status),
-  );
-  const [activeTab, setActiveTab] = useState<QueueTab>('ready');
   const [query, setQuery] = useState('');
+
+  const workflowOrders = orders.filter(
+    (order) => getDriverQueueTab(order) && isVisibleInExecutionQueue(order),
+  );
+  const readyOrders = workflowOrders.filter((order) => order.status === 'ready');
+  const assignedOrders = workflowOrders.filter((order) => order.status === 'assigned');
+  const defaultTab: DriverQueueTab =
+    readyOrders.length > 0 || assignedOrders.length === 0 ? 'ready' : 'assigned';
+  const parsedSearch = useMemo(() => parseQueueSearch(locationSearch), [locationSearch]);
+
+  const [activeTab, setActiveTab] = useState<DriverQueueTab>(parsedSearch.tab ?? defaultTab);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
-    queueOrders[0]?.id ?? assignedOrders[0]?.id ?? inTransitOrders[0]?.id ?? null,
+    parsedSearch.orderId ?? readyOrders[0]?.id ?? assignedOrders[0]?.id ?? null,
   );
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
 
-  const selectedOrder = orders.find((o) => o.id === selectedOrderId);
-  const selectedDriver = drivers.find((d) => d.id === selectedDriverId);
-  const tabCounts: Record<QueueTab, number> = {
-    ready: queueOrders.length,
-    assigned: assignedOrders.length,
-    in_transit: inTransitOrders.length,
-    returning: returningOrders.length,
-    closed: closedOrders.length,
-  };
+  const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
+  const selectedDriver = drivers.find((driver) => driver.id === selectedDriverId) ?? null;
+
   const filteredOrders = workflowOrders.filter((order) => {
-    const tab = getQueueTab(order);
-    const q = query.trim().toLowerCase();
+    const tab = getDriverQueueTab(order);
+    const normalizedQuery = query.trim().toLowerCase();
+    const assignedDriverName = order.assignedDriverId
+      ? (drivers.find((driver) => driver.id === order.assignedDriverId)?.name ?? '')
+      : '';
     const matchesQuery =
-      !q ||
+      !normalizedQuery ||
       [
         order.code,
         order.customer.name,
         order.customer.phone,
         order.customer.address,
-        order.assignedDriverId ? drivers.find((d) => d.id === order.assignedDriverId)?.name : '',
+        assignedDriverName,
       ]
         .join(' ')
         .toLowerCase()
-        .includes(q);
+        .includes(normalizedQuery);
 
     return tab === activeTab && matchesQuery;
   });
+
+  useEffect(() => {
+    if (parsedSearch.tab) {
+      setActiveTab(parsedSearch.tab);
+    }
+  }, [parsedSearch.tab]);
+
+  useEffect(() => {
+    if (parsedSearch.orderId) {
+      setSelectedOrderId(parsedSearch.orderId);
+    }
+  }, [parsedSearch.orderId]);
 
   useEffect(() => {
     if (!filteredOrders.some((order) => order.id === selectedOrderId)) {
@@ -301,7 +124,18 @@ export function QueuePage() {
     selectedDriver.status !== 'off_duty' &&
     selectedDriver.activeOrders < selectedDriver.capacity;
 
+  const tabCounts: Record<DriverQueueTab, number> = {
+    ready: readyOrders.length,
+    assigned: assignedOrders.length,
+  };
+
   const assignedReadyToStart = assignedOrders.length > 0;
+
+  const handleStartRoute = (orderIds: string[], selectedOrderForFocus?: string) => {
+    orderIds.forEach((orderId) => startDelivery(orderId));
+    onOpenTracking(buildTrackingSearch(selectedOrderForFocus));
+  };
+
   const routeTargetOrders =
     activeTab === 'assigned' && selectedOrder?.status === 'assigned'
       ? [selectedOrder]
@@ -311,25 +145,26 @@ export function QueuePage() {
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">คิวจัดส่งทองคำ/เงิน</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">คิวจัดส่ง</h1>
           <p className="text-sm text-muted-foreground">
-            มอบหมาย driver สำหรับออเดอร์ที่พร้อมส่ง — AI แนะนำคนขับจากโซน ความพร้อม และ capacity
-            ที่เหมาะสม
+            มอบหมาย driver สำหรับออเดอร์ที่พร้อมส่ง และปล่อยงานเข้ารอบ Route ก่อนออกจัดส่ง
           </p>
         </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
             disabled={!assignedReadyToStart}
-            onClick={() => {
-              routeTargetOrders.forEach((order) => startDelivery(order.id));
-              setActiveTab('in_transit');
-            }}
+            onClick={() =>
+              handleStartRoute(
+                routeTargetOrders.map((order) => order.id),
+                routeTargetOrders.length === 1 ? routeTargetOrders[0]?.id : undefined,
+              )
+            }
           >
             <Route className="h-4 w-4" />
             สร้าง Route
           </Button>
-          <Button onClick={autoAssignReadyOrders} disabled={queueOrders.length === 0}>
+          <Button onClick={autoAssignReadyOrders} disabled={readyOrders.length === 0}>
             <Sparkles className="h-4 w-4" /> Auto-assign ทั้งหมด
           </Button>
         </div>
@@ -340,7 +175,7 @@ export function QueuePage() {
         title="ยกเลิกออเดอร์"
         description={
           cancelTargetId
-            ? `${orders.find((o) => o.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผล`
+            ? `${orders.find((order) => order.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผล`
             : undefined
         }
         reasons={CANCEL_REASONS}
@@ -353,65 +188,26 @@ export function QueuePage() {
         }}
       />
 
-      <ResolutionDialog
-        open={!!failTargetId}
-        title="บันทึกการส่งไม่สำเร็จ"
-        description={
-          failTargetId
-            ? `${orders.find((o) => o.id === failTargetId)?.code ?? ''} — เลือกเหตุผลและขั้นตอนต่อไป`
-            : undefined
-        }
-        reasons={FAIL_REASONS}
-        actions={{
-          label: 'ขั้นตอนต่อไป',
-          options: FAIL_ACTIONS,
-          defaultValue: 'retry',
-          helpText: (v) =>
-            v === 'retry'
-              ? 'ออเดอร์จะกลับเป็นสถานะมอบหมาย คนขับเดิมรับไปส่งใหม่'
-              : v === 'return'
-                ? 'ออเดอร์จะถูกย้ายไปแท็บส่งกลับ รอรับคืนเข้าสาขา'
-                : 'ปิดงานเป็นส่งไม่สำเร็จ — ภายหลังยังกดส่งกลับสาขาได้',
-        }}
-        confirmLabel="บันทึก"
-        onCancel={() => setFailTargetId(null)}
-        onConfirm={({ reason, note, action }) => {
-          if (failTargetId && action) {
-            failDelivery(failTargetId, {
-              reason,
-              nextAction: action,
-              note,
-            });
-            setActiveTab(
-              action === 'retry' ? 'assigned' : action === 'return' ? 'returning' : 'closed',
-            );
-          }
-          setFailTargetId(null);
-        }}
-      />
-
       <div className="grid gap-4 lg:grid-cols-[1fr_320px_380px]">
-        <Card className="h-[calc(100vh-12rem)] overflow-hidden flex flex-col">
+        <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-sm">คิวจัดส่ง</CardTitle>
-              </div>
+              <CardTitle className="text-sm">คิวจัดส่ง</CardTitle>
               <div className="flex flex-col gap-3">
                 <Tabs
                   value={activeTab}
-                  onValueChange={(value) => setActiveTab(value as QueueTab)}
+                  onValueChange={(value) => setActiveTab(value as DriverQueueTab)}
                   className="w-full"
                 >
                   <div className="w-full">
                     <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1.5 rounded-2xl bg-muted/70 p-1.5">
-                      {(Object.keys(tabLabels) as QueueTab[]).map((tab) => (
+                      {(Object.keys(driverQueueTabLabels) as DriverQueueTab[]).map((tab) => (
                         <TabsTrigger
                           key={tab}
                           value={tab}
                           className="h-10 shrink-0 gap-2 rounded-xl px-3.5 text-sm text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
                         >
-                          <span>{tabLabels[tab]}</span>
+                          <span>{driverQueueTabLabels[tab]}</span>
                           <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background/80 px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
                             {tabCounts[tab]}
                           </span>
@@ -424,7 +220,7 @@ export function QueuePage() {
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={query}
-                    onChange={(e) => setQuery(e.target.value)}
+                    onChange={(event) => setQuery(event.target.value)}
                     placeholder="ค้นหา order, ลูกค้า, เบอร์โทร, คนขับ..."
                     className="h-10 rounded-xl pl-9"
                   />
@@ -432,26 +228,21 @@ export function QueuePage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="flex-1 overflow-auto space-y-2">
-            {filteredOrders.map((o) => (
+          <CardContent className="flex-1 space-y-2 overflow-auto">
+            {filteredOrders.map((order) => (
               <QueueOrderCard
-                key={o.id}
-                order={o}
-                selected={selectedOrderId === o.id}
-                onClick={() => setSelectedOrderId(o.id)}
-                statusText={statusLabel[o.status]}
+                key={order.id}
+                order={order}
+                selected={selectedOrderId === order.id}
+                onClick={() => setSelectedOrderId(order.id)}
+                statusText={statusLabel[order.status]}
               />
             ))}
-            {filteredOrders.length === 0 && (
-              <div className="py-12 text-center text-sm text-muted-foreground">
-                <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-500" />
-                ไม่มีรายการในสถานะนี้
-              </div>
-            )}
+            {filteredOrders.length === 0 && <EmptyState />}
           </CardContent>
         </Card>
 
-        <Card className="h-[calc(100vh-12rem)] overflow-hidden flex flex-col">
+        <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">เลือกคนขับ</CardTitle>
             <CardDescription>
@@ -462,20 +253,20 @@ export function QueuePage() {
                 : 'เลือก order ก่อน'}
             </CardDescription>
           </CardHeader>
-          <CardContent className="flex-1 overflow-auto space-y-2">
-            {drivers.map((d, i) => (
+          <CardContent className="flex-1 space-y-2 overflow-auto">
+            {drivers.map((driver, index) => (
               <DriverCard
-                key={d.id}
-                driver={d}
-                selected={selectedDriverId === d.id}
-                onSelect={() => setSelectedDriverId(d.id)}
-                recommended={i === 0}
+                key={driver.id}
+                driver={driver}
+                selected={selectedDriverId === driver.id}
+                onSelect={() => setSelectedDriverId(driver.id)}
+                recommended={index === 0}
               />
             ))}
           </CardContent>
         </Card>
 
-        <div className="h-[calc(100vh-12rem)] overflow-auto space-y-4">
+        <div className="h-[calc(100vh-12rem)] space-y-4 overflow-auto">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">ยืนยันการมอบหมาย</CardTitle>
@@ -485,47 +276,16 @@ export function QueuePage() {
                 <>
                   <div>
                     <div className="text-[11px] font-medium text-muted-foreground">Order</div>
-                    <div className="mt-1 rounded-lg border p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="font-mono text-sm font-medium">{selectedOrder.code}</span>
-                        <Badge variant="muted">{selectedOrder.items.length} รายการ</Badge>
-                      </div>
-                      <div className="mt-1 text-sm">{selectedOrder.customer.name}</div>
-                      <div className="mt-0.5 text-xs text-muted-foreground">
-                        {selectedOrder.customer.address}
-                      </div>
-                      <div className="mt-2 flex items-center justify-between border-t pt-2">
-                        <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
-                        <span className="text-sm font-semibold tabular-nums text-amber-800">
-                          {formatTHB(selectedOrder.totalValue)}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex flex-wrap gap-1">
-                        <Badge variant="muted" className="gap-1 text-[10px]">
-                          <Coins className="h-2.5 w-2.5" />
-                          {paymentLabel[selectedOrder.payment]}
-                        </Badge>
-                        {selectedOrder.requiresIdCheck && (
-                          <Badge variant="warning" className="gap-1 text-[10px]">
-                            <IdCard className="h-2.5 w-2.5" />
-                            ตรวจบัตร
-                          </Badge>
-                        )}
-                        {selectedOrder.insured && (
-                          <Badge variant="muted" className="gap-1 text-[10px]">
-                            <ShieldCheck className="h-2.5 w-2.5" />
-                            ประกันขนส่ง
-                          </Badge>
-                        )}
-                      </div>
+                    <div className="mt-1">
+                      <OrderSummary order={selectedOrder} />
                     </div>
                   </div>
 
                   <div>
                     <div className="text-[11px] font-medium text-muted-foreground">คนขับ</div>
-                    {selectedDriverId ? (
-                      <div className="mt-1 rounded-lg border p-3">
-                        {selectedDriver && (
+                    <div className="mt-1">
+                      {selectedDriver ? (
+                        <div className="rounded-lg border p-3">
                           <div className="flex items-center gap-3">
                             <DriverAvatar driver={selectedDriver} />
                             <div>
@@ -535,36 +295,14 @@ export function QueuePage() {
                               </div>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="mt-1 rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                        ยังไม่ได้เลือกคนขับ
-                      </div>
-                    )}
+                        </div>
+                      ) : (
+                        <DriverSummary driver={null} order={selectedOrder} />
+                      )}
+                    </div>
                   </div>
 
-                  <div className="rounded-lg border bg-muted/30 p-3 text-xs">
-                    <div className="flex items-center gap-1.5 font-medium text-foreground">
-                      <Sparkles className="h-3 w-3" />
-                      AI ประเมิน
-                    </div>
-                    <ul className="mt-2 space-y-1 text-muted-foreground">
-                      <li className="flex items-center gap-1.5">
-                        <ShieldCheck className="h-3 w-3 text-emerald-600" />
-                        ประกันขนส่งครอบคลุม
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Clock className="h-3 w-3" /> ส่งถึงภายใน ~35 นาที
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <MapPin className="h-3 w-3" /> อยู่ในโซนเดียวกับ order อื่น
-                      </li>
-                      <li className="flex items-center gap-1.5">
-                        <Package className="h-3 w-3" /> ยังเหลือ capacity 5/6
-                      </li>
-                    </ul>
-                  </div>
+                  <QueueAiAssessment />
 
                   {selectedOrder.status === 'ready' && (
                     <div className="flex gap-2">
@@ -572,10 +310,10 @@ export function QueuePage() {
                         className="flex-1"
                         disabled={!canAssign}
                         onClick={() => {
-                          if (selectedOrder && selectedDriverId) {
-                            assignOrder(selectedOrder.id, selectedDriverId);
-                            setActiveTab('assigned');
-                          }
+                          if (!selectedOrder || !selectedDriverId) return;
+                          assignOrder(selectedOrder.id, selectedDriverId);
+                          setActiveTab('assigned');
+                          setSelectedOrderId(selectedOrder.id);
                         }}
                       >
                         <CheckCircle2 className="h-4 w-4" />
@@ -596,10 +334,7 @@ export function QueuePage() {
                     <div className="space-y-2">
                       <Button
                         className="w-full"
-                        onClick={() => {
-                          startDelivery(selectedOrder.id);
-                          setActiveTab('in_transit');
-                        }}
+                        onClick={() => handleStartRoute([selectedOrder.id], selectedOrder.id)}
                       >
                         <Route className="h-4 w-4" />
                         สร้าง Route และเริ่มจัดส่ง
@@ -614,48 +349,6 @@ export function QueuePage() {
                       </Button>
                     </div>
                   )}
-
-                  {selectedOrder.status === 'in_transit' && (
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1"
-                        onClick={() => {
-                          completeDelivery(selectedOrder.id, true);
-                          setActiveTab('closed');
-                        }}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        ส่งสำเร็จ
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => setFailTargetId(selectedOrder.id)}
-                      >
-                        <XCircle className="h-4 w-4" />
-                        ไม่สำเร็จ
-                      </Button>
-                    </div>
-                  )}
-
-                  {selectedOrder.status === 'returning' && (
-                    <Button
-                      className="w-full"
-                      onClick={() => {
-                        markReturned(selectedOrder.id);
-                        setActiveTab('closed');
-                      }}
-                    >
-                      <PackageCheck className="h-4 w-4" />
-                      รับคืนเข้าสาขาแล้ว
-                    </Button>
-                  )}
-
-                  {(selectedOrder.status === 'cancelled' ||
-                    selectedOrder.status === 'failed' ||
-                    selectedOrder.status === 'returning' ||
-                    selectedOrder.status === 'returned') &&
-                    selectedOrder.resolution && <ResolutionInfo order={selectedOrder} />}
                 </>
               ) : (
                 <div className="py-8 text-center text-sm text-muted-foreground">
@@ -665,57 +358,11 @@ export function QueuePage() {
             </CardContent>
           </Card>
           <OrderTimeline
-            order={selectedOrder ?? null}
+            order={selectedOrder}
             description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้"
             compact
           />
         </div>
-      </div>
-    </div>
-  );
-}
-
-function ResolutionInfo({ order }: { order: Order }) {
-  const r = order.resolution;
-  if (!r) return null;
-  const reasonText = r.reason
-    ? (failReasonLabel[r.reason as FailReason] ?? cancelReasonLabel[r.reason as CancelReason])
-    : undefined;
-  const tone =
-    r.type === 'cancelled'
-      ? 'border-red-200 bg-red-50 text-red-900'
-      : r.type === 'failed'
-        ? 'border-amber-200 bg-amber-50 text-amber-900'
-        : r.type === 'returning'
-          ? 'border-sky-200 bg-sky-50 text-sky-900'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-900';
-  const title =
-    r.type === 'cancelled'
-      ? 'ยกเลิกแล้ว'
-      : r.type === 'failed'
-        ? 'ส่งไม่สำเร็จ'
-        : r.type === 'returning'
-          ? 'อยู่ระหว่างส่งกลับ'
-          : 'รับคืนแล้ว';
-
-  return (
-    <div className={cn('rounded-lg border p-3 text-xs', tone)}>
-      <div className="flex items-center justify-between font-medium">
-        <span>{title}</span>
-        <span className="text-[10px] opacity-75">
-          {new Date(r.recordedAt).toLocaleString('th', {
-            dateStyle: 'short',
-            timeStyle: 'short',
-          })}
-        </span>
-      </div>
-      {reasonText && <div className="mt-1">เหตุผล: {reasonText}</div>}
-      {r.nextAction && (
-        <div className="mt-0.5">ขั้นตอนต่อไป: {failNextActionLabel[r.nextAction]}</div>
-      )}
-      {r.note && <div className="mt-0.5">หมายเหตุ: {r.note}</div>}
-      <div className="mt-1 text-[10px] opacity-75">
-        บันทึกโดย {r.recordedBy.name} · {r.recordedBy.department}
       </div>
     </div>
   );

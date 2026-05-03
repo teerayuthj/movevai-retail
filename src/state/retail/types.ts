@@ -1,5 +1,6 @@
 import type {
   CancelReason,
+  DispatchReadiness,
   Driver,
   FailNextAction,
   FailReason,
@@ -43,6 +44,13 @@ export type MarkReturnedInput = {
   recordedBy?: Handler;
 };
 
+export type PlanOrdersInput = {
+  plannedDate: string;
+  plannedDriverId?: string;
+  dispatchReadiness?: DispatchReadiness;
+  note?: string;
+};
+
 export type RetailStore = RetailState & {
   createInternalChatOrder: (input: InternalChatOrderInput) => string;
   updateOrder: (orderId: string, patch: Partial<Order>) => void;
@@ -64,5 +72,9 @@ export type RetailStore = RetailState & {
   markReturning: (orderId: string, input: MarkReturningInput) => void;
   markReturned: (orderId: string, input?: MarkReturnedInput) => void;
   retryDelivery: (orderId: string) => void;
+  planOrders: (orderIds: string[], input: PlanOrdersInput) => void;
+  clearPlannedOrders: (orderIds: string[]) => void;
+  releasePlannedOrders: (orderIds: string[]) => void;
+  setDispatchReadiness: (orderId: string, readiness: DispatchReadiness, note?: string) => void;
   resetDemoData: () => void;
 };
