@@ -1,30 +1,33 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle,
-  Bot,
-  CheckCircle2,
+  Download,
   FileSpreadsheet,
-  Image as ImageIcon,
   Inbox,
-  MessageSquare,
-  Paperclip,
-  Send,
+  Loader2,
+  Sparkles,
   UploadCloud,
   XCircle,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
-import { formatTHB, statusLabel } from "@/data/mock";
-import { cn } from "@/lib/utils";
-import { useRetailStore } from "@/state/retailStore";
+} from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 
-type IntakeFile = {
-  name: string;
-  size: number;
-  type: string;
+type TransformResult = {
+  requestId: string;
+  alias: string;
+  provider: string;
+  model: string;
+  fallbackUsed: boolean;
+  fileName: string;
+  csvContent: string;
+  rowCount: number;
+  latencyMs: number;
 };
+
+function isSupportedSpreadsheet(file: File) {
+  return /\.(csv|xls|xlsx)$/i.test(file.name);
+}
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
@@ -32,57 +35,105 @@ function formatFileSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function FileIcon({ file }: { file: IntakeFile }) {
-  if (file.type.includes("sheet") || file.name.match(/\.(xlsx|xls|csv)$/i)) {
-    return <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />;
+function downloadCsv(fileName: string, csvContent: string) {
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function encodeFileAsBase64(file: File) {
+  const buffer = await file.arrayBuffer();
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    const chunk = bytes.subarray(index, index + chunkSize);
+    binary += String.fromCharCode(...chunk);
   }
-  if (file.type.startsWith("image/") || file.name.match(/\.(png|jpe?g|webp)$/i)) {
-    return <ImageIcon className="h-3.5 w-3.5 text-sky-600" />;
-  }
-  return <Paperclip className="h-3.5 w-3.5 text-muted-foreground" />;
+
+  return btoa(binary);
 }
 
 export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
-  const { orders, createInternalChatOrder } = useRetailStore();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [message, setMessage] = useState("");
-  const [files, setFiles] = useState<IntakeFile[]>([]);
-  const [createdOrderId, setCreatedOrderId] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [instructions, setInstructions] = useState('');
   const [dragging, setDragging] = useState(false);
-  const canSubmit = message.trim().length > 0 || files.length > 0;
-  const recentInternalOrders = orders
-    .filter((order) => order.source === "internal_chat")
-    .slice(0, 5);
-  const createdOrder = orders.find((order) => order.id === createdOrderId);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<TransformResult | null>(null);
 
-  const addFiles = (fileList: FileList | null) => {
-    if (!fileList) return;
-    setFiles((current) => [
-      ...current,
-      ...Array.from(fileList).map((file) => ({
-        name: file.name,
-        size: file.size,
-        type: file.type,
-      })),
-    ]);
+  const previewLines = useMemo(
+    () => (result ? result.csvContent.trim().split(/\r?\n/).slice(0, 8) : []),
+    [result],
+  );
+
+  const pickFile = (nextFile: File | null) => {
+    setError(null);
+    setResult(null);
+    if (nextFile && !isSupportedSpreadsheet(nextFile)) {
+      setFile(null);
+      setError('รองรับเฉพาะไฟล์ .csv, .xls และ .xlsx');
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+    setFile(nextFile);
+    if (inputRef.current && !nextFile) {
+      inputRef.current.value = '';
+    }
   };
 
-  const submit = () => {
-    if (!canSubmit) return;
-    const orderId = createInternalChatOrder({ message: message.trim(), files });
-    setCreatedOrderId(orderId);
-    setMessage("");
-    setFiles([]);
-    if (inputRef.current) inputRef.current.value = "";
+  const handleSubmit = async () => {
+    if (!file) return;
+
+    setSubmitting(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const fileBase64 = await encodeFileAsBase64(file);
+      const response = await fetch('/api/ai/chat-intake/csv-transform', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          alias: 'test_chat',
+          fileName: file.name,
+          fileBase64,
+          mimeType: file.type || undefined,
+          instructions: instructions.trim() || undefined,
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.message ?? 'แปลงไฟล์ไม่สำเร็จ');
+      }
+
+      setResult(payload);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'แปลงไฟล์ไม่สำเร็จ');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
-    <div className="space-y-4">
+    <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Chat Intake</h1>
           <p className="text-sm text-muted-foreground">
-            ช่องทางรับข้อมูลภายในสำหรับพนักงาน ใช้เป็นทางเลือกแทนการส่งผ่าน LINE OA
+            ทดสอบแปลงไฟล์ CSV ผ่าน AI alias{' '}
+            <span className="font-medium text-foreground">test_chat</span>
           </p>
         </div>
         <Button variant="outline" onClick={onOpenInbox}>
@@ -91,198 +142,167 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-        <Card className="overflow-hidden border-sky-200 bg-gradient-to-br from-sky-50 via-background to-amber-50">
-          <CardHeader>
-            <div className="flex items-start justify-between gap-3">
+      <Card className="border-slate-200">
+        <CardHeader className="pb-4">
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-base">CSV Transform Test</CardTitle>
+            <Badge variant="muted" className="gap-1">
+              <Sparkles className="h-3 w-3" />
+              movevai-csv-transform
+            </Badge>
+          </div>
+          <CardDescription>
+            เลือกไฟล์ `.csv`, `.xls` หรือ `.xlsx` 1 ไฟล์ แล้วระบบจะส่งเข้า backend เพื่อให้ AI
+            แปลงและคืนไฟล์ CSV ใหม่กลับมา รองรับการนำเข้าและส่งออกสูงสุด 500 แถวต่อครั้ง
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={(event) => {
+              event.preventDefault();
+              setDragging(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              pickFile(event.dataTransfer.files?.[0] ?? null);
+            }}
+            className={cn(
+              'rounded-2xl border border-dashed bg-slate-50 p-6 transition-colors',
+              dragging ? 'border-primary bg-primary/5' : 'border-slate-300',
+            )}
+          >
+            <div className="flex flex-col items-center justify-center gap-3 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
+                <UploadCloud className="h-5 w-5 text-primary" />
+              </div>
               <div>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Bot className="h-5 w-5 text-primary" />
-                  ส่งข้อความหรือไฟล์เข้าระบบ
-                </CardTitle>
-                <CardDescription className="mt-1 text-xs">
-                  ระบบจะสร้าง order draft และส่งต่อไปที่ Order Inbox เพื่อให้พนักงานตรวจข้อมูลก่อนยืนยัน
+                <div className="text-sm font-medium">ลากไฟล์ CSV มาวาง หรือเลือกไฟล์</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  รองรับ `.csv`, `.xls`, `.xlsx` สูงสุด 500 แถว และจะคืนผลลัพธ์เป็น `.csv`
+                </div>
+              </div>
+              <input
+                ref={inputRef}
+                type="file"
+                accept=".csv,.xls,.xlsx,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={(event) => pickFile(event.target.files?.[0] ?? null)}
+              />
+              <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
+                <FileSpreadsheet className="h-4 w-4" />
+                เลือกไฟล์
+              </Button>
+            </div>
+          </div>
+
+          {file && (
+            <div className="flex items-center gap-3 rounded-xl border bg-white px-4 py-3">
+              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-medium">{file.name}</div>
+                <div className="text-xs text-muted-foreground">{formatFileSize(file.size)}</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => pickFile(null)}
+                className="text-muted-foreground transition-colors hover:text-foreground"
+                aria-label={`ลบไฟล์ ${file.name}`}
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="text-sm font-medium">คำสั่งเสริมถึง AI</div>
+            <textarea
+              value={instructions}
+              onChange={(event) => setInstructions(event.target.value)}
+              placeholder="ไม่บังคับ เช่น ให้คง order id เดิม หรือเน้น map ปลายทางเฉพาะบาง field"
+              className="min-h-24 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
+            <div className="text-xs text-muted-foreground">
+              backend จะคืนไฟล์ CSV ใหม่ตามจำนวนแถวที่แปลงสำเร็จ สูงสุด 500 แถวต่อครั้ง
+            </div>
+            <Button type="button" disabled={!file || submitting} onClick={handleSubmit}>
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4" />
+              )}
+              แปลงเป็น CSV ใหม่
+            </Button>
+          </div>
+
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              {error}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {result && (
+        <Card className="border-emerald-200">
+          <CardHeader className="pb-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle className="text-base">ผลลัพธ์พร้อมดาวน์โหลด</CardTitle>
+                <CardDescription>
+                  แปลงแล้ว {result.rowCount} แถว ผ่าน {result.provider} / {result.model}
                 </CardDescription>
               </div>
-              <Badge variant="muted" className="gap-1">
-                <MessageSquare className="h-3 w-3" />
-                Internal channel
-              </Badge>
+              <Button type="button" onClick={() => downloadCsv(result.fileName, result.csvContent)}>
+                <Download className="h-4 w-4" />
+                ดาวน์โหลด CSV
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div
-              onDragEnter={(event) => {
-                event.preventDefault();
-                setDragging(true);
-              }}
-              onDragOver={(event) => {
-                event.preventDefault();
-                setDragging(true);
-              }}
-              onDragLeave={(event) => {
-                event.preventDefault();
-                setDragging(false);
-              }}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                addFiles(event.dataTransfer.files);
-              }}
-              className={cn(
-                "rounded-2xl border border-dashed bg-white/80 p-4 transition-colors",
-                dragging ? "border-primary bg-primary/5" : "border-sky-300"
-              )}
-            >
-              <textarea
-                value={message}
-                onChange={(event) => setMessage(event.target.value)}
-                placeholder={`ตัวอย่าง: ร้าน ABC สั่งทอง 96.5% 1 บาท x 2 ชิ้น รวม 90,400\nโทร 081-xxx-xxxx\nที่อยู่ ...\nแนบสลิปหรือ Excel ได้ในกล่องนี้`}
-                className="min-h-56 w-full resize-none border-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground/70"
-              />
-
-              {files.length > 0 && (
-                <div className="mb-4 grid gap-2 sm:grid-cols-2">
-                  {files.map((file, index) => (
-                    <div
-                      key={`${file.name}-${index}`}
-                      className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs"
-                    >
-                      <FileIcon file={file} />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-medium">{file.name}</div>
-                        <div className="text-[10px] text-muted-foreground">
-                          {formatFileSize(file.size)}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFiles((current) => current.filter((_, i) => i !== index))
-                        }
-                        className="text-muted-foreground hover:text-foreground"
-                        aria-label={`ลบไฟล์ ${file.name}`}
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border bg-slate-50 px-4 py-3">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Alias
                 </div>
-              )}
-
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-3">
-                <div className="text-xs text-muted-foreground">
-                  Drop สลิป, PDF, Excel หรือรูปภาพตรงนี้
+                <div className="mt-1 text-sm font-medium">{result.alias}</div>
+              </div>
+              <div className="rounded-xl border bg-slate-50 px-4 py-3">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Request ID
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    ref={inputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={(event) => addFiles(event.target.files)}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => inputRef.current?.click()}
-                  >
-                    <UploadCloud className="h-3.5 w-3.5" />
-                    แนบไฟล์
-                  </Button>
-                  <Button type="button" size="sm" disabled={!canSubmit} onClick={submit}>
-                    <Send className="h-3.5 w-3.5" />
-                    สร้าง Order Draft
-                  </Button>
+                <div className="mt-1 truncate font-mono text-xs">{result.requestId}</div>
+              </div>
+              <div className="rounded-xl border bg-slate-50 px-4 py-3">
+                <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Latency
+                </div>
+                <div className="mt-1 text-sm font-medium">
+                  {(result.latencyMs / 1000).toFixed(1)}s
                 </div>
               </div>
             </div>
 
-            {createdOrder && (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-4 w-4" />
-                  สร้าง {createdOrder.code} แล้ว ส่งไปที่ Order Inbox เพื่อให้ตรวจต่อ
-                </div>
-                <Button size="sm" variant="outline" onClick={onOpenInbox}>
-                  เปิด Inbox
-                </Button>
-              </div>
-            )}
+            <div className="space-y-2">
+              <div className="text-sm font-medium">ตัวอย่างผลลัพธ์</div>
+              <pre className="overflow-x-auto rounded-xl border bg-slate-950 p-4 text-xs text-slate-100">
+                {previewLines.join('\n')}
+              </pre>
+            </div>
           </CardContent>
         </Card>
-
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">แนวทางใช้งาน</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-xs text-muted-foreground">
-              <div className="rounded-lg border bg-background p-3">
-                <div className="font-medium text-foreground">เหมาะกับ</div>
-                <div className="mt-1">
-                  พนักงานรับข้อมูลจากโทรศัพท์, email, walk-in, supplier หรือไฟล์ภายใน แล้วต้องการส่งเข้าระบบกลาง
-                </div>
-              </div>
-              <div className="rounded-lg border bg-background p-3">
-                <div className="font-medium text-foreground">ไม่แทนที่ Inbox</div>
-                <div className="mt-1">
-                  Chat เป็นช่องทางนำเข้า ส่วน Inbox เป็นจุดตรวจและยืนยัน order ก่อนเข้าคิวจัดส่ง
-                </div>
-              </div>
-              <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
-                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                ตอนนี้เป็น prototype ฝั่ง frontend ยังไม่ได้ upload ไฟล์จริงหรือ OCR จริง
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">รายการจาก Chat ล่าสุด</CardTitle>
-              <CardDescription className="text-xs">
-                Draft ที่สร้างจากช่องทางภายใน
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-              {recentInternalOrders.length > 0 ? (
-                <div className="divide-y">
-                  {recentInternalOrders.map((order) => (
-                    <div key={order.id} className="px-4 py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="font-mono text-xs font-semibold">{order.code}</div>
-                        <Badge variant={order.status === "needs_review" ? "warning" : "muted"}>
-                          {statusLabel[order.status]}
-                        </Badge>
-                      </div>
-                      <div className="mt-1 truncate text-sm font-medium">
-                        {order.customer.name}
-                      </div>
-                      <div className="mt-1 flex items-center justify-between text-[11px] text-muted-foreground">
-                        <span>{new Date(order.receivedAt).toLocaleTimeString("th", { hour: "2-digit", minute: "2-digit" })}</span>
-                        <span className="font-semibold text-amber-700">
-                          {formatTHB(order.totalValue)}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  ยังไม่มีรายการจาก Chat
-                </div>
-              )}
-              <Separator />
-              <div className="p-3">
-                <Button variant="outline" size="sm" className="w-full" onClick={onOpenInbox}>
-                  ดูทั้งหมดใน Order Inbox
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
