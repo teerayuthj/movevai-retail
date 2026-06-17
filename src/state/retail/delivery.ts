@@ -193,7 +193,7 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
 
 /**
  * rider ปิดงาน: บันทึกหลักฐาน (POD) แล้ว
- * - งานเสี่ยงสูง (requiresDeliveryReview) → เข้าสถานะ pending_confirmation รอ CS ยืนยัน (คนขับยังถือโหลดไว้)
+ * - งานเสี่ยงสูง (requiresDeliveryReview) → เข้าสถานะ pending_confirmation รออนุมัติ (คนขับยังถือโหลดไว้)
  * - งานทั่วไป → ปิดเป็น delivered ทันที และคืน capacity คนขับ
  */
 export function submitDeliveryState(
@@ -238,7 +238,7 @@ export function submitDeliveryState(
               type: 'delivery_submitted',
               at,
               actor: riderActor,
-              summary: 'rider ส่งมอบแล้ว — รอ CS ยืนยัน',
+              summary: 'rider ส่งมอบแล้ว — รออนุมัติ',
               details: proofDetails || undefined,
             }
           : {
@@ -250,7 +250,7 @@ export function submitDeliveryState(
             },
       );
     }),
-    // งานทั่วไปปิดเลย → คืนโหลด; งานรอ CS → ยังถือโหลดไว้จนยืนยัน
+    // งานทั่วไปปิดเลย → คืนโหลด; งานรออนุมัติ → ยังถือโหลดไว้จนยืนยัน
     drivers: needsReview
       ? current.drivers
       : current.drivers.map((item) =>

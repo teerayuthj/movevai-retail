@@ -14,7 +14,7 @@ type RiderTabDef = {
 export const RIDER_TABS: RiderTabDef[] = [
   { key: 'assigned', segment: 'assigned', label: 'งานใหม่' },
   { key: 'in_transit', segment: 'in-transit', label: 'กำลังส่ง' },
-  { key: 'pending_confirmation', segment: 'pending-confirmation', label: 'รอ CS' },
+  { key: 'pending_confirmation', segment: 'pending-confirmation', label: 'รออนุมัติ' },
   { key: 'delivered', segment: 'delivered', label: 'สำเร็จ' },
 ];
 

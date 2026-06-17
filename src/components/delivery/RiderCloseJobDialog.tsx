@@ -619,7 +619,7 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
               {willReview && (
                 <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
                   <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  งานนี้เป็นงานเสี่ยงสูง — เมื่อกดปิด จะส่งให้ CS ตรวจหลักฐานก่อนปิดจริง
+                  งานนี้เป็นงานเสี่ยงสูง — เมื่อกดปิด จะส่งเข้าคิวรออนุมัติก่อนปิดจริง
                 </div>
               )}
             </div>
@@ -674,7 +674,7 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
                   </Button>
                 )}
                 <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
-                  {willReview ? 'ส่งให้ CS ยืนยัน' : 'ปิดงาน — ส่งสำเร็จ'}
+                  {willReview ? 'ส่งรออนุมัติ' : 'ปิดงาน — ส่งสำเร็จ'}
                 </Button>
               </div>
             )}

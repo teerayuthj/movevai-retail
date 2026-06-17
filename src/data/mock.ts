@@ -684,7 +684,7 @@ export const statusLabel: Record<OrderStatus, string> = {
   ready: 'พร้อมส่ง',
   assigned: 'มอบหมายแล้ว',
   in_transit: 'กำลังส่ง',
-  pending_confirmation: 'รอยืนยันปิดงาน',
+  pending_confirmation: 'รออนุมัติ',
   delivered: 'ส่งสำเร็จ',
   failed: 'ส่งไม่สำเร็จ',
   cancelled: 'ยกเลิกแล้ว',

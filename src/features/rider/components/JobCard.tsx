@@ -83,7 +83,7 @@ export function JobCard({
         {order.status === 'pending_confirmation' && (
           <Badge variant="warning" className="gap-1">
             <ClipboardCheck className="h-3 w-3" />
-            รอ CS ยืนยัน
+            รออนุมัติ
           </Badge>
         )}
         {order.status === 'delivered' && (
