@@ -3,6 +3,7 @@ import { DriverAvatar } from '@/components/DriverAvatar';
 import { cn } from '@/lib/utils';
 import type { Driver } from '@/data/mock';
 import { ChevronDown, LogOut } from 'lucide-react';
+import { NotificationTestButton } from './NotificationTestButton';
 
 const statusLabel: Record<Driver['status'], string> = {
   available: 'ว่าง',
@@ -93,6 +94,8 @@ export function RiderHeader({
               </button>
             ))}
           </div>
+
+          <NotificationTestButton />
         </div>
       )}
     </header>

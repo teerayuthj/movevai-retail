@@ -1,7 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { isHighValueOrder } from '@/lib/deliveryExecution';
-import { formatTHB, paymentLabel, type Order } from '@/data/mock';
+import { paymentLabel, type Order } from '@/data/mock';
 import {
   Banknote,
   CheckCircle2,
@@ -67,11 +67,7 @@ export function JobCard({
         )}
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t pt-3">
-        <span className="text-sm font-semibold tabular-nums text-amber-800">
-          {formatTHB(order.totalValue)}
-        </span>
-
+      <div className="mt-3 flex items-center justify-end border-t pt-3">
         {order.status === 'assigned' && (
           <Button size="sm" onClick={onStart}>
             <Navigation className="h-4 w-4" />

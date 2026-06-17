@@ -10,6 +10,7 @@ import { RiderHeader } from './components/RiderHeader';
 import { InstallBanner } from './components/InstallBanner';
 import { JobCard } from './components/JobCard';
 import { RiderTabBar } from './components/RiderTabBar';
+import { RiderPushSetupBanner } from './components/RiderPushSetupBanner';
 
 export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const { orders, drivers, startDelivery, submitDelivery } = useRetailStore();
@@ -36,19 +37,16 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     delivered: myJobs.filter((o) => o.status === 'delivered').length,
   };
 
-  // ผูก tab กับ URL: /rider เปล่า → เด้งไป tab แรกที่มีงาน, tab ปัจจุบันว่าง → เด้งหา tab ที่มีงาน
-  // ใช้ replace เพื่อไม่ให้ redirect ค้างใน history (back/forward ยังถูก)
+  // auto-select เฉพาะตอน /rider เปล่า (ยังไม่ได้เลือก tab) → เด้งไป tab แรกที่มีงาน
+  // ใช้ replace เพื่อไม่ให้ /rider ค้างใน history (back/forward ยังถูก)
+  // ไม่เด้งตอน tab ปัจจุบันว่าง — ผู้ใช้ต้องกดดู tab ว่างได้ (เห็น empty state)
   useEffect(() => {
+    if (activeTab !== null) return;
     const firstWithJobs = RIDER_TABS.find((tab) => counts[tab.key] > 0)?.key;
-    if (activeTab === null) {
-      setTab(firstWithJobs ?? 'assigned', { replace: true });
-    } else if (counts[activeTab] === 0 && firstWithJobs) {
-      setTab(firstWithJobs, { replace: true });
-    }
+    setTab(firstWithJobs ?? 'assigned', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     activeTab,
-    riderId,
     counts.assigned,
     counts.in_transit,
     counts.pending_confirmation,
@@ -75,6 +73,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         />
 
         <InstallBanner install={install} />
+        <RiderPushSetupBanner installed={install.installed} />
 
         {/* job list */}
         <div className="flex-1 space-y-2.5 overflow-auto p-3 pb-safe">

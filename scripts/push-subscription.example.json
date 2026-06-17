@@ -1,0 +1,8 @@
+{
+  "endpoint": "https://web.push.apple.com/XXXX...  (วาง subscription จริงจากมือถือลงไฟล์ push-subscription.json)",
+  "expirationTime": null,
+  "keys": {
+    "p256dh": "XXXX",
+    "auth": "XXXX"
+  }
+}

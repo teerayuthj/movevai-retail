@@ -137,8 +137,8 @@ export function AppShell({ page, onChangePage, children }: Props) {
       <div className="min-h-screen bg-muted/30">
         <aside
           className={cn(
-            'fixed left-0 top-0 flex h-screen flex-col border-r bg-background transition-[width] duration-200 ease-out',
-            isSidebarCollapsed ? 'w-16' : 'w-60',
+            'fixed left-0 top-0 z-40 flex h-screen flex-col border-r bg-background transition-[width] duration-200 ease-out',
+            isSidebarCollapsed ? 'w-16 overflow-visible' : 'w-60',
           )}
         >
           <div className={cn('border-b', isSidebarCollapsed ? 'px-1.5 py-2' : 'px-3 py-3')}>

@@ -6,3 +6,6 @@ dev-dist/
 .env
 .env.local
 .env.*.local
+
+# device push subscription (มี endpoint เฉพาะเครื่อง — อย่า commit)
+scripts/push-subscription.json
