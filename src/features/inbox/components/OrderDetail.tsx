@@ -331,7 +331,7 @@ export default function OrderDetail({
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 rounded-lg border bg-gradient-to-r from-amber-50 to-background p-4 md:grid-cols-4">
+      <div className="grid gap-3 rounded-lg border bg-linear-to-r from-amber-50 to-background p-4 md:grid-cols-4">
         <div>
           <div className="text-[11px] font-medium text-muted-foreground">มูลค่ารวม</div>
           <div className="mt-0.5 text-xl font-semibold tabular-nums text-amber-800">
@@ -446,7 +446,7 @@ export default function OrderDetail({
       <Tabs defaultValue="parsed">
         <TabsList>
           <TabsTrigger value="parsed" className="gap-2 pr-4">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-emerald-500 text-white shadow-sm">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-linear-to-br from-sky-500 to-emerald-500 text-white shadow-xs">
               <Sparkles className="h-3 w-3" />
             </span>
             <span>ข้อมูลที่ AI แปลง</span>

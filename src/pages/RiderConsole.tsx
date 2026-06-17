@@ -204,9 +204,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   return (
     <div className="flex min-h-dvh w-full justify-center bg-muted/40">
       {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
-      <div className="flex min-h-dvh w-full max-w-md flex-col bg-background shadow-sm">
+      <div className="flex min-h-dvh w-full max-w-md flex-col bg-background shadow-xs">
         {/* rider header (sticky) */}
-        <header className="sticky top-0 z-10 border-b bg-primary/5 backdrop-blur">
+        <header className="sticky top-0 z-10 border-b bg-primary/5 backdrop-blur-sm">
           <div className="flex items-center gap-3 px-4 pb-3 pt-safe">
             {rider && <DriverAvatar driver={rider} className="h-10 w-10" />}
             <button
@@ -291,7 +291,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                 className={cn(
                   'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors',
                   activeTab === tab.key
-                    ? 'bg-background text-foreground shadow-sm'
+                    ? 'bg-background text-foreground shadow-xs'
                     : 'text-muted-foreground',
                 )}
               >

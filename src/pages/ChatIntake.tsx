@@ -321,7 +321,7 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
             )}
           >
             <div className="flex flex-col items-center justify-center gap-3 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-xs">
                 <UploadCloud className="h-5 w-5 text-primary" />
               </div>
               <div>
@@ -368,7 +368,7 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
               value={instructions}
               onChange={(event) => setInstructions(event.target.value)}
               placeholder="ไม่บังคับ เช่น ให้คง order id เดิม หรือเน้น map ปลายทางเฉพาะบาง field"
-              className="min-h-24 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+              className="min-h-24 w-full rounded-xl border bg-white px-3 py-2 text-sm outline-hidden transition-colors placeholder:text-muted-foreground focus:border-primary"
             />
           </div>
 

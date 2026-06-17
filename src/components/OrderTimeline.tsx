@@ -98,9 +98,9 @@ function ChangeRow({ change }: { change: OrderActivityChange }) {
     <div className="flex items-start gap-2 rounded-md border bg-background px-2 py-1.5 text-[11px]">
       <span className="shrink-0 font-medium text-muted-foreground">{change.label}</span>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
-        <span className="line-through text-muted-foreground/80 break-words">{before}</span>
+        <span className="line-through text-muted-foreground/80 wrap-break-word">{before}</span>
         <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-        <span className="font-medium text-foreground break-words">{after}</span>
+        <span className="font-medium text-foreground wrap-break-word">{after}</span>
       </div>
     </div>
   );

@@ -129,7 +129,7 @@ export function QueueOrderCard({
       onClick={onClick}
       className={cn(
         'w-full rounded-lg border bg-card p-4 text-left transition-all',
-        selected ? 'border-primary ring-1 ring-primary shadow-sm' : 'hover:border-primary/40',
+        selected ? 'border-primary ring-1 ring-primary shadow-xs' : 'hover:border-primary/40',
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -361,7 +361,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
               href={src}
               target="_blank"
               rel="noreferrer"
-              className="aspect-[4/3] overflow-hidden rounded-md border border-emerald-200"
+              className="aspect-4/3 overflow-hidden rounded-md border border-emerald-200"
             >
               <img src={src} alt={`รูปหลักฐาน ${i + 1}`} className="h-full w-full object-cover" />
             </a>

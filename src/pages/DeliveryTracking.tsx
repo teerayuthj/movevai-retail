@@ -238,7 +238,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
                           <TabsTrigger
                             key={tab}
                             value={tab}
-                            className="h-10 shrink-0 gap-2 rounded-xl px-3.5 text-sm text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                            className="h-10 shrink-0 gap-2 rounded-xl px-3.5 text-sm text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs"
                           >
                             <span>{deliveryTrackingTabLabels[tab]}</span>
                             <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background/80 px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">

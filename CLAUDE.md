@@ -5,7 +5,7 @@ Retail delivery dashboard (React 18 + Vite + TS + Tailwind + shadcn-style UI). B
 ## Stack
 
 - **Build**: Vite 6 + TypeScript 5.7
-- **UI**: React 18, Tailwind 3, Radix primitives, lucide-react, recharts
+- **UI**: React 18, Tailwind **v4** (CSS-first config — ไม่มี `tailwind.config.js`; ตั้งค่าใน `src/index.css` ผ่าน `@theme`/`@plugin`/`@utility`, PostCSS ผ่าน `@tailwindcss/postcss`), Radix primitives, lucide-react, recharts
 - **Routing**: custom `window.history` + path map (ไม่ใช้ react-router) — ดู `src/lib/routes.ts` และ `src/App.tsx`
 - **State**: React Context (`RetailProvider`) — ไม่ใช้ Redux/Zustand
 - **Date**: date-fns, react-day-picker
@@ -63,8 +63,8 @@ movevai-retail/
 │   ├── data/
 │   │   └── mock.ts                  # seed/mock data — ใช้แทน API จริง
 │   └── vite-env.d.ts
-├── vite.config.ts
-├── tailwind.config.js
+├── vite.config.ts                   # + vite-plugin-pwa (rider PWA)
+├── postcss.config.js                # @tailwindcss/postcss (Tailwind v4)
 └── tsconfig.json                    # path alias '@/*' → 'src/*'
 ```
 

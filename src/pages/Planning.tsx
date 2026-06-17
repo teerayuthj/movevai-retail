@@ -481,7 +481,7 @@ export function PlanningPage() {
                 <select
                   value={plannedDriverId}
                   onChange={(event) => setPlannedDriverId(event.target.value)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="">ยังไม่เลือกคนขับ</option>
                   {drivers.map((driver) => (
@@ -499,7 +499,7 @@ export function PlanningPage() {
                 <select
                   value={readiness}
                   onChange={(event) => setReadiness(event.target.value as DispatchReadiness)}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                 >
                   <option value="ready">{dispatchReadinessLabel.ready}</option>
                   <option value="awaiting_items">{dispatchReadinessLabel.awaiting_items}</option>
@@ -513,7 +513,7 @@ export function PlanningPage() {
                   onChange={(event) => setPlanNote(event.target.value)}
                   rows={3}
                   placeholder="เช่น รอทองครบ lot ช่วงบ่าย / นัดส่งพร้อมใบกำกับ"
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
                 />
               </div>
 

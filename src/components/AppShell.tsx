@@ -165,9 +165,9 @@ export function AppShell({ page, onChangePage, children }: Props) {
                   onClick={() => setIsSidebarCollapsed((prev) => !prev)}
                   aria-label={isSidebarCollapsed ? 'Open sidebar' : 'พับ sidebar'}
                   className={cn(
-                    'inline-flex items-center justify-center border border-border/70 text-foreground/80 transition-all hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-border/80',
+                    'inline-flex items-center justify-center border border-border/70 text-foreground/80 transition-all hover:bg-accent hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-border/80',
                     isSidebarCollapsed
-                      ? 'absolute left-1/2 top-1/2 z-10 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background/95 shadow-sm backdrop-blur-sm'
+                      ? 'absolute left-1/2 top-1/2 z-10 h-8 w-8 -translate-x-1/2 -translate-y-1/2 rounded-xl bg-background/95 shadow-xs backdrop-blur-xs'
                       : 'h-8 w-8 rounded-lg bg-background hover:border-border',
                   )}
                 >
@@ -238,7 +238,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
             isSidebarCollapsed ? 'pl-16' : 'pl-60',
           )}
         >
-          <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur px-6">
+          <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-6">
             <div className="relative w-96 max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input

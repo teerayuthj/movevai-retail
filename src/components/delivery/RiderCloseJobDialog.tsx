@@ -270,7 +270,7 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
               {photos.map((src, i) => (
                 <div
                   key={i}
-                  className="group relative aspect-[4/3] overflow-hidden rounded-lg border"
+                  className="group relative aspect-4/3 overflow-hidden rounded-lg border"
                 >
                   <img src={src} alt={`รูปที่ ${i + 1}`} className="h-full w-full object-cover" />
                   <button
@@ -286,7 +286,7 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
               <button
                 type="button"
                 onClick={() => setPhotos((prev) => [...prev, captureMockPhoto(order)])}
-                className="flex aspect-[4/3] flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-muted-foreground transition-colors hover:bg-muted/50"
+                className="flex aspect-4/3 flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-muted-foreground transition-colors hover:bg-muted/50"
               >
                 <Camera className="h-5 w-5" />
                 <span className="text-[10px]">ถ่ายรูป</span>

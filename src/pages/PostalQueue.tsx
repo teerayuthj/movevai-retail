@@ -101,7 +101,7 @@ function PostalOrderCard({
     <div
       className={cn(
         'w-full rounded-lg border bg-card p-4 text-left transition-all',
-        selected ? 'border-primary ring-1 ring-primary shadow-sm' : 'hover:border-primary/40',
+        selected ? 'border-primary ring-1 ring-primary shadow-xs' : 'hover:border-primary/40',
       )}
     >
       <div className="flex items-start gap-3">
@@ -585,7 +585,7 @@ function ReadyActionPanel({
             {selectedList.slice(0, 5).map((o) => (
               <div key={o.id} className="flex items-center justify-between">
                 <span className="font-mono">{o.code}</span>
-                <span className="line-clamp-1 ml-2 max-w-[12rem] truncate">{o.customer.name}</span>
+                <span className="line-clamp-1 ml-2 max-w-48 truncate">{o.customer.name}</span>
               </div>
             ))}
             {selectedList.length > 5 && (
