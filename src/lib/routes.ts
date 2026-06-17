@@ -46,6 +46,12 @@ export function getPathForPage(page: PageKey) {
 export function getPageFromPath(pathname: string): PageKey {
   const normalizedPath = normalizePath(pathname);
 
+  // /rider และ sub-route ทั้งหมด (/rider/assigned, /rider/in-transit, ...) = page 'rider'
+  // tab routing ภายใน /rider จัดการที่ src/features/rider (riderTabs.ts)
+  if (normalizedPath === '/rider' || normalizedPath.startsWith('/rider/')) {
+    return 'rider';
+  }
+
   const matchedRoute = routeDefinitions.find((route) => {
     if (route.path === normalizedPath) return true;
     return route.aliases?.includes(normalizedPath);
@@ -55,5 +61,8 @@ export function getPageFromPath(pathname: string): PageKey {
 }
 
 export function getCanonicalPath(pathname: string) {
-  return getPathForPage(getPageFromPath(pathname));
+  const page = getPageFromPath(pathname);
+  // rider เก็บ sub-path ไว้ (อย่ายุบ /rider/delivered → /rider) — ให้ feature redirect เอง
+  if (page === 'rider') return normalizePath(pathname);
+  return getPathForPage(page);
 }
