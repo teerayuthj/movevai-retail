@@ -55,8 +55,43 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-feature-settings: "rlig" 1, "calt" 1;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Noto Sans Thai",
-      "Sarabun", sans-serif;
+    font-feature-settings:
+      'rlig' 1,
+      'calt' 1;
+    font-family:
+      ui-sans-serif,
+      system-ui,
+      -apple-system,
+      'Noto Sans Thai',
+      'Sarabun',
+      sans-serif;
+  }
+}
+
+/*
+ * PWA / mobile safe-area helpers — ตั้งครั้งเดียว ใช้ซ้ำทุก sticky header/footer
+ * และ surface เต็มจอ (ต้องมี <meta name="viewport" content="...viewport-fit=cover">)
+ *
+ * วิธีใช้ (long-term convention):
+ *   - ความสูงเต็มจอ → ใช้ dvh ของ Tailwind: min-h-dvh / h-dvh / max-h-dvh
+ *     (อย่าใช้ min-h-screen/100vh บนมือถือ เพราะ iOS นับรวมแถบ browser → ล้น)
+ *   - header ที่ชนรอยบาก/status bar → pt-safe
+ *   - footer/แถบปุ่มล่างที่ชน home indicator → pb-safe
+ *   - ขอบซ้าย/ขวาในแนวนอน (landscape notch) → px-safe
+ */
+@layer utilities {
+  .pt-safe {
+    padding-top: max(env(safe-area-inset-top), 0.75rem);
+  }
+  .pb-safe {
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+  }
+  .px-safe {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+  /* เผื่ออยากเว้น inset ล่างแบบ margin (ไม่ใส่ padding base) */
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom);
   }
 }

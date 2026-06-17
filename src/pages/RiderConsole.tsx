@@ -10,14 +10,69 @@ import { cn } from '@/lib/utils';
 import {
   Banknote,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
+  Download,
   IdCard,
+  LogOut,
   MapPin,
   Navigation,
   Package,
   Phone,
+  Share,
   ShieldCheck,
 } from 'lucide-react';
+
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+};
+
+const isStandalone = () =>
+  typeof window !== 'undefined' &&
+  (window.matchMedia('(display-mode: standalone)').matches ||
+    // iOS Safari
+    (window.navigator as { standalone?: boolean }).standalone === true);
+
+const isIos = () =>
+  typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+
+/** จัดการ "เพิ่มลงหน้าจอโฮม" — Android/Chrome ใช้ beforeinstallprompt, iOS ต้องบอกวิธีเอง */
+function useInstallPrompt() {
+  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(isStandalone);
+
+  useEffect(() => {
+    const onPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferred(event as BeforeInstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setDeferred(null);
+    };
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', onPrompt);
+      window.removeEventListener('appinstalled', onInstalled);
+    };
+  }, []);
+
+  const promptInstall = async () => {
+    if (!deferred) return;
+    await deferred.prompt();
+    await deferred.userChoice;
+    setDeferred(null);
+  };
+
+  return {
+    installed,
+    canPrompt: !!deferred,
+    needsIosHint: !installed && isIos() && !deferred,
+    promptInstall,
+  };
+}
 
 type RiderTab = 'assigned' | 'in_transit' | 'pending_confirmation';
 
@@ -108,11 +163,14 @@ function JobCard({
   );
 }
 
-export function RiderConsolePage() {
+export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const { orders, drivers, startDelivery, submitDelivery } = useRetailStore();
   const [riderId, setRiderId] = useState<string>(() => drivers[0]?.id ?? '');
   const [activeTab, setActiveTab] = useState<RiderTab>('assigned');
   const [closeTargetId, setCloseTargetId] = useState<string | null>(null);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [iosHintOpen, setIosHintOpen] = useState(false);
+  const install = useInstallPrompt();
 
   const rider = drivers.find((driver) => driver.id === riderId) ?? null;
 
@@ -144,79 +202,166 @@ export function RiderConsolePage() {
   const tabJobs = myJobs.filter((order) => order.status === activeTab);
 
   return (
-    <div className="mx-auto flex w-full max-w-md flex-col gap-3">
-      {/* ตัวสลับ identity — ของจริงจะมาจากการ login ของ rider */}
-      <div className="rounded-lg border bg-muted/30 p-2.5">
-        <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-          ทดสอบในชื่อ rider (จำลองการล็อกอิน)
-        </div>
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
-          {drivers.map((driver) => (
+    <div className="flex min-h-dvh w-full justify-center bg-muted/40">
+      {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
+      <div className="flex min-h-dvh w-full max-w-md flex-col bg-background shadow-sm">
+        {/* rider header (sticky) */}
+        <header className="sticky top-0 z-10 border-b bg-primary/5 backdrop-blur">
+          <div className="flex items-center gap-3 px-4 pb-3 pt-safe">
+            {rider && <DriverAvatar driver={rider} className="h-10 w-10" />}
             <button
-              key={driver.id}
               type="button"
-              onClick={() => setRiderId(driver.id)}
-              className={cn(
-                'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
-                driver.id === riderId
-                  ? 'border-primary bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:bg-muted',
-              )}
+              onClick={() => setSwitcherOpen((prev) => !prev)}
+              className="flex min-w-0 flex-1 items-center gap-1 text-left"
             >
-              <DriverAvatar driver={driver} className="h-5 w-5" />
-              {driver.name.split(' ')[0]}
+              <div className="min-w-0">
+                <div className="truncate text-sm font-semibold">{rider?.name ?? '—'}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {rider?.zone} · งานวันนี้ {rider?.activeOrders}/{rider?.capacity}
+                </div>
+              </div>
+              <ChevronDown
+                className={cn(
+                  'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+                  switcherOpen && 'rotate-180',
+                )}
+              />
             </button>
-          ))}
-        </div>
-      </div>
-
-      {/* phone frame */}
-      <div className="overflow-hidden rounded-[28px] border-2 border-foreground/10 bg-background shadow-sm">
-        {/* rider header */}
-        <div className="flex items-center gap-3 border-b bg-primary/5 px-4 py-3">
-          {rider && <DriverAvatar driver={rider} className="h-10 w-10" />}
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold">{rider?.name ?? '—'}</div>
-            <div className="text-[11px] text-muted-foreground">
-              {rider?.zone} · งานวันนี้ {rider?.activeOrders}/{rider?.capacity}
-            </div>
+            <Badge
+              variant={rider?.status === 'available' ? 'success' : 'muted'}
+              className="h-5 px-1.5 text-[10px]"
+            >
+              {rider?.status === 'available'
+                ? 'ว่าง'
+                : rider?.status === 'on_delivery'
+                  ? 'กำลังส่ง'
+                  : 'หยุด'}
+            </Badge>
           </div>
-          <Badge
-            variant={rider?.status === 'available' ? 'success' : 'muted'}
-            className="h-5 px-1.5 text-[10px]"
-          >
-            {rider?.status === 'available'
-              ? 'ว่าง'
-              : rider?.status === 'on_delivery'
-                ? 'กำลังส่ง'
-                : 'หยุด'}
-          </Badge>
-        </div>
 
-        {/* tabs */}
-        <div className="flex gap-1 border-b bg-muted/30 p-1.5">
-          {RIDER_TABS.map((tab) => (
-            <button
-              key={tab.key}
-              type="button"
-              onClick={() => setActiveTab(tab.key)}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors',
-                activeTab === tab.key
-                  ? 'bg-background text-foreground shadow-sm'
-                  : 'text-muted-foreground',
-              )}
-            >
-              {tab.label}
-              <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] tabular-nums">
-                {counts[tab.key]}
-              </span>
-            </button>
-          ))}
-        </div>
+          {/* identity switcher — จำลองการ login (ของจริงจะมาจาก auth ของ rider) */}
+          {switcherOpen && (
+            <div className="border-t bg-background/60 px-3 py-2.5">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[11px] font-medium text-muted-foreground">
+                  สลับบัญชี rider (จำลองการล็อกอิน)
+                </span>
+                {onExit && (
+                  <button
+                    type="button"
+                    onClick={onExit}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    <LogOut className="h-3 w-3" />
+                    ออกจากโหมด rider
+                  </button>
+                )}
+              </div>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {drivers.map((driver) => (
+                  <button
+                    key={driver.id}
+                    type="button"
+                    onClick={() => {
+                      setRiderId(driver.id);
+                      setSwitcherOpen(false);
+                    }}
+                    className={cn(
+                      'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                      driver.id === riderId
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'text-muted-foreground hover:bg-muted',
+                    )}
+                  >
+                    <DriverAvatar driver={driver} className="h-5 w-5" />
+                    {driver.name.split(' ')[0]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* tabs */}
+          <div className="flex gap-1 border-t bg-muted/30 p-1.5">
+            {RIDER_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => setActiveTab(tab.key)}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium transition-colors',
+                  activeTab === tab.key
+                    ? 'bg-background text-foreground shadow-sm'
+                    : 'text-muted-foreground',
+                )}
+              >
+                {tab.label}
+                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1 text-[10px] tabular-nums">
+                  {counts[tab.key]}
+                </span>
+              </button>
+            ))}
+          </div>
+        </header>
+
+        {/* เพิ่มลงหน้าจอโฮม — แสดงเฉพาะตอนยังไม่ได้ติดตั้งและติดตั้งได้ */}
+        {!install.installed && (install.canPrompt || install.needsIosHint) && (
+          <div className="border-b bg-primary/5 px-3 py-2.5">
+            {install.canPrompt ? (
+              <button
+                type="button"
+                onClick={install.promptInstall}
+                className="flex w-full items-center gap-2.5 text-left"
+              >
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                  <Download className="h-4 w-4" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-medium">ติดตั้งแอป MoveVai Rider</span>
+                  <span className="block text-[11px] text-muted-foreground">
+                    เพิ่มลงหน้าจอโฮม เปิดเร็วขึ้น ใช้แบบเต็มจอ
+                  </span>
+                </span>
+              </button>
+            ) : (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIosHintOpen((prev) => !prev)}
+                  className="flex w-full items-center gap-2.5 text-left"
+                >
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                    <Share className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-medium">เพิ่มลงหน้าจอโฮม</span>
+                    <span className="block text-[11px] text-muted-foreground">
+                      ใช้งานเหมือนแอป — แตะดูวิธีติดตั้งบน iPhone
+                    </span>
+                  </span>
+                  <ChevronDown
+                    className={cn(
+                      'h-4 w-4 shrink-0 text-muted-foreground transition-transform',
+                      iosHintOpen && 'rotate-180',
+                    )}
+                  />
+                </button>
+                {iosHintOpen && (
+                  <ol className="mt-2 space-y-1 pl-1 text-[12px] text-muted-foreground">
+                    <li>
+                      1. แตะปุ่ม <Share className="inline h-3.5 w-3.5" /> (Share) ใน Safari
+                    </li>
+                    <li>2. เลือก “เพิ่มไปยังหน้าจอโฮม” (Add to Home Screen)</li>
+                    <li>3. แตะ “เพิ่ม” — จะได้ไอคอน MoveVai Rider บนหน้าจอ</li>
+                  </ol>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* job list */}
-        <div className="max-h-[calc(100vh-18rem)] space-y-2.5 overflow-auto p-3">
+        <div className="flex-1 space-y-2.5 overflow-auto p-3 pb-safe">
           {tabJobs.map((order) => (
             <JobCard
               key={order.id}

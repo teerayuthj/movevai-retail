@@ -1,0 +1,13 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- full-bleed bg for maskable safe-zone -->
+  <rect width="512" height="512" fill="#16A34A"/>
+  <g transform="translate(128 178)">
+    <rect x="6" y="32" width="150" height="96" rx="14" fill="#FFFFFF"/>
+    <path d="M156 56h58l32 40v32a11 11 0 0 1-11 11H156z" fill="#FFFFFF"/>
+    <rect x="169" y="67" width="41" height="31" rx="6" fill="#16A34A"/>
+    <circle cx="68" cy="138" r="24" fill="#0F2A1A"/>
+    <circle cx="68" cy="138" r="10" fill="#FFFFFF"/>
+    <circle cx="202" cy="138" r="24" fill="#0F2A1A"/>
+    <circle cx="202" cy="138" r="10" fill="#FFFFFF"/>
+  </g>
+</svg>

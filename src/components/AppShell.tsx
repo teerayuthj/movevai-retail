@@ -104,7 +104,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
     { key: 'planning', label: 'Planning', icon: CalendarClock, badge: String(planningCount) },
     { key: 'postal', label: 'ไปรษณีย์ไทย', icon: Mailbox, badge: String(postalCount) },
     { key: 'drivers', label: 'คนขับ', icon: Users },
-    { key: 'rider', label: 'Rider (จำลอง)', icon: Smartphone, badge: String(riderJobCount) },
+    { key: 'rider', label: 'เปิดแอป Rider', icon: Smartphone, badge: String(riderJobCount) },
   ];
   const SidebarToggleIcon = isSidebarCollapsed ? PanelLeftOpen : PanelLeftClose;
 

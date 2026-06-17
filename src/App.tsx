@@ -48,6 +48,16 @@ export default function App() {
     setLocationSearch(options?.search ?? '');
   };
 
+  // Rider เป็น "surface แยก" (mobile-first) — render นอก AppShell ของ admin
+  // ไม่มี sidebar/topbar ของ admin มาครอบ เพื่อจำลองประสบการณ์เปิดบนมือถือจริง
+  if (page === 'rider') {
+    return (
+      <RetailProvider>
+        <RiderConsolePage onExit={() => navigateToPage('overview')} />
+      </RetailProvider>
+    );
+  }
+
   return (
     <RetailProvider>
       <AppShell page={page} onChangePage={navigateToPage}>
@@ -70,7 +80,6 @@ export default function App() {
         {page === 'planning' && <PlanningPage />}
         {page === 'postal' && <PostalQueuePage />}
         {page === 'drivers' && <DriversPage />}
-        {page === 'rider' && <RiderConsolePage />}
       </AppShell>
     </RetailProvider>
   );

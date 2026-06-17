@@ -1,0 +1,17 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#16A34A"/>
+  <g transform="translate(96 150)">
+    <!-- delivery van body -->
+    <rect x="8" y="40" width="190" height="120" rx="18" fill="#FFFFFF"/>
+    <path d="M198 70h74l40 50v40a14 14 0 0 1-14 14H198z" fill="#FFFFFF"/>
+    <rect x="214" y="84" width="52" height="40" rx="8" fill="#16A34A"/>
+    <!-- wheels -->
+    <circle cx="86" cy="172" r="30" fill="#0F2A1A"/>
+    <circle cx="86" cy="172" r="13" fill="#FFFFFF"/>
+    <circle cx="256" cy="172" r="30" fill="#0F2A1A"/>
+    <circle cx="256" cy="172" r="13" fill="#FFFFFF"/>
+    <!-- motion lines -->
+    <rect x="-72" y="70" width="56" height="14" rx="7" fill="#FFFFFF" opacity="0.85"/>
+    <rect x="-52" y="104" width="40" height="14" rx="7" fill="#FFFFFF" opacity="0.6"/>
+  </g>
+</svg>

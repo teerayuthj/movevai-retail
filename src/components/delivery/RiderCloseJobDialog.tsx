@@ -239,9 +239,10 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
-      <div className="flex max-h-[92vh] w-full max-w-md flex-col overflow-hidden rounded-xl border bg-background shadow-xl">
-        <div className="flex items-start justify-between border-b px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+      {/* มือถือ = full-screen sheet (h-dvh) / desktop = การ์ดกลางจอ */}
+      <div className="flex h-dvh w-full flex-col overflow-hidden border bg-background shadow-xl sm:h-auto sm:max-h-[90dvh] sm:max-w-md sm:rounded-xl">
+        <div className="flex items-start justify-between border-b px-5 pb-4 pt-safe">
           <div>
             <h2 className="text-base font-semibold">ปิดงาน (rider)</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
@@ -374,7 +375,7 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
           )}
         </div>
 
-        <div className="border-t bg-muted/30 px-5 py-3">
+        <div className="border-t bg-muted/30 px-5 pb-safe pt-3">
           {missing.length > 0 && (
             <div className="mb-2 text-[11px] text-amber-700">
               ต้องทำก่อนปิด: {missing.join(' · ')}
