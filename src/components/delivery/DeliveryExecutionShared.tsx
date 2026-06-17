@@ -30,6 +30,7 @@ import {
   paymentLabel,
 } from '@/data/mock';
 import { cn } from '@/lib/utils';
+import { describeProof } from '@/lib/deliveryExecution';
 
 export function VehicleIcon({ v }: { v: Driver['vehicle'] }) {
   if (v === 'motorcycle') return <Bike className="h-3.5 w-3.5" />;
@@ -114,11 +115,14 @@ export function QueueOrderCard({
   selected,
   onClick,
   statusText = 'พร้อมส่ง',
+  rank,
 }: {
   order: Order;
   selected: boolean;
   onClick: () => void;
   statusText?: string;
+  /** ลำดับในคิวตาม priority (1 = ควรมอบหมายก่อน) */
+  rank?: number;
 }) {
   return (
     <button
@@ -131,6 +135,19 @@ export function QueueOrderCard({
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
+            {rank != null && (
+              <span
+                className={cn(
+                  'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums',
+                  rank <= 3
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-muted text-muted-foreground',
+                )}
+                title="ลำดับคิวตามความสำคัญ"
+              >
+                #{rank}
+              </span>
+            )}
             <span className="font-mono text-xs font-medium">{order.code}</span>
             <Badge
               variant={order.status === 'ready' ? 'success' : 'muted'}
@@ -145,6 +162,12 @@ export function QueueOrderCard({
               >
                 <ShieldCheck className="h-2.5 w-2.5" />
                 High-value
+              </Badge>
+            )}
+            {order.requiresIdCheck && (
+              <Badge variant="warning" className="h-5 gap-0.5 px-1.5 text-[10px]">
+                <IdCard className="h-2.5 w-2.5" />
+                ตรวจบัตร
               </Badge>
             )}
             {order.deliveryPlan?.releaseState === 'released' && (
@@ -296,6 +319,68 @@ export function DriverSummary({ driver, order }: { driver: Driver | null; order?
           {driver.highValueCertified ? 'ผ่านอบรมขนส่งของมีค่า' : 'ไม่มีใบรับรอง high-value'}
         </div>
       </div>
+    </div>
+  );
+}
+
+export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; driverName?: string }) {
+  const pod = order.proofOfDelivery;
+  if (!pod) return null;
+
+  const items = describeProof(pod);
+  const capturedBy = driverName || pod.capturedByDriverId || 'คนขับ';
+
+  return (
+    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs">
+      <div className="flex items-center justify-between font-medium text-emerald-900">
+        <span className="flex items-center gap-1.5">
+          <ShieldCheck className="h-3.5 w-3.5" />
+          หลักฐานปิดงานจาก rider
+        </span>
+        <span className="text-[10px] opacity-75">
+          {new Date(pod.capturedAt).toLocaleString('th', {
+            dateStyle: 'short',
+            timeStyle: 'short',
+          })}
+        </span>
+      </div>
+      <ul className="mt-2 space-y-1">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-start gap-1.5 text-emerald-900">
+            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+
+      {pod.photos && pod.photos.length > 0 && (
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          {pod.photos.map((src, i) => (
+            <a
+              key={i}
+              href={src}
+              target="_blank"
+              rel="noreferrer"
+              className="aspect-[4/3] overflow-hidden rounded-md border border-emerald-200"
+            >
+              <img src={src} alt={`รูปหลักฐาน ${i + 1}`} className="h-full w-full object-cover" />
+            </a>
+          ))}
+        </div>
+      )}
+
+      {pod.signatureDataUrl && (
+        <div className="mt-2">
+          <div className="text-[10px] text-emerald-800/80">ลายเซ็นผู้รับ</div>
+          <img
+            src={pod.signatureDataUrl}
+            alt="ลายเซ็นผู้รับ"
+            className="mt-1 h-16 w-full rounded-md border border-emerald-200 bg-white object-contain"
+          />
+        </div>
+      )}
+
+      <div className="mt-2 text-[10px] text-emerald-800/80">บันทึกโดย {capturedBy}</div>
     </div>
   );
 }

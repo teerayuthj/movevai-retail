@@ -4,12 +4,14 @@ import {
   assignOrderState,
   autoAssignReadyOrdersState,
   completeDeliveryState,
+  confirmDeliveryState,
   failDeliveryState,
   markReturnedState,
   markReturningState,
   retryDeliveryState,
   setDriverStatusState,
   startDeliveryState,
+  submitDeliveryState,
 } from '@/state/retail/delivery';
 import { createInternalChatOrderState } from '@/state/retail/internalChat';
 import { defaultState, loadState, persistState } from '@/state/retail/persistence';
@@ -33,7 +35,12 @@ import {
   releasePlannedOrdersState,
   setDispatchReadinessState,
 } from '@/state/retail/planning';
-import type { RetailState, RetailStore } from '@/state/retail/types';
+import type {
+  ConfirmDeliveryInput,
+  RetailState,
+  RetailStore,
+  SubmitDeliveryInput,
+} from '@/state/retail/types';
 
 const StoreContext = createContext<RetailStore | null>(null);
 
@@ -105,13 +112,30 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
     [commit],
   );
 
-  const autoAssignReadyOrders = useCallback(() => {
-    commit((current) => autoAssignReadyOrdersState(current));
-  }, [commit]);
+  const autoAssignReadyOrders = useCallback(
+    (orderIds?: string[]) => {
+      commit((current) => autoAssignReadyOrdersState(current, orderIds));
+    },
+    [commit],
+  );
 
   const startDelivery = useCallback(
     (orderId: string) => {
       commit((current) => startDeliveryState(current, orderId));
+    },
+    [commit],
+  );
+
+  const submitDelivery = useCallback(
+    (orderId: string, input: SubmitDeliveryInput) => {
+      commit((current) => submitDeliveryState(current, orderId, input));
+    },
+    [commit],
+  );
+
+  const confirmDelivery = useCallback(
+    (orderId: string, input?: ConfirmDeliveryInput) => {
+      commit((current) => confirmDeliveryState(current, orderId, input));
     },
     [commit],
   );
@@ -249,6 +273,8 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
       assignOrder,
       autoAssignReadyOrders,
       startDelivery,
+      submitDelivery,
+      confirmDelivery,
       completeDelivery,
       setDriverStatus,
       exportPostalBatch,
@@ -277,6 +303,8 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
       assignOrder,
       autoAssignReadyOrders,
       startDelivery,
+      submitDelivery,
+      confirmDelivery,
       completeDelivery,
       setDriverStatus,
       exportPostalBatch,

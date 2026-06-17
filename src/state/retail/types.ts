@@ -7,6 +7,7 @@ import type {
   Handler,
   Order,
   PostalService,
+  ProofOfDelivery,
   ShippingMethod,
 } from '@/data/mock';
 
@@ -44,6 +45,14 @@ export type MarkReturnedInput = {
   recordedBy?: Handler;
 };
 
+/** หลักฐานที่ rider ส่งตอนปิดงาน (action จะเติม capturedAt/capturedByDriverId ให้) */
+export type SubmitDeliveryInput = Omit<ProofOfDelivery, 'capturedAt' | 'capturedByDriverId'>;
+
+export type ConfirmDeliveryInput = {
+  note?: string;
+  recordedBy?: Handler;
+};
+
 export type PlanOrdersInput = {
   plannedDate: string;
   plannedDriverId?: string;
@@ -59,8 +68,10 @@ export type RetailStore = RetailState & {
   confirmOrder: (orderId: string, shippingMethod?: ShippingMethod) => void;
   finishParsingOrder: (orderId: string) => void;
   assignOrder: (orderId: string, driverId: string) => void;
-  autoAssignReadyOrders: () => void;
+  autoAssignReadyOrders: (orderIds?: string[]) => void;
   startDelivery: (orderId: string) => void;
+  submitDelivery: (orderId: string, input: SubmitDeliveryInput) => void;
+  confirmDelivery: (orderId: string, input?: ConfirmDeliveryInput) => void;
   completeDelivery: (orderId: string, success?: boolean) => void;
   setDriverStatus: (driverId: string, status: Driver['status']) => void;
   exportPostalBatch: (orderIds: string[], service: PostalService) => string;

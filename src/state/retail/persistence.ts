@@ -45,5 +45,10 @@ export function loadState(): RetailState {
 
 export function persistState(next: RetailState) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // localStorage เต็ม (เช่น รูปหลักฐานปิดงานเยอะ) หรือถูกปิด — ข้ามการ persist
+    // state ในหน่วยความจำยังทำงานปกติ ไม่ทำให้ commit ล้ม
+  }
 }

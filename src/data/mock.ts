@@ -6,6 +6,7 @@ export type OrderStatus =
   | 'ready'
   | 'assigned'
   | 'in_transit'
+  | 'pending_confirmation' // rider ส่งมอบแล้ว รอ CS ตรวจหลักฐาน (เฉพาะงานเสี่ยงสูง)
   | 'delivered'
   | 'failed'
   | 'cancelled'
@@ -55,6 +56,28 @@ export type DeliveryPlan = {
   note?: string;
 };
 
+/** บันทึกการเก็บเงินปลายทางตอนปิดงาน */
+export type CodCollection = {
+  collected: boolean;
+  method?: 'cash' | 'transfer';
+  amount?: number;
+  note?: string; // เลขสลิป/หมายเหตุ
+};
+
+/** หลักฐานการส่งมอบที่ rider เก็บตอนปิดงาน (Proof of Delivery) */
+export type ProofOfDelivery = {
+  photoCount: number; // จำนวนรูปถ่าย ณ จุดส่ง
+  photos?: string[]; // รูปถ่ายจริง (data URL ย่อขนาดแล้ว)
+  signatureCaptured: boolean; // ได้ลายเซ็นผู้รับ
+  signatureDataUrl?: string; // ภาพลายเซ็นจริง
+  otpVerified: boolean; // ยืนยัน OTP กับเบอร์ลูกค้า
+  idVerified?: boolean; // ตรวจบัตร ปชช. (เฉพาะ requiresIdCheck)
+  location?: { lat: number; lng: number; label?: string }; // GPS ตอนปิดงาน
+  cod?: CodCollection; // การรับเงิน (เฉพาะ COD)
+  capturedByDriverId: string;
+  capturedAt: string;
+};
+
 export type PostalService = 'ems' | 'registered' | 'cod';
 
 export type PostalBatch = {
@@ -97,6 +120,8 @@ export type OrderActivityEventType =
   | 'driver_assigned'
   | 'driver_auto_assigned'
   | 'delivery_started'
+  | 'delivery_submitted'
+  | 'delivery_confirmed'
   | 'delivery_completed'
   | 'postal_batch_exported'
   | 'postal_tracking_saved'
@@ -173,6 +198,7 @@ export type Order = {
   assignedDriverId?: string;
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
   deliveryPlan?: DeliveryPlan;
+  proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก rider
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ
   activityLog?: OrderActivityEvent[]; // timeline กิจกรรมของออเดอร์ (newest last)
@@ -658,6 +684,7 @@ export const statusLabel: Record<OrderStatus, string> = {
   ready: 'พร้อมส่ง',
   assigned: 'มอบหมายแล้ว',
   in_transit: 'กำลังส่ง',
+  pending_confirmation: 'รอยืนยันปิดงาน',
   delivered: 'ส่งสำเร็จ',
   failed: 'ส่งไม่สำเร็จ',
   cancelled: 'ยกเลิกแล้ว',

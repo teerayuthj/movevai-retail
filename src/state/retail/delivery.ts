@@ -1,6 +1,11 @@
 import { failNextActionLabel, failReasonLabel } from '@/data/mock';
 import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
-import type { Driver, FailReason, Order } from '@/data/mock';
+import {
+  describeProof,
+  planAutoAssignments,
+  requiresDeliveryReview,
+} from '@/lib/deliveryExecution';
+import type { Driver, FailReason, Order, ProofOfDelivery } from '@/data/mock';
 import {
   appendEvent,
   DEFAULT_HANDLER,
@@ -9,13 +14,15 @@ import {
   SYSTEM_ACTOR,
 } from '@/state/retail/timeline';
 import type {
+  ConfirmDeliveryInput,
   FailDeliveryInput,
   MarkReturnedInput,
   MarkReturningInput,
   RetailState,
+  SubmitDeliveryInput,
 } from '@/state/retail/types';
 
-const FAILABLE: Order['status'][] = ['assigned', 'in_transit'];
+const FAILABLE: Order['status'][] = ['assigned', 'in_transit', 'pending_confirmation'];
 
 function reduceDriverLoad(driver: Driver): Driver {
   const activeOrders = Math.max(0, driver.activeOrders - 1);
@@ -25,22 +32,6 @@ function reduceDriverLoad(driver: Driver): Driver {
     activeOrders,
     status: activeOrders === 0 && driver.status === 'on_delivery' ? 'available' : driver.status,
   };
-}
-
-function chooseDriverForOrder(order: Order, drivers: Driver[]) {
-  const highValue = order.totalValue >= 500000 || order.insured;
-
-  const available = drivers
-    .filter((driver) => driver.status !== 'off_duty')
-    .filter((driver) => driver.activeOrders < driver.capacity)
-    .filter((driver) => !highValue || driver.highValueCertified)
-    .sort((a, b) => {
-      const capacityLeft = b.capacity - b.activeOrders - (a.capacity - a.activeOrders);
-      if (capacityLeft !== 0) return capacityLeft;
-      return b.rating - a.rating;
-    });
-
-  return available[0];
 }
 
 export function assignOrderState(
@@ -118,28 +109,33 @@ export function assignOrderState(
   };
 }
 
-export function autoAssignReadyOrdersState(current: RetailState): RetailState {
-  let workingDrivers = current.drivers;
-  const assigned: Record<string, string> = {};
+/**
+ * จ่ายงานอัตโนมัติตามแผนของ planAutoAssignments
+ * @param orderIds ถ้าระบุ จะจ่ายเฉพาะออเดอร์ในลิสต์ (ใช้ตอนผู้ใช้เลือกบางรายการใน preview)
+ */
+export function autoAssignReadyOrdersState(current: RetailState, orderIds?: string[]): RetailState {
   const at = nowIso();
+  const now = Date.parse(at);
+  const selected = orderIds ? new Set(orderIds) : null;
 
-  current.orders
-    .filter((order) => order.status === 'ready' && !isUnreleasedPlannedOrder(order))
-    .forEach((order) => {
-      const driver = chooseDriverForOrder(order, workingDrivers);
-      if (!driver) return;
+  const assigned: Record<string, string> = {};
+  let workingDrivers = current.drivers;
 
-      assigned[order.id] = driver.id;
-      workingDrivers = workingDrivers.map((item) =>
-        item.id === driver.id
-          ? {
-              ...item,
-              activeOrders: Math.min(item.capacity, item.activeOrders + 1),
-              status: 'on_delivery',
-            }
-          : item,
-      );
-    });
+  planAutoAssignments(current.orders, current.drivers, now).forEach((proposal) => {
+    if (!proposal.driverId) return;
+    if (selected && !selected.has(proposal.order.id)) return;
+
+    assigned[proposal.order.id] = proposal.driverId;
+    workingDrivers = workingDrivers.map((item) =>
+      item.id === proposal.driverId
+        ? {
+            ...item,
+            activeOrders: Math.min(item.capacity, item.activeOrders + 1),
+            status: 'on_delivery',
+          }
+        : item,
+    );
+  });
 
   return {
     ...current,
@@ -192,6 +188,108 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
         },
       );
     }),
+  };
+}
+
+/**
+ * rider ปิดงาน: บันทึกหลักฐาน (POD) แล้ว
+ * - งานเสี่ยงสูง (requiresDeliveryReview) → เข้าสถานะ pending_confirmation รอ CS ยืนยัน (คนขับยังถือโหลดไว้)
+ * - งานทั่วไป → ปิดเป็น delivered ทันที และคืน capacity คนขับ
+ */
+export function submitDeliveryState(
+  current: RetailState,
+  orderId: string,
+  input: SubmitDeliveryInput,
+): RetailState {
+  const order = current.orders.find((item) => item.id === orderId);
+  if (!order || order.status !== 'in_transit') return current;
+
+  const at = nowIso();
+  const driver = current.drivers.find((item) => item.id === order.assignedDriverId);
+  const riderActor = operatorActor({
+    name: driver?.name ?? 'คนขับ',
+    department: 'จัดส่งภายใน',
+    role: 'Rider',
+  });
+
+  const proof: ProofOfDelivery = {
+    ...input,
+    capturedByDriverId: order.assignedDriverId ?? '',
+    capturedAt: at,
+  };
+  const proofDetails = describeProof(proof).join(' · ');
+  const needsReview = requiresDeliveryReview(order);
+
+  return {
+    ...current,
+    orders: current.orders.map((item) => {
+      if (item.id !== orderId) return item;
+
+      const next: Order = {
+        ...item,
+        status: needsReview ? 'pending_confirmation' : 'delivered',
+        proofOfDelivery: proof,
+      };
+
+      return appendEvent(
+        next,
+        needsReview
+          ? {
+              type: 'delivery_submitted',
+              at,
+              actor: riderActor,
+              summary: 'rider ส่งมอบแล้ว — รอ CS ยืนยัน',
+              details: proofDetails || undefined,
+            }
+          : {
+              type: 'delivery_completed',
+              at,
+              actor: riderActor,
+              summary: 'rider ปิดงาน — ส่งสำเร็จ',
+              details: proofDetails || undefined,
+            },
+      );
+    }),
+    // งานทั่วไปปิดเลย → คืนโหลด; งานรอ CS → ยังถือโหลดไว้จนยืนยัน
+    drivers: needsReview
+      ? current.drivers
+      : current.drivers.map((item) =>
+          item.id === order.assignedDriverId ? reduceDriverLoad(item) : item,
+        ),
+  };
+}
+
+/** CS ยืนยันหลักฐาน → ปิดงานเป็น delivered และคืน capacity คนขับ */
+export function confirmDeliveryState(
+  current: RetailState,
+  orderId: string,
+  input?: ConfirmDeliveryInput,
+): RetailState {
+  const order = current.orders.find((item) => item.id === orderId);
+  if (!order || order.status !== 'pending_confirmation') return current;
+
+  const at = nowIso();
+  const recordedBy = input?.recordedBy ?? order.handledBy ?? DEFAULT_HANDLER;
+
+  return {
+    ...current,
+    orders: current.orders.map((item) => {
+      if (item.id !== orderId) return item;
+
+      return appendEvent(
+        { ...item, status: 'delivered' },
+        {
+          type: 'delivery_confirmed',
+          at,
+          actor: operatorActor(recordedBy),
+          summary: 'CS ยืนยันปิดงาน — ส่งสำเร็จ',
+          details: input?.note ? `หมายเหตุ: ${input.note}` : undefined,
+        },
+      );
+    }),
+    drivers: current.drivers.map((item) =>
+      item.id === order.assignedDriverId ? reduceDriverLoad(item) : item,
+    ),
   };
 }
 

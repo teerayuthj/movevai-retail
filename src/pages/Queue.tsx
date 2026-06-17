@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { AutoAssignPreviewDialog } from '@/components/delivery/AutoAssignPreviewDialog';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import {
   DriverCard,
@@ -17,8 +18,11 @@ import { DriverAvatar } from '@/components/DriverAvatar';
 import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/mock';
 import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
+  compareOrderPriority,
   driverQueueTabLabels,
   getDriverQueueTab,
+  planAutoAssignments,
+  recommendDriverForOrder,
   type DriverQueueTab,
 } from '@/lib/deliveryExecution';
 import { useRetailStore } from '@/state/retailStore';
@@ -55,6 +59,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
 
   const workflowOrders = orders.filter(
     (order) => getDriverQueueTab(order) && isVisibleInExecutionQueue(order),
@@ -74,27 +79,42 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
   const selectedDriver = drivers.find((driver) => driver.id === selectedDriverId) ?? null;
 
-  const filteredOrders = workflowOrders.filter((order) => {
-    const tab = getDriverQueueTab(order);
-    const normalizedQuery = query.trim().toLowerCase();
-    const assignedDriverName = order.assignedDriverId
-      ? (drivers.find((driver) => driver.id === order.assignedDriverId)?.name ?? '')
-      : '';
-    const matchesQuery =
-      !normalizedQuery ||
-      [
-        order.code,
-        order.customer.name,
-        order.customer.phone,
-        order.customer.address,
-        assignedDriverName,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(normalizedQuery);
+  // คนขับที่ระบบแนะนำสำหรับออเดอร์ที่เลือก (โซน + capacity + ใบรับรอง)
+  const recommendedDriverId =
+    selectedOrder?.status === 'ready'
+      ? (recommendDriverForOrder(selectedOrder, drivers)?.id ?? null)
+      : null;
 
-    return tab === activeTab && matchesQuery;
-  });
+  // แผนจ่ายงานอัตโนมัติ (dry-run) สำหรับ preview ก่อนยืนยัน
+  const autoAssignProposals = useMemo(
+    () => planAutoAssignments(orders, drivers),
+    [orders, drivers],
+  );
+
+  const filteredOrders = workflowOrders
+    .filter((order) => {
+      const tab = getDriverQueueTab(order);
+      const normalizedQuery = query.trim().toLowerCase();
+      const assignedDriverName = order.assignedDriverId
+        ? (drivers.find((driver) => driver.id === order.assignedDriverId)?.name ?? '')
+        : '';
+      const matchesQuery =
+        !normalizedQuery ||
+        [
+          order.code,
+          order.customer.name,
+          order.customer.phone,
+          order.customer.address,
+          assignedDriverName,
+        ]
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery);
+
+      return tab === activeTab && matchesQuery;
+    })
+    // แท็บ "รอมอบหมาย" เรียงตามความสำคัญ — งานด่วน/มูลค่าสูง/ค้างนานขึ้นก่อน
+    .sort((a, b) => (activeTab === 'ready' ? compareOrderPriority(a, b) : 0));
 
   useEffect(() => {
     if (parsedSearch.tab) {
@@ -164,11 +184,23 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
             <Route className="h-4 w-4" />
             สร้าง Route
           </Button>
-          <Button onClick={autoAssignReadyOrders} disabled={readyOrders.length === 0}>
+          <Button onClick={() => setAutoPreviewOpen(true)} disabled={readyOrders.length === 0}>
             <Sparkles className="h-4 w-4" /> Auto-assign ทั้งหมด
           </Button>
         </div>
       </div>
+
+      <AutoAssignPreviewDialog
+        open={autoPreviewOpen}
+        proposals={autoAssignProposals}
+        drivers={drivers}
+        onCancel={() => setAutoPreviewOpen(false)}
+        onConfirm={(orderIds) => {
+          autoAssignReadyOrders(orderIds);
+          setAutoPreviewOpen(false);
+          setActiveTab('assigned');
+        }}
+      />
 
       <ResolutionDialog
         open={!!cancelTargetId}
@@ -229,13 +261,14 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
             </div>
           </CardHeader>
           <CardContent className="flex-1 space-y-2 overflow-auto">
-            {filteredOrders.map((order) => (
+            {filteredOrders.map((order, index) => (
               <QueueOrderCard
                 key={order.id}
                 order={order}
                 selected={selectedOrderId === order.id}
                 onClick={() => setSelectedOrderId(order.id)}
                 statusText={statusLabel[order.status]}
+                rank={activeTab === 'ready' ? index + 1 : undefined}
               />
             ))}
             {filteredOrders.length === 0 && <EmptyState />}
@@ -254,13 +287,13 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 space-y-2 overflow-auto">
-            {drivers.map((driver, index) => (
+            {drivers.map((driver) => (
               <DriverCard
                 key={driver.id}
                 driver={driver}
                 selected={selectedDriverId === driver.id}
                 onSelect={() => setSelectedDriverId(driver.id)}
-                recommended={index === 0}
+                recommended={driver.id === recommendedDriverId}
               />
             ))}
           </CardContent>

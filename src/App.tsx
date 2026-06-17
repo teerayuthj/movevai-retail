@@ -2,12 +2,14 @@ import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { OverviewPage } from '@/pages/Overview';
 import { ChatIntakePage } from '@/pages/ChatIntake';
+import { ScriptTransformPage } from '@/pages/ScriptTransform';
 import { InboxPage } from '@/pages/Inbox';
 import { QueuePage } from '@/pages/Queue';
 import { DeliveryTrackingPage } from '@/pages/DeliveryTracking';
 import { PlanningPage } from '@/pages/Planning';
 import { PostalQueuePage } from '@/pages/PostalQueue';
 import { DriversPage } from '@/pages/Drivers';
+import { RiderConsolePage } from '@/pages/RiderConsole';
 import { RetailProvider } from '@/state/retailStore';
 import { getCanonicalPath, getPageFromPath, getPathForPage, type PageKey } from '@/lib/routes';
 
@@ -51,6 +53,7 @@ export default function App() {
       <AppShell page={page} onChangePage={navigateToPage}>
         {page === 'overview' && <OverviewPage />}
         {page === 'chat' && <ChatIntakePage onOpenInbox={() => navigateToPage('inbox')} />}
+        {page === 'script_transform' && <ScriptTransformPage />}
         {page === 'inbox' && <InboxPage />}
         {page === 'queue' && (
           <QueuePage
@@ -67,6 +70,7 @@ export default function App() {
         {page === 'planning' && <PlanningPage />}
         {page === 'postal' && <PostalQueuePage />}
         {page === 'drivers' && <DriversPage />}
+        {page === 'rider' && <RiderConsolePage />}
       </AppShell>
     </RetailProvider>
   );

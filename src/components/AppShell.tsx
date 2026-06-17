@@ -13,6 +13,8 @@ import {
   PanelLeftOpen,
   CalendarClock,
   Route,
+  FileSpreadsheet,
+  Smartphone,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPathForPage, type PageKey } from '@/lib/routes';
@@ -80,6 +82,9 @@ export function AppShell({ page, onChangePage, children }: Props) {
       !isUnreleasedPlannedOrder(o),
   ).length;
   const planningCount = orders.filter((o) => canPlanOrder(o)).length;
+  const riderJobCount = orders.filter((o) =>
+    ['assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
+  ).length;
   const postalCount = orders.filter(
     (o) => o.shippingMethod === 'thai_post' && o.status === 'ready',
   ).length;
@@ -87,6 +92,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
   const nav: { key: PageKey; label: string; icon: React.ElementType; badge?: string }[] = [
     { key: 'overview', label: 'ภาพรวม', icon: LayoutDashboard },
     { key: 'chat', label: 'Chat Intake', icon: MessageCircle, badge: String(chatCount) },
+    { key: 'script_transform', label: 'Script Transform', icon: FileSpreadsheet },
     { key: 'inbox', label: 'Order Inbox', icon: Inbox, badge: String(inboxCount) },
     { key: 'queue', label: 'คิวคนขับ', icon: Truck, badge: String(queueCount) },
     {
@@ -98,6 +104,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
     { key: 'planning', label: 'Planning', icon: CalendarClock, badge: String(planningCount) },
     { key: 'postal', label: 'ไปรษณีย์ไทย', icon: Mailbox, badge: String(postalCount) },
     { key: 'drivers', label: 'คนขับ', icon: Users },
+    { key: 'rider', label: 'Rider (จำลอง)', icon: Smartphone, badge: String(riderJobCount) },
   ];
   const SidebarToggleIcon = isSidebarCollapsed ? PanelLeftOpen : PanelLeftClose;
 

@@ -6,10 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
 import {
   DriverSummary,
   EmptyState,
   OrderSummary,
+  ProofOfDeliveryInfo,
   QueueOrderCard,
   ResolutionInfo,
 } from '@/components/delivery/DeliveryExecutionShared';
@@ -24,10 +26,11 @@ import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
   deliveryTrackingTabLabels,
   getDeliveryTrackingTab,
+  requiresDeliveryReview,
   type DeliveryTrackingTab,
 } from '@/lib/deliveryExecution';
 import { useRetailStore } from '@/state/retailStore';
-import { CheckCircle2, PackageCheck, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, PackageCheck, Search, Truck, XCircle } from 'lucide-react';
 
 const FAIL_REASONS: { value: FailReason; label: string }[] = (
   Object.keys(failReasonLabel) as FailReason[]
@@ -49,7 +52,7 @@ function parseTrackingSearch(locationSearch: string) {
 
   return {
     tab:
-      tab === 'in_transit' || tab === 'returning' || tab === 'closed'
+      tab === 'in_transit' || tab === 'pending' || tab === 'returning' || tab === 'closed'
         ? (tab as DeliveryTrackingTab)
         : null,
     orderId: orderId || null,
@@ -63,25 +66,35 @@ function buildQueueSearch(orderId?: string) {
 }
 
 export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTrackingPageProps) {
-  const { orders, drivers, completeDelivery, failDelivery, markReturned } = useRetailStore();
+  const { orders, drivers, submitDelivery, confirmDelivery, failDelivery, markReturned } =
+    useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
+  const [riderCloseTargetId, setRiderCloseTargetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
 
   const workflowOrders = orders.filter(
     (order) => getDeliveryTrackingTab(order) && isVisibleInExecutionQueue(order),
   );
   const inTransitOrders = workflowOrders.filter((order) => order.status === 'in_transit');
+  const pendingOrders = workflowOrders.filter((order) => order.status === 'pending_confirmation');
   const returningOrders = workflowOrders.filter((order) => order.status === 'returning');
   const closedOrders = workflowOrders.filter((order) =>
     ['delivered', 'failed', 'cancelled', 'returned'].includes(order.status),
   );
   const defaultTab: DeliveryTrackingTab =
-    inTransitOrders.length > 0 ? 'in_transit' : returningOrders.length > 0 ? 'returning' : 'closed';
+    pendingOrders.length > 0
+      ? 'pending'
+      : inTransitOrders.length > 0
+        ? 'in_transit'
+        : returningOrders.length > 0
+          ? 'returning'
+          : 'closed';
   const parsedSearch = useMemo(() => parseTrackingSearch(locationSearch), [locationSearch]);
 
   const [activeTab, setActiveTab] = useState<DeliveryTrackingTab>(parsedSearch.tab ?? defaultTab);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
     parsedSearch.orderId ??
+      pendingOrders[0]?.id ??
       inTransitOrders[0]?.id ??
       returningOrders[0]?.id ??
       closedOrders[0]?.id ??
@@ -134,6 +147,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
 
   const tabCounts: Record<DeliveryTrackingTab, number> = {
     in_transit: inTransitOrders.length,
+    pending: pendingOrders.length,
     returning: returningOrders.length,
     closed: closedOrders.length,
   };
@@ -188,6 +202,21 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           setSelectedOrderId(failTargetId);
           setActiveTab(action === 'return' ? 'returning' : 'closed');
           setFailTargetId(null);
+        }}
+      />
+
+      <RiderCloseJobDialog
+        open={!!riderCloseTargetId}
+        order={orders.find((order) => order.id === riderCloseTargetId) ?? null}
+        onCancel={() => setRiderCloseTargetId(null)}
+        onSubmit={(input) => {
+          if (!riderCloseTargetId) return;
+          const target = orders.find((order) => order.id === riderCloseTargetId);
+          submitDelivery(riderCloseTargetId, input);
+          setSelectedOrderId(riderCloseTargetId);
+          // งานเสี่ยงสูง → ไปแท็บรอยืนยัน, งานทั่วไป → ปิดเลยไปแท็บปิดงาน
+          setActiveTab(target && requiresDeliveryReview(target) ? 'pending' : 'closed');
+          setRiderCloseTargetId(null);
         }}
       />
 
@@ -281,7 +310,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
                       variant={
                         selectedOrder.status === 'in_transit'
                           ? 'info'
-                          : selectedOrder.status === 'returning'
+                          : selectedOrder.status === 'pending_confirmation' ||
+                              selectedOrder.status === 'returning'
                             ? 'warning'
                             : 'muted'
                       }
@@ -304,14 +334,10 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
                     <div className="flex gap-2">
                       <Button
                         className="flex-1"
-                        onClick={() => {
-                          completeDelivery(selectedOrder.id, true);
-                          setSelectedOrderId(selectedOrder.id);
-                          setActiveTab('closed');
-                        }}
+                        onClick={() => setRiderCloseTargetId(selectedOrder.id)}
                       >
-                        <CheckCircle2 className="h-4 w-4" />
-                        ส่งสำเร็จ
+                        <Truck className="h-4 w-4" />
+                        rider ปิดงาน
                       </Button>
                       <Button
                         variant="outline"
@@ -322,6 +348,38 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
                         ไม่สำเร็จ
                       </Button>
                     </div>
+                  )}
+
+                  {selectedOrder.status === 'pending_confirmation' && (
+                    <>
+                      {selectedOrder.proofOfDelivery && (
+                        <ProofOfDeliveryInfo
+                          order={selectedOrder}
+                          driverName={selectedDriver?.name}
+                        />
+                      )}
+                      <div className="flex gap-2">
+                        <Button
+                          className="flex-1"
+                          onClick={() => {
+                            confirmDelivery(selectedOrder.id);
+                            setSelectedOrderId(selectedOrder.id);
+                            setActiveTab('closed');
+                          }}
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                          ยืนยันปิดงาน
+                        </Button>
+                        <Button
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => setFailTargetId(selectedOrder.id)}
+                        >
+                          <XCircle className="h-4 w-4" />
+                          ตีกลับ/ไม่สำเร็จ
+                        </Button>
+                      </div>
+                    </>
                   )}
 
                   {selectedOrder.status === 'returning' && (

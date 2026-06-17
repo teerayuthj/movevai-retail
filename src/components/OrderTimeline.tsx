@@ -45,6 +45,8 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   driver_assigned: { Icon: UserCog, tone: 'neutral' },
   driver_auto_assigned: { Icon: Sparkles, tone: 'info' },
   delivery_started: { Icon: Route, tone: 'info' },
+  delivery_submitted: { Icon: ClipboardCheck, tone: 'warning' },
+  delivery_confirmed: { Icon: CheckCircle2, tone: 'success' },
   delivery_completed: { Icon: PackageCheck, tone: 'success' },
   postal_batch_exported: { Icon: FileSpreadsheet, tone: 'info' },
   postal_tracking_saved: { Icon: ClipboardCheck, tone: 'neutral' },

@@ -25,14 +25,117 @@ type TransformResult = {
   latencyMs: number;
 };
 
+type ApiErrorPayload = {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: unknown;
+    requestId?: string;
+  };
+};
+
+type ChatIntakeError = {
+  title: string;
+  message: string;
+  suggestions: string[];
+  meta: string[];
+};
+
+const MAX_CLIENT_FILE_BYTES = 5 * 1024 * 1024;
+
 function isSupportedSpreadsheet(file: File) {
   return /\.(csv|xls|xlsx)$/i.test(file.name);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function formatFileSize(size: number) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function createChatIntakeError(
+  title: string,
+  message: string,
+  suggestions: string[] = [],
+  meta: string[] = [],
+): ChatIntakeError {
+  return { title, message, suggestions, meta };
+}
+
+function parseJsonSafely(input: string) {
+  try {
+    return JSON.parse(input) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function parseApiError(payload: unknown): ChatIntakeError {
+  const error = isRecord(payload) && isRecord(payload.error) ? payload.error : {};
+  const details = isRecord(error.details) ? error.details : {};
+  const reason = typeof details.reason === 'string' ? details.reason : '';
+  const code = typeof error.code === 'string' ? error.code : '';
+  const message =
+    typeof error.message === 'string' && error.message.trim().length > 0
+      ? error.message
+      : 'แปลงไฟล์ไม่สำเร็จ';
+  const suggestions = Array.isArray(details.suggestions)
+    ? details.suggestions.filter(
+        (item): item is string => typeof item === 'string' && item.length > 0,
+      )
+    : [];
+  const meta: string[] = [];
+
+  if (typeof details.fileName === 'string' && details.fileName.trim().length > 0) {
+    meta.push(`ไฟล์: ${details.fileName}`);
+  }
+
+  if (typeof details.actual === 'number' && typeof details.limit === 'number') {
+    const unit =
+      details.unit === 'rows'
+        ? 'แถว'
+        : details.unit === 'chars'
+          ? 'ตัวอักษร'
+          : details.unit === 'mb'
+            ? 'MB'
+            : details.unit === 'bytes'
+              ? 'bytes'
+              : '';
+    if (unit) {
+      meta.push(
+        `ค่าปัจจุบัน ${details.actual.toLocaleString()} / จำกัด ${details.limit.toLocaleString()} ${unit}`,
+      );
+    }
+  }
+
+  if (typeof error.requestId === 'string' && error.requestId.trim().length > 0) {
+    meta.push(`Request ID: ${error.requestId}`);
+  }
+
+  let title = 'แปลงไฟล์ไม่สำเร็จ';
+  if (reason === 'too_many_rows') title = 'จำนวนแถวเกินกำหนด';
+  else if (reason === 'file_too_large') title = 'ไฟล์ใหญ่เกินกำหนด';
+  else if (reason === 'csv_text_too_large') title = 'ข้อมูลในไฟล์ยาวเกินกำหนด';
+  else if (reason === 'unsupported_file_type') title = 'ชนิดไฟล์ไม่รองรับ';
+  else if (reason === 'missing_header_or_rows') title = 'รูปแบบไฟล์ไม่ครบ';
+  else if (reason === 'missing_sheet') title = 'ไม่พบชีตในไฟล์ Excel';
+  else if (reason === 'ai_timeout') title = 'ประมวลผลนานเกินกำหนด';
+  else if (reason === 'ai_rate_limit') title = 'เกินวงเงินการประมวลผลชั่วคราว';
+  else if (reason === 'invalid_ai_json' || reason === 'invalid_ai_payload_shape')
+    title = 'AI ส่งผลลัพธ์ไม่สมบูรณ์';
+  else if (reason === 'ai_row_count_mismatch') title = 'จำนวนแถวผลลัพธ์ไม่ตรงกับต้นทาง';
+  else if (code === 'VALIDATION_ERROR') title = 'ข้อมูลไฟล์ไม่ผ่านเงื่อนไข';
+
+  return createChatIntakeError(
+    title,
+    message,
+    suggestions.length > 0 ? suggestions : ['ตรวจสอบไฟล์แล้วลองใหม่อีกครั้ง'],
+    meta,
+  );
 }
 
 function downloadCsv(fileName: string, csvContent: string) {
@@ -67,7 +170,7 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
   const [instructions, setInstructions] = useState('');
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ChatIntakeError | null>(null);
   const [result, setResult] = useState<TransformResult | null>(null);
 
   const previewLines = useMemo(
@@ -80,7 +183,26 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
     setResult(null);
     if (nextFile && !isSupportedSpreadsheet(nextFile)) {
       setFile(null);
-      setError('รองรับเฉพาะไฟล์ .csv, .xls และ .xlsx');
+      setError(
+        createChatIntakeError('ชนิดไฟล์ไม่รองรับ', 'รองรับเฉพาะไฟล์ .csv, .xls และ .xlsx', [
+          'บันทึกไฟล์ใหม่เป็น .csv, .xls หรือ .xlsx',
+        ]),
+      );
+      if (inputRef.current) inputRef.current.value = '';
+      return;
+    }
+    if (nextFile && nextFile.size > MAX_CLIENT_FILE_BYTES) {
+      setFile(null);
+      setError(
+        createChatIntakeError(
+          'ไฟล์ใหญ่เกินกำหนด',
+          `ไฟล์มีขนาด ${formatFileSize(nextFile.size)} ซึ่งเกินกว่าที่ระบบรองรับสูงสุด ${formatFileSize(MAX_CLIENT_FILE_BYTES)}`,
+          [
+            'ลดจำนวนแถวหรือคอลัมน์ที่ไม่จำเป็นก่อนอัปโหลด',
+            'ถ้าไฟล์ยังใหญ่ ให้แบ่งเป็นหลายไฟล์แล้วนำเข้าทีละชุด',
+          ],
+        ),
+      );
       if (inputRef.current) inputRef.current.value = '';
       return;
     }
@@ -113,14 +235,32 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
         }),
       });
 
-      const payload = await response.json();
+      const payloadText = await response.text();
+      const payload = parseJsonSafely(payloadText);
       if (!response.ok) {
-        throw new Error(payload?.message ?? 'แปลงไฟล์ไม่สำเร็จ');
+        setError(parseApiError(payload));
+        return;
+      }
+      if (!payload || typeof payload !== 'object') {
+        setError(
+          createChatIntakeError(
+            'ผลลัพธ์ไม่ถูกต้อง',
+            'ระบบได้รับคำตอบกลับมาไม่ครบ จึงยังสร้างไฟล์ให้ไม่ได้',
+            ['ลองส่งไฟล์เดิมอีกครั้ง'],
+          ),
+        );
+        return;
       }
 
-      setResult(payload);
+      setResult(payload as TransformResult);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'แปลงไฟล์ไม่สำเร็จ');
+      setError(
+        createChatIntakeError(
+          'เชื่อมต่อระบบไม่สำเร็จ',
+          caught instanceof Error ? caught.message : 'ไม่สามารถเชื่อมต่อ backend ได้ในขณะนี้',
+          ['ตรวจสอบการเชื่อมต่อแล้วลองใหม่อีกครั้ง'],
+        ),
+      );
     } finally {
       setSubmitting(false);
     }
@@ -248,7 +388,22 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
 
           {error && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              {error}
+              <div className="font-medium text-red-900">{error.title}</div>
+              <div className="mt-1">{error.message}</div>
+              {error.suggestions.length > 0 && (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-red-900">
+                  {error.suggestions.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
+              {error.meta.length > 0 && (
+                <div className="mt-3 space-y-1 text-xs text-red-700">
+                  {error.meta.map((item) => (
+                    <div key={item}>{item}</div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </CardContent>

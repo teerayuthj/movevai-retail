@@ -1,12 +1,14 @@
 export type PageKey =
   | 'overview'
   | 'chat'
+  | 'script_transform'
   | 'inbox'
   | 'queue'
   | 'delivery_tracking'
   | 'planning'
   | 'postal'
-  | 'drivers';
+  | 'drivers'
+  | 'rider';
 
 type RouteDefinition = {
   page: PageKey;
@@ -17,12 +19,14 @@ type RouteDefinition = {
 const routeDefinitions: RouteDefinition[] = [
   { page: 'overview', path: '/', aliases: ['/overview'] },
   { page: 'chat', path: '/chat-intake' },
+  { page: 'script_transform', path: '/script-transform' },
   { page: 'inbox', path: '/order-inbox' },
   { page: 'queue', path: '/driver-queue' },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
   { page: 'planning', path: '/delivery-planning' },
   { page: 'postal', path: '/thai-post' },
   { page: 'drivers', path: '/drivers' },
+  { page: 'rider', path: '/rider' },
 ];
 
 const routeByPage = Object.fromEntries(
