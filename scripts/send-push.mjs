@@ -4,7 +4,7 @@
 // วิธีใช้:
 //   1) บนมือถือ: เปิด PWA → กด "เปิดรับ Push ข้ามเครื่อง" → copy subscription
 //   2) วาง JSON ลงไฟล์ scripts/push-subscription.json
-//   3) บน Mac: npm run push:send   (หรือ npm run push:send -- "หัวข้อ" "เนื้อหา")
+//   3) บน Mac: npm run push:send   (หรือ npm run push:send -- "หัวข้อ" "เนื้อหา" 3)
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -29,12 +29,14 @@ try {
   process.exit(1);
 }
 
-const [, , titleArg, bodyArg] = process.argv;
+const [, , titleArg, bodyArg, badgeCountArg] = process.argv;
+const badgeCount = badgeCountArg === undefined ? undefined : Number(badgeCountArg);
 const payload = JSON.stringify({
   title: titleArg || 'มีงานใหม่เข้ามา 🛵',
   body: bodyArg || 'ORD-2048 · คุณสมชาย ใจดี · แตะเพื่อเปิดดูงาน',
   url: '/rider/assigned',
   tag: 'rider-new-job',
+  ...(Number.isFinite(badgeCount) ? { badgeCount } : {}),
 });
 
 try {

@@ -215,9 +215,7 @@ export function planAutoAssignments(
       reasons,
     });
 
-    working = working.map((item) =>
-      item.id === driver.id ? { ...item, activeOrders, status: 'on_delivery' } : item,
-    );
+    working = working.map((item) => (item.id === driver.id ? { ...item, activeOrders } : item));
   });
 
   return proposals;

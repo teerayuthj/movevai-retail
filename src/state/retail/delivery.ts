@@ -23,14 +23,36 @@ import type {
 } from '@/state/retail/types';
 
 const FAILABLE: Order['status'][] = ['assigned', 'in_transit', 'pending_confirmation'];
+const DRIVER_BUSY_STATUSES: Order['status'][] = ['in_transit', 'pending_confirmation', 'returning'];
 
-function reduceDriverLoad(driver: Driver): Driver {
+function driverHasBusyOrder(
+  orders: Order[],
+  driverId: string | undefined,
+  excludingOrderId?: string,
+): boolean {
+  if (!driverId) return false;
+
+  return orders.some(
+    (order) =>
+      order.id !== excludingOrderId &&
+      order.assignedDriverId === driverId &&
+      DRIVER_BUSY_STATUSES.includes(order.status),
+  );
+}
+
+function reduceDriverLoad(driver: Driver, orders: Order[], completedOrderId: string): Driver {
   const activeOrders = Math.max(0, driver.activeOrders - 1);
+  const shouldStayBusy =
+    activeOrders > 0 && driverHasBusyOrder(orders, driver.id, completedOrderId);
 
   return {
     ...driver,
     activeOrders,
-    status: activeOrders === 0 && driver.status === 'on_delivery' ? 'available' : driver.status,
+    status: shouldStayBusy
+      ? 'on_delivery'
+      : driver.status === 'off_duty'
+        ? 'off_duty'
+        : 'available',
   };
 }
 
@@ -92,7 +114,7 @@ export function assignOrderState(
     }),
     drivers: current.drivers.map((driver) => {
       if (driver.id === previousDriverId && previousDriverId !== driverId) {
-        return reduceDriverLoad(driver);
+        return reduceDriverLoad(driver, current.orders, orderId);
       }
 
       if (driver.id === driverId && !alreadyAssignedToDriver) {
@@ -100,7 +122,6 @@ export function assignOrderState(
         return {
           ...driver,
           activeOrders,
-          status: activeOrders > 0 ? 'on_delivery' : driver.status,
         };
       }
 
@@ -131,7 +152,6 @@ export function autoAssignReadyOrdersState(current: RetailState, orderIds?: stri
         ? {
             ...item,
             activeOrders: Math.min(item.capacity, item.activeOrders + 1),
-            status: 'on_delivery',
           }
         : item,
     );
@@ -170,24 +190,36 @@ export function autoAssignReadyOrdersState(current: RetailState, orderIds?: stri
 }
 
 export function startDeliveryState(current: RetailState, orderId: string): RetailState {
+  const target = current.orders.find((order) => order.id === orderId);
+  if (!target || target.status !== 'assigned') return current;
+
   return {
     ...current,
     orders: current.orders.map((order) => {
       if (order.id !== orderId) return order;
-      if (order.status === 'in_transit') return order;
 
       const driver = current.drivers.find((item) => item.id === order.assignedDriverId);
+      const riderActor = operatorActor({
+        name: driver?.name ?? 'คนขับ',
+        department: 'จัดส่งภายใน',
+        role: 'Rider',
+      });
 
       return appendEvent(
         { ...order, status: 'in_transit' },
         {
           type: 'delivery_started',
           at: nowIso(),
-          actor: operatorActor(order.handledBy),
-          summary: driver ? `ออกเดินทาง — ${driver.name}` : 'ออกเดินทางส่งสินค้า',
+          actor: riderActor,
+          summary: driver ? `rider รับงาน — ${driver.name}` : 'rider รับงานและเริ่มจัดส่ง',
         },
       );
     }),
+    drivers: current.drivers.map((driver) =>
+      driver.id === target.assignedDriverId && driver.status !== 'off_duty'
+        ? { ...driver, status: 'on_delivery' }
+        : driver,
+    ),
   };
 }
 
@@ -254,7 +286,9 @@ export function submitDeliveryState(
     drivers: needsReview
       ? current.drivers
       : current.drivers.map((item) =>
-          item.id === order.assignedDriverId ? reduceDriverLoad(item) : item,
+          item.id === order.assignedDriverId
+            ? reduceDriverLoad(item, current.orders, orderId)
+            : item,
         ),
   };
 }
@@ -288,7 +322,7 @@ export function confirmDeliveryState(
       );
     }),
     drivers: current.drivers.map((item) =>
-      item.id === order.assignedDriverId ? reduceDriverLoad(item) : item,
+      item.id === order.assignedDriverId ? reduceDriverLoad(item, current.orders, orderId) : item,
     ),
   };
 }
@@ -333,7 +367,7 @@ export function completeDeliveryState(
       );
     }),
     drivers: current.drivers.map((item) =>
-      item.id === order.assignedDriverId ? reduceDriverLoad(item) : item,
+      item.id === order.assignedDriverId ? reduceDriverLoad(item, current.orders, orderId) : item,
     ),
   };
 }
@@ -447,7 +481,9 @@ export function failDeliveryState(
         : failed;
     }),
     drivers: current.drivers.map((driver) =>
-      driver.id === order.assignedDriverId ? reduceDriverLoad(driver) : driver,
+      driver.id === order.assignedDriverId
+        ? reduceDriverLoad(driver, current.orders, orderId)
+        : driver,
     ),
   };
 }
@@ -576,7 +612,6 @@ export function retryDeliveryState(current: RetailState, orderId: string): Retai
         ? {
             ...item,
             activeOrders: Math.min(item.capacity, item.activeOrders + 1),
-            status: 'on_delivery',
           }
         : item,
     ),

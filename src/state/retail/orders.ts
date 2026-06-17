@@ -9,9 +9,104 @@ import {
   PARSER_ACTOR,
   shippingLabel,
 } from '@/state/retail/timeline';
-import type { CancelOrderInput, RetailState } from '@/state/retail/types';
+import type { CancelOrderInput, RetailState, RiderPushJobInput } from '@/state/retail/types';
 
 export const CANCELLABLE: Order['status'][] = ['new', 'needs_review', 'ready', 'assigned'];
+const DRIVER_BUSY_STATUSES: Order['status'][] = ['in_transit', 'pending_confirmation', 'returning'];
+
+function driverHasBusyOrder(
+  orders: Order[],
+  driverId: string | undefined,
+  excludingOrderId?: string,
+): boolean {
+  if (!driverId) return false;
+
+  return orders.some(
+    (order) =>
+      order.id !== excludingOrderId &&
+      order.assignedDriverId === driverId &&
+      DRIVER_BUSY_STATUSES.includes(order.status),
+  );
+}
+
+export function importRiderPushJobState(
+  current: RetailState,
+  input: RiderPushJobInput,
+): RetailState {
+  if (current.orders.some((order) => order.id === input.id)) return current;
+
+  const driver = current.drivers.find((item) => item.id === input.assignedDriverId);
+  if (!driver || driver.status === 'off_duty') return current;
+
+  const at = input.receivedAt ?? nowIso();
+  const nextOrder: Order = {
+    id: input.id,
+    code: input.code,
+    source: 'manual',
+    status: 'assigned',
+    receivedAt: at,
+    handledBy: {
+      name: 'Push Notification',
+      department: 'Rider Dispatch',
+      role: 'System',
+    },
+    confidence: 100,
+    customer: {
+      name: input.customerName ?? input.title ?? 'งานใหม่จาก Push',
+      phone: input.customerPhone ?? '—',
+      address: input.customerAddress ?? input.body ?? 'รอรายละเอียดจากระบบ',
+    },
+    items: [
+      {
+        sku: 'PUSH-JOB',
+        name: input.body ?? input.title ?? 'งานจาก Push Notification',
+        purity: '-',
+        weight: '-',
+        qty: 1,
+        unitPrice: input.totalValue ?? 0,
+      },
+    ],
+    note: input.body,
+    totalValue: input.totalValue ?? 0,
+    payment: 'prepaid',
+    requiresIdCheck: false,
+    insured: false,
+    assignedDriverId: input.assignedDriverId,
+  };
+
+  return {
+    ...current,
+    orders: [
+      ...current.orders,
+      appendEvent(nextOrder, {
+        type: 'driver_assigned',
+        at,
+        actor: operatorActor(nextOrder.handledBy),
+        summary: `รับงานใหม่จาก Push — มอบหมาย ${driver.name}`,
+        details: input.body,
+        changes: [
+          {
+            field: 'assignedDriverId',
+            label: 'คนขับ',
+            before: undefined,
+            after: driver.name,
+          },
+          {
+            field: 'status',
+            label: 'สถานะออเดอร์',
+            before: undefined,
+            after: 'มอบหมายแล้ว',
+          },
+        ],
+      }),
+    ],
+    drivers: current.drivers.map((item) =>
+      item.id === driver.id
+        ? { ...item, activeOrders: Math.min(item.capacity, item.activeOrders + 1) }
+        : item,
+    ),
+  };
+}
 
 export function updateOrderState(
   current: RetailState,
@@ -225,9 +320,12 @@ export function cancelOrderState(
             ...driver,
             activeOrders: Math.max(0, driver.activeOrders - 1),
             status:
-              Math.max(0, driver.activeOrders - 1) === 0 && driver.status === 'on_delivery'
-                ? 'available'
-                : driver.status,
+              Math.max(0, driver.activeOrders - 1) > 0 &&
+              driverHasBusyOrder(current.orders, driver.id, orderId)
+                ? 'on_delivery'
+                : driver.status === 'off_duty'
+                  ? 'off_duty'
+                  : 'available',
           }
         : driver,
     ),

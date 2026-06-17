@@ -22,6 +22,13 @@ function mergeDriverDefaults(drivers: Driver[]): Driver[] {
   });
 }
 
+function mergeOrderDefaults(orders: RetailState['orders']): RetailState['orders'] {
+  const existingIds = new Set(orders.map((order) => order.id));
+  const missingDefaults = initialOrders.filter((order) => !existingIds.has(order.id));
+
+  return migrateOrders([...orders, ...missingDefaults]);
+}
+
 export function loadState(): RetailState {
   if (typeof window === 'undefined') return defaultState;
 
@@ -35,7 +42,7 @@ export function loadState(): RetailState {
     }
 
     return {
-      orders: migrateOrders(parsed.orders),
+      orders: mergeOrderDefaults(parsed.orders),
       drivers: mergeDriverDefaults(parsed.drivers),
     };
   } catch {

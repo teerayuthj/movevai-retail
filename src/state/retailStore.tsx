@@ -19,6 +19,7 @@ import {
   cancelOrderState,
   confirmOrderState,
   finishParsingOrderState,
+  importRiderPushJobState,
   setShippingMethodState,
   updateOrderCustomerState,
   updateOrderState,
@@ -73,6 +74,14 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
       });
 
       return createdId;
+    },
+    [commit],
+  );
+
+  const importRiderPushJobs = useCallback(
+    (jobs: Parameters<RetailStore['importRiderPushJobs']>[0]) => {
+      if (jobs.length === 0) return;
+      commit((current) => jobs.reduce(importRiderPushJobState, current));
     },
     [commit],
   );
@@ -265,6 +274,7 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
     () => ({
       ...state,
       createInternalChatOrder,
+      importRiderPushJobs,
       updateOrder,
       updateOrderCustomer,
       setShippingMethod,
@@ -295,6 +305,7 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
     [
       state,
       createInternalChatOrder,
+      importRiderPushJobs,
       updateOrder,
       updateOrderCustomer,
       setShippingMethod,

@@ -60,8 +60,22 @@ export type PlanOrdersInput = {
   note?: string;
 };
 
+export type RiderPushJobInput = {
+  id: string;
+  code: string;
+  title?: string;
+  body?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  totalValue?: number;
+  assignedDriverId: string;
+  receivedAt?: string;
+};
+
 export type RetailStore = RetailState & {
   createInternalChatOrder: (input: InternalChatOrderInput) => string;
+  importRiderPushJobs: (jobs: RiderPushJobInput[]) => void;
   updateOrder: (orderId: string, patch: Partial<Order>) => void;
   updateOrderCustomer: (orderId: string, customer: Order['customer']) => void;
   setShippingMethod: (orderId: string, method: ShippingMethod) => void;

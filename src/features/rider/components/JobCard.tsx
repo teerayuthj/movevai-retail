@@ -71,7 +71,7 @@ export function JobCard({
         {order.status === 'assigned' && (
           <Button size="sm" onClick={onStart}>
             <Navigation className="h-4 w-4" />
-            เริ่มเดินทาง
+            รับงาน
           </Button>
         )}
         {order.status === 'in_transit' && (

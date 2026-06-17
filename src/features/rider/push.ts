@@ -1,9 +1,16 @@
 // Web Push ฝั่ง client — ขอ permission, subscribe กับ push service, และยิง local notification ทดสอบ
 // public key มาจาก env (VITE_VAPID_PUBLIC_KEY) — ดู .env.example
+import type { RiderPushJobInput } from '@/state/retail/types';
 
 export type NotifPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
 export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
+const pushJobCacheName = 'movevai-rider-push-jobs';
+const pushJobsUrl = new URL('/__movevai/rider-push-jobs', window.location.origin).toString();
+
+type BadgeNavigator = Navigator & {
+  clearAppBadge?: () => Promise<void>;
+};
 
 export function isPushSupported() {
   return (
@@ -17,6 +24,52 @@ export function isPushSupported() {
 export function currentPermission(): NotifPermission {
   if (typeof Notification === 'undefined') return 'unsupported';
   return Notification.permission as NotifPermission;
+}
+
+export async function clearRiderAppBadge() {
+  if (typeof navigator === 'undefined') return;
+
+  const badgeNavigator = navigator as BadgeNavigator;
+  try {
+    await badgeNavigator.clearAppBadge?.();
+  } catch {
+    // บาง browser รองรับ push แต่ไม่รองรับ app badge — ข้ามได้
+  }
+
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.ready;
+    registration.active?.postMessage({ type: 'movevai:rider-clear-badge' });
+    navigator.serviceWorker.controller?.postMessage({ type: 'movevai:rider-clear-badge' });
+  } catch {
+    // ถ้า service worker ยังไม่พร้อม ให้ข้าม ไม่กระทบ flow rider
+  }
+}
+
+export async function drainQueuedRiderPushJobs(): Promise<RiderPushJobInput[]> {
+  if (typeof caches === 'undefined') return [];
+
+  try {
+    const cache = await caches.open(pushJobCacheName);
+    const response = await cache.match(pushJobsUrl);
+    if (!response) return [];
+
+    const data = (await response.json()) as { jobs?: unknown };
+    await cache.delete(pushJobsUrl);
+
+    if (!Array.isArray(data.jobs)) return [];
+    return data.jobs.filter((job): job is RiderPushJobInput => {
+      if (typeof job !== 'object' || job === null) return false;
+      const candidate = job as Partial<RiderPushJobInput>;
+      return (
+        typeof candidate.id === 'string' &&
+        typeof candidate.code === 'string' &&
+        typeof candidate.assignedDriverId === 'string'
+      );
+    });
+  } catch {
+    return [];
+  }
 }
 
 async function ensurePermission(): Promise<NotifPermission> {

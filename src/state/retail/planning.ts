@@ -298,7 +298,6 @@ export function releasePlannedOrdersState(current: RetailState, orderIds: string
       return {
         ...driver,
         activeOrders: driver.activeOrders + added,
-        status: 'on_delivery',
       };
     }),
   };
