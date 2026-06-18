@@ -4,7 +4,9 @@ import type { RetailState } from '@/state/retail/types';
 // v2 intentionally drops the old cache because v1 mixed demo orders with
 // backend records. Keeping a separate key prevents stale mock workflow data
 // from being restored after the dashboard switches to backend authority.
-export const STORAGE_KEY = 'movevai-retail:v2';
+export const STORAGE_KEY = 'movevai-retail:v3';
+
+const LOCAL_DRAFT_STATUSES = new Set(['new', 'parsing', 'needs_review', 'ready']);
 
 export const defaultState: RetailState = {
   orders: [],
@@ -32,7 +34,13 @@ export function loadState(): RetailState {
 export function persistState(next: RetailState) {
   if (typeof window === 'undefined') return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    // Workflow orders มาจาก backend และอาจมี activity/proof ขนาดใหญ่ จึง cache เฉพาะ draft
+    // ที่ยังไม่ sync เพื่อให้ localStorage มีขนาดคงที่เมื่อจำนวน order ในระบบเพิ่มขึ้น
+    const persisted: RetailState = {
+      ...next,
+      orders: next.orders.filter((order) => LOCAL_DRAFT_STATUSES.has(order.status)),
+    };
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
   } catch {
     // localStorage เต็ม (เช่น รูปหลักฐานปิดงานเยอะ) หรือถูกปิด — ข้ามการ persist
     // state ในหน่วยความจำยังทำงานปกติ ไม่ทำให้ commit ล้ม

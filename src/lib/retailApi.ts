@@ -1,4 +1,5 @@
 import type { Driver, Order } from '@/data/mock';
+import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 
 const RIDER_API_BASE =
@@ -85,6 +86,35 @@ export async function fetchAppOrders(params?: { status?: string; take?: number }
     `${APP_API_BASE}/orders${query ? `?${query}` : ''}`,
   );
   return { orders: result.items.map(normalizeOrder), total: result.total };
+}
+
+export type DeliveryTrackingCounts = Record<DeliveryTrackingTab, number>;
+
+export async function fetchDeliveryTrackingOrders(params: {
+  tab: DeliveryTrackingTab;
+  query?: string;
+  take: number;
+  skip: number;
+}) {
+  const search = new URLSearchParams({
+    tab: params.tab,
+    take: String(params.take),
+    skip: String(params.skip),
+  });
+  if (params.query?.trim()) search.set('q', params.query.trim());
+  const result = await request<{ items: ApiOrder[]; total: number; take: number; skip: number }>(
+    `${APP_API_BASE}/tracking/orders?${search.toString()}`,
+  );
+  return { ...result, orders: result.items.map(normalizeOrder) };
+}
+
+export function fetchDeliveryTrackingCounts() {
+  return request<DeliveryTrackingCounts>(`${APP_API_BASE}/tracking/counts`);
+}
+
+export async function fetchAppOrder(orderId: string) {
+  const result = await request<ApiOrder>(`${APP_API_BASE}/orders/${encodeURIComponent(orderId)}`);
+  return normalizeOrder(result);
 }
 
 export async function fetchAppDrivers() {

@@ -102,6 +102,28 @@
   }
 }
 
+@layer components {
+  .tracking-list-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+
+  .tracking-list-scroll::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .tracking-list-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .tracking-list-scroll::-webkit-scrollbar-thumb {
+    border: 2px solid transparent;
+    border-radius: 9999px;
+    background: hsl(var(--muted-foreground) / 0.35);
+    background-clip: padding-box;
+  }
+}
+
 /*
  * PWA / mobile safe-area helpers — ตั้งครั้งเดียว ใช้ซ้ำทุก sticky header/footer
  * และ surface เต็มจอ (ต้องมี <meta name="viewport" content="...viewport-fit=cover">)
