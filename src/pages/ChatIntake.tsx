@@ -268,7 +268,7 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Chat Intake</h1>
           <p className="text-sm text-muted-foreground">

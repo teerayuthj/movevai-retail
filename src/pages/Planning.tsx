@@ -377,7 +377,7 @@ export function PlanningPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_320px_380px]">
-        <Card className="h-[calc(100vh-12rem)] overflow-hidden">
+        <Card className="overflow-hidden xl:h-[calc(100vh-12rem)]">
           <CardHeader className="pb-3">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -418,7 +418,7 @@ export function PlanningPage() {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="h-[calc(100%-7.25rem)] space-y-3 overflow-auto">
+          <CardContent className="space-y-3 overflow-auto xl:h-[calc(100%-7.25rem)]">
             {visibleOrders.map((order) => (
               <PlanningOrderCard
                 key={order.id}
@@ -437,12 +437,12 @@ export function PlanningPage() {
           </CardContent>
         </Card>
 
-        <Card className="h-[calc(100vh-12rem)] overflow-hidden">
+        <Card className="overflow-hidden xl:h-[calc(100vh-12rem)]">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">ภาระงานคนขับของวัน</CardTitle>
             <CardDescription>กดเลือกคนขับเพื่อใส่ลงฟอร์มแผนด้านขวา</CardDescription>
           </CardHeader>
-          <CardContent className="h-[calc(100%-4.75rem)] space-y-3 overflow-auto">
+          <CardContent className="space-y-3 overflow-auto xl:h-[calc(100%-4.75rem)]">
             {drivers.map((driver) => (
               <DriverPlanningCard
                 key={driver.id}
@@ -458,7 +458,7 @@ export function PlanningPage() {
           </CardContent>
         </Card>
 
-        <div className="h-[calc(100vh-12rem)] overflow-auto space-y-4">
+        <div className="space-y-4 overflow-auto xl:h-[calc(100vh-12rem)]">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">ตั้งค่าแผน</CardTitle>

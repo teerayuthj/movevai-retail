@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { AutoAssignPreviewDialog } from '@/components/delivery/AutoAssignPreviewDialog';
 import { OrderTimeline } from '@/components/OrderTimeline';
+import { MobileDetailSheet } from '@/components/MobileDetailSheet';
 import {
   DriverCard,
   DriverSummary,
@@ -75,6 +76,8 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     parsedSearch.orderId ?? readyOrders[0]?.id ?? assignedOrders[0]?.id ?? null,
   );
   const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  // มือถือ: เปิด overlay เฉพาะตอนผู้ใช้แตะรายการ (กัน auto-select ไม่ให้เด้งทับ list ตอนโหลด)
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
   const selectedDriver = drivers.find((driver) => driver.id === selectedDriverId) ?? null;
@@ -161,16 +164,67 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
       ? [selectedOrder]
       : assignedOrders;
 
+  // ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งคอลัมน์ขวา (เดสก์ท็อป) และ footer ของ overlay มือถือ
+  const assignmentActions = selectedOrder ? (
+    <>
+      {selectedOrder.status === 'ready' && (
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            disabled={!canAssign}
+            onClick={() => {
+              if (!selectedOrder || !selectedDriverId) return;
+              void assignOrder(selectedOrder.id, selectedDriverId);
+              setActiveTab('assigned');
+              setSelectedOrderId(selectedOrder.id);
+            }}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            มอบหมาย
+          </Button>
+          <Button
+            variant="outline"
+            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setCancelTargetId(selectedOrder.id)}
+          >
+            <Ban className="h-4 w-4" />
+            ยกเลิก
+          </Button>
+        </div>
+      )}
+
+      {selectedOrder.status === 'assigned' && (
+        <div className="space-y-2">
+          <Button
+            className="w-full"
+            onClick={() => handleStartRoute([selectedOrder.id], selectedOrder.id)}
+          >
+            <Route className="h-4 w-4" />
+            สร้าง Route และเริ่มจัดส่ง
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => setCancelTargetId(selectedOrder.id)}
+          >
+            <Ban className="h-4 w-4" />
+            ยกเลิกออเดอร์
+          </Button>
+        </div>
+      )}
+    </>
+  ) : null;
+
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">คิวจัดส่ง</h1>
           <p className="text-sm text-muted-foreground">
             มอบหมาย driver สำหรับออเดอร์ที่พร้อมส่ง และปล่อยงานเข้ารอบ Route ก่อนออกจัดส่ง
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <Button
             variant="outline"
             disabled={!assignedReadyToStart}
@@ -232,7 +286,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                   className="w-full"
                 >
                   <div className="w-full">
-                    <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1.5 rounded-2xl bg-muted/70 p-1.5">
+                    <TabsList className="flex h-auto w-full flex-nowrap justify-start gap-1.5 overflow-x-auto rounded-2xl bg-muted/70 p-1.5 lg:flex-wrap">
                       {(Object.keys(driverQueueTabLabels) as DriverQueueTab[]).map((tab) => (
                         <TabsTrigger
                           key={tab}
@@ -266,7 +320,10 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                 key={order.id}
                 order={order}
                 selected={selectedOrderId === order.id}
-                onClick={() => setSelectedOrderId(order.id)}
+                onClick={() => {
+                  setSelectedOrderId(order.id);
+                  setMobileDetailOpen(true);
+                }}
                 statusText={statusLabel[order.status]}
                 rank={activeTab === 'ready' ? index + 1 : undefined}
               />
@@ -275,7 +332,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
           </CardContent>
         </Card>
 
-        <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
+        <Card className="hidden h-[calc(100vh-12rem)] flex-col overflow-hidden lg:flex">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">เลือกคนขับ</CardTitle>
             <CardDescription>
@@ -299,7 +356,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
           </CardContent>
         </Card>
 
-        <div className="h-[calc(100vh-12rem)] space-y-4 overflow-auto">
+        <div className="hidden h-[calc(100vh-12rem)] space-y-4 overflow-auto lg:block">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">ยืนยันการมอบหมาย</CardTitle>
@@ -337,51 +394,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
 
                   <QueueAiAssessment />
 
-                  {selectedOrder.status === 'ready' && (
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1"
-                        disabled={!canAssign}
-                        onClick={() => {
-                          if (!selectedOrder || !selectedDriverId) return;
-                          void assignOrder(selectedOrder.id, selectedDriverId);
-                          setActiveTab('assigned');
-                          setSelectedOrderId(selectedOrder.id);
-                        }}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                        มอบหมาย
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => setCancelTargetId(selectedOrder.id)}
-                      >
-                        <Ban className="h-4 w-4" />
-                        ยกเลิก
-                      </Button>
-                    </div>
-                  )}
-
-                  {selectedOrder.status === 'assigned' && (
-                    <div className="space-y-2">
-                      <Button
-                        className="w-full"
-                        onClick={() => handleStartRoute([selectedOrder.id], selectedOrder.id)}
-                      >
-                        <Route className="h-4 w-4" />
-                        สร้าง Route และเริ่มจัดส่ง
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                        onClick={() => setCancelTargetId(selectedOrder.id)}
-                      >
-                        <Ban className="h-4 w-4" />
-                        ยกเลิกออเดอร์
-                      </Button>
-                    </div>
-                  )}
+                  {assignmentActions}
                 </>
               ) : (
                 <div className="py-8 text-center text-sm text-muted-foreground">
@@ -397,6 +410,49 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
           />
         </div>
       </div>
+
+      {/* มือถือ: เลือกคนขับ + มอบหมาย/สร้าง Route แบบเต็มจอ */}
+      <MobileDetailSheet
+        open={!!selectedOrder && mobileDetailOpen}
+        title={<span className="font-mono">{selectedOrder?.code}</span>}
+        subtitle={selectedOrder ? statusLabel[selectedOrder.status] : undefined}
+        onClose={() => setMobileDetailOpen(false)}
+        footer={assignmentActions}
+      >
+        {selectedOrder && (
+          <>
+            <OrderSummary order={selectedOrder} />
+            {selectedOrder.status === 'ready' && (
+              <div>
+                <div className="mb-2 text-[11px] font-medium text-muted-foreground">เลือกคนขับ</div>
+                <div className="space-y-2">
+                  {drivers.map((driver) => (
+                    <DriverCard
+                      key={driver.id}
+                      driver={driver}
+                      selected={selectedDriverId === driver.id}
+                      onSelect={() => setSelectedDriverId(driver.id)}
+                      recommended={driver.id === recommendedDriverId}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedOrder.status === 'assigned' && selectedDriver && (
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground">คนขับ</div>
+                <DriverSummary driver={selectedDriver} order={selectedOrder} />
+              </div>
+            )}
+            <QueueAiAssessment />
+            <OrderTimeline
+              order={selectedOrder}
+              description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้"
+              compact
+            />
+          </>
+        )}
+      </MobileDetailSheet>
     </div>
   );
 }

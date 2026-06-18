@@ -317,7 +317,7 @@ export function PostalQueuePage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">คิวจัดส่งไปรษณีย์ไทย</h1>
           <p className="text-sm text-muted-foreground">
@@ -340,7 +340,7 @@ export function PostalQueuePage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_400px]">
-        <Card className="h-[calc(100vh-12rem)] overflow-hidden flex flex-col">
+        <Card className="flex flex-col overflow-hidden lg:h-[calc(100vh-12rem)]">
           <CardHeader className="pb-3">
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -425,7 +425,7 @@ export function PostalQueuePage() {
           </CardContent>
         </Card>
 
-        <div className="h-[calc(100vh-12rem)] overflow-auto space-y-4">
+        <div className="space-y-4 overflow-auto lg:h-[calc(100vh-12rem)]">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">

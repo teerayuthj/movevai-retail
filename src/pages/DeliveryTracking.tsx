@@ -7,6 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
+import { MobileDetailSheet } from '@/components/MobileDetailSheet';
 import {
   DriverSummary,
   EmptyState,
@@ -207,6 +208,124 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     setRefreshKey((current) => current + 1);
   }
 
+  // สรุปออเดอร์ + หลักฐาน — ใช้ซ้ำทั้งคอลัมน์ขวา (เดสก์ท็อป) และ overlay (มือถือ)
+  const detailSummary = selectedOrder ? (
+    <>
+      <div>
+        <div className="text-[11px] font-medium text-muted-foreground">Order</div>
+        <div className="mt-1">
+          <OrderSummary order={selectedOrder} />
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        <Badge
+          variant={
+            selectedOrder.status === 'in_transit'
+              ? 'info'
+              : selectedOrder.status === 'pending_confirmation' ||
+                  selectedOrder.status === 'returning'
+                ? 'warning'
+                : 'muted'
+          }
+        >
+          {statusLabel[selectedOrder.status]}
+        </Badge>
+        {selectedOrder.deliveryPlan?.releaseState === 'released' && (
+          <Badge variant="info">จาก Planning</Badge>
+        )}
+        {selectedDriver && <Badge variant="muted">คนขับ: {selectedDriver.name}</Badge>}
+        {isDetailLoading && (
+          <Badge variant="muted" className="gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            กำลังโหลดรายละเอียด
+          </Badge>
+        )}
+      </div>
+
+      {!isDetailLoading && selectedOrder.proofOfDelivery && (
+        <ProofOfDeliveryInfo order={selectedOrder} driverName={selectedDriver?.name} />
+      )}
+
+      {(selectedOrder.status === 'returning' ||
+        selectedOrder.status === 'failed' ||
+        selectedOrder.status === 'cancelled' ||
+        selectedOrder.status === 'returned') &&
+        selectedOrder.resolution && <ResolutionInfo order={selectedOrder} />}
+    </>
+  ) : null;
+
+  // ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งเดสก์ท็อปและ footer ของ overlay มือถือ
+  const statusActions = selectedOrder ? (
+    <>
+      {selectedOrder.status === 'in_transit' && (
+        <div className="flex gap-2">
+          <Button className="flex-1" onClick={() => setRiderCloseTargetId(selectedOrder.id)}>
+            <Truck className="h-4 w-4" />
+            rider ปิดงาน
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => setFailTargetId(selectedOrder.id)}
+          >
+            <XCircle className="h-4 w-4" />
+            ไม่สำเร็จ
+          </Button>
+        </div>
+      )}
+
+      {selectedOrder.status === 'pending_confirmation' && (
+        <div className="flex gap-2">
+          <Button
+            className="flex-1"
+            onClick={async () => {
+              await confirmDelivery(selectedOrder.id);
+              setSelectedOrderId(selectedOrder.id);
+              setActiveTab('closed');
+              setPage(1);
+              refreshTracking();
+            }}
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            ยืนยันปิดงาน
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => setFailTargetId(selectedOrder.id)}
+          >
+            <XCircle className="h-4 w-4" />
+            ตีกลับ/ไม่สำเร็จ
+          </Button>
+        </div>
+      )}
+
+      {selectedOrder.status === 'returning' && (
+        <Button
+          className="w-full"
+          onClick={() => {
+            markReturned(selectedOrder.id);
+            setSelectedOrderId(selectedOrder.id);
+            setActiveTab('closed');
+          }}
+        >
+          <PackageCheck className="h-4 w-4" />
+          รับคืนเข้าสาขาแล้ว
+        </Button>
+      )}
+
+      {(selectedOrder.status === 'delivered' ||
+        selectedOrder.status === 'failed' ||
+        selectedOrder.status === 'cancelled' ||
+        selectedOrder.status === 'returned') && (
+        <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+          งานนี้ปิดแล้ว ไม่มี action เพิ่มเติมในหน้าติดตาม
+        </div>
+      )}
+    </>
+  ) : null;
+
   return (
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4">
       <div className="flex items-start justify-between">
@@ -295,7 +414,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
                   className="w-full"
                 >
                   <div className="w-full">
-                    <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1.5 rounded-2xl bg-muted/70 p-1.5">
+                    <TabsList className="flex h-auto w-full flex-nowrap justify-start gap-1.5 overflow-x-auto rounded-2xl bg-muted/70 p-1.5 lg:flex-wrap">
                       {(Object.keys(deliveryTrackingTabLabels) as DeliveryTrackingTab[]).map(
                         (tab) => (
                           <TabsTrigger
@@ -386,7 +505,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           </div>
         </Card>
 
-        <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
+        <Card className="hidden h-[calc(100vh-12rem)] flex-col overflow-hidden lg:flex">
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">ข้อมูลคนขับ</CardTitle>
             <CardDescription>
@@ -406,7 +525,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           </CardContent>
         </Card>
 
-        <div className="h-[calc(100vh-12rem)] space-y-4 overflow-auto">
+        <div className="hidden h-[calc(100vh-12rem)] space-y-4 overflow-auto lg:block">
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">สถานะและการดำเนินการ</CardTitle>
@@ -414,118 +533,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             <CardContent className="space-y-4">
               {selectedOrder ? (
                 <>
-                  <div>
-                    <div className="text-[11px] font-medium text-muted-foreground">Order</div>
-                    <div className="mt-1">
-                      <OrderSummary order={selectedOrder} />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1">
-                    <Badge
-                      variant={
-                        selectedOrder.status === 'in_transit'
-                          ? 'info'
-                          : selectedOrder.status === 'pending_confirmation' ||
-                              selectedOrder.status === 'returning'
-                            ? 'warning'
-                            : 'muted'
-                      }
-                    >
-                      {statusLabel[selectedOrder.status]}
-                    </Badge>
-                    {selectedOrder.deliveryPlan?.releaseState === 'released' && (
-                      <Badge variant="info">จาก Planning</Badge>
-                    )}
-                    {selectedDriver && <Badge variant="muted">คนขับ: {selectedDriver.name}</Badge>}
-                    {isDetailLoading && (
-                      <Badge variant="muted" className="gap-1">
-                        <Loader2 className="h-3 w-3 animate-spin" />
-                        กำลังโหลดรายละเอียด
-                      </Badge>
-                    )}
-                  </div>
-
-                  {!isDetailLoading && selectedOrder.proofOfDelivery && (
-                    <ProofOfDeliveryInfo order={selectedOrder} driverName={selectedDriver?.name} />
-                  )}
-
-                  {(selectedOrder.status === 'returning' ||
-                    selectedOrder.status === 'failed' ||
-                    selectedOrder.status === 'cancelled' ||
-                    selectedOrder.status === 'returned') &&
-                    selectedOrder.resolution && <ResolutionInfo order={selectedOrder} />}
-
-                  {selectedOrder.status === 'in_transit' && (
-                    <div className="flex gap-2">
-                      <Button
-                        className="flex-1"
-                        onClick={() => setRiderCloseTargetId(selectedOrder.id)}
-                      >
-                        <Truck className="h-4 w-4" />
-                        rider ปิดงาน
-                      </Button>
-                      <Button
-                        variant="outline"
-                        className="flex-1"
-                        onClick={() => setFailTargetId(selectedOrder.id)}
-                      >
-                        <XCircle className="h-4 w-4" />
-                        ไม่สำเร็จ
-                      </Button>
-                    </div>
-                  )}
-
-                  {selectedOrder.status === 'pending_confirmation' && (
-                    <>
-                      <div className="flex gap-2">
-                        <Button
-                          className="flex-1"
-                          onClick={async () => {
-                            await confirmDelivery(selectedOrder.id);
-                            setSelectedOrderId(selectedOrder.id);
-                            setActiveTab('closed');
-                            setPage(1);
-                            refreshTracking();
-                          }}
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                          ยืนยันปิดงาน
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="flex-1"
-                          onClick={() => setFailTargetId(selectedOrder.id)}
-                        >
-                          <XCircle className="h-4 w-4" />
-                          ตีกลับ/ไม่สำเร็จ
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                  {selectedOrder.status === 'returning' && (
-                    <Button
-                      className="w-full"
-                      onClick={() => {
-                        markReturned(selectedOrder.id);
-                        setSelectedOrderId(selectedOrder.id);
-                        setActiveTab('closed');
-                      }}
-                    >
-                      <PackageCheck className="h-4 w-4" />
-                      รับคืนเข้าสาขาแล้ว
-                    </Button>
-                  )}
-
-                  {(selectedOrder.status === 'delivered' ||
-                    selectedOrder.status === 'failed' ||
-                    selectedOrder.status === 'cancelled' ||
-                    selectedOrder.status === 'returned') && (
-                    <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-                      งานนี้ปิดแล้ว ไม่มี action เพิ่มเติมในหน้าติดตาม
-                    </div>
-                  )}
+                  {detailSummary}
+                  {statusActions}
                 </>
               ) : (
                 <div className="py-8 text-center text-sm text-muted-foreground">
@@ -541,6 +550,26 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           />
         </div>
       </div>
+
+      {/* มือถือ: เปิดรายละเอียด + อนุมัติแบบเต็มจอ (ซ่อนบนเดสก์ท็อปที่ใช้ 3 คอลัมน์) */}
+      <MobileDetailSheet
+        open={!!selectedOrder}
+        title={<span className="font-mono">{selectedOrder?.code}</span>}
+        subtitle={selectedOrder ? statusLabel[selectedOrder.status] : undefined}
+        onClose={() => setSelectedOrderId(null)}
+        footer={statusActions}
+      >
+        {detailSummary}
+        <div>
+          <div className="mb-1 text-[11px] font-medium text-muted-foreground">ข้อมูลคนขับ</div>
+          <DriverSummary driver={selectedDriver} order={selectedOrder} />
+        </div>
+        <OrderTimeline
+          order={selectedOrder}
+          description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้"
+          compact
+        />
+      </MobileDetailSheet>
     </div>
   );
 }
