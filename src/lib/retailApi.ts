@@ -123,9 +123,24 @@ export type RiderCompletedDelivery = {
   proof?: { photoCount: number; signatureCaptured: boolean; otpVerified: boolean };
 };
 
-export async function fetchRiderCompletedDeliveries(driverCode: string) {
-  return request<{ driver: ApiDriver; total: number; items: RiderCompletedDelivery[] }>(
-    `${RIDER_API_BASE}/${encodeURIComponent(driverCode)}/completed`,
+export type RiderCompletedPage = {
+  driver: ApiDriver;
+  /** ส่งกลับเฉพาะหน้าแรก (cursor ว่าง) เพื่อลดภาระ count ฝั่ง DB */
+  total?: number;
+  items: RiderCompletedDelivery[];
+  /** null = ไม่มีหน้าถัดไป */
+  nextCursor: string | null;
+};
+
+export async function fetchRiderCompletedDeliveries(
+  driverCode: string,
+  params?: { limit?: number; cursor?: string },
+) {
+  const search = new URLSearchParams();
+  search.set('limit', String(params?.limit ?? 20));
+  if (params?.cursor) search.set('cursor', params.cursor);
+  return request<RiderCompletedPage>(
+    `${RIDER_API_BASE}/${encodeURIComponent(driverCode)}/completed?${search.toString()}`,
   );
 }
 
