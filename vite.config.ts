@@ -184,6 +184,18 @@ export default defineConfig({
     // อนุญาตให้เปิดผ่าน ngrok (สำหรับทดสอบ PWA บนมือถือจริงผ่าน HTTPS)
     allowedHosts: ['.ngrok-free.app', '.ngrok.app', '.ngrok.io'],
     proxy: {
+      '/api/rider': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/api\/rider/, '/v1/rider'),
+        headers: internalApiKey ? { 'x-internal-key': internalApiKey } : undefined,
+      },
+      '/api/app': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/api\/app/, '/v1/app'),
+        headers: internalApiKey ? { 'x-internal-key': internalApiKey } : undefined,
+      },
       '/api/ai': {
         target: 'http://localhost:4000',
         changeOrigin: true,

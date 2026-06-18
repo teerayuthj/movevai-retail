@@ -282,7 +282,7 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
         </Button>
       </div>
 
-      <Card className="border-slate-200">
+      <Card className="border-border">
         <CardHeader className="pb-4">
           <div className="flex items-center gap-2">
             <CardTitle className="text-base">CSV Transform Test</CardTitle>
@@ -316,8 +316,8 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
               pickFile(event.dataTransfer.files?.[0] ?? null);
             }}
             className={cn(
-              'rounded-2xl border border-dashed bg-slate-50 p-6 transition-colors',
-              dragging ? 'border-primary bg-primary/5' : 'border-slate-300',
+              'rounded-2xl border border-dashed bg-muted p-6 transition-colors',
+              dragging ? 'border-primary bg-primary/5' : 'border-border',
             )}
           >
             <div className="flex flex-col items-center justify-center gap-3 text-center">
@@ -346,7 +346,7 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
 
           {file && (
             <div className="flex items-center gap-3 rounded-xl border bg-white px-4 py-3">
-              <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+              <FileSpreadsheet className="h-4 w-4 text-success" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm font-medium">{file.name}</div>
                 <div className="text-xs text-muted-foreground">{formatFileSize(file.size)}</div>
@@ -387,18 +387,18 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
           </div>
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-              <div className="font-medium text-red-900">{error.title}</div>
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+              <div className="font-medium text-destructive">{error.title}</div>
               <div className="mt-1">{error.message}</div>
               {error.suggestions.length > 0 && (
-                <ul className="mt-3 list-disc space-y-1 pl-5 text-red-900">
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-destructive">
                   {error.suggestions.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
               )}
               {error.meta.length > 0 && (
-                <div className="mt-3 space-y-1 text-xs text-red-700">
+                <div className="mt-3 space-y-1 text-xs text-destructive">
                   {error.meta.map((item) => (
                     <div key={item}>{item}</div>
                   ))}
@@ -410,7 +410,7 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
       </Card>
 
       {result && (
-        <Card className="border-emerald-200">
+        <Card className="border-success/30">
           <CardHeader className="pb-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -427,19 +427,19 @@ export function ChatIntakePage({ onOpenInbox }: { onOpenInbox: () => void }) {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border bg-slate-50 px-4 py-3">
+              <div className="rounded-xl border bg-muted px-4 py-3">
                 <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Alias
                 </div>
                 <div className="mt-1 text-sm font-medium">{result.alias}</div>
               </div>
-              <div className="rounded-xl border bg-slate-50 px-4 py-3">
+              <div className="rounded-xl border bg-muted px-4 py-3">
                 <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Request ID
                 </div>
                 <div className="mt-1 truncate font-mono text-xs">{result.requestId}</div>
               </div>
-              <div className="rounded-xl border bg-slate-50 px-4 py-3">
+              <div className="rounded-xl border bg-muted px-4 py-3">
                 <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   Latency
                 </div>

@@ -1,14 +1,9 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Progress } from "@/components/ui/progress";
-import { DriverAvatar } from "@/components/DriverAvatar";
+import type { ComponentType } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Progress } from '@/components/ui/progress';
+import { DriverAvatar } from '@/components/DriverAvatar';
 import {
   TrendingUp,
   TrendingDown,
@@ -17,7 +12,7 @@ import {
   CheckCircle2,
   Clock,
   ArrowUpRight,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
@@ -29,10 +24,10 @@ import {
   PieChart,
   Pie,
   Cell,
-} from "recharts";
-import { weeklyVolume, sourceBreakdown, statusLabel, formatTHB } from "@/data/mock";
-import { Coins } from "lucide-react";
-import { useRetailStore } from "@/state/retailStore";
+} from 'recharts';
+import { weeklyVolume, sourceBreakdown, statusLabel, formatTHB } from '@/data/mock';
+import { Coins } from 'lucide-react';
+import { useRetailStore } from '@/state/retailStore';
 
 function StatCard({
   title,
@@ -45,8 +40,8 @@ function StatCard({
   title: string;
   value: string;
   delta: string;
-  trend: "up" | "down";
-  icon: any;
+  trend: 'up' | 'down';
+  icon: ComponentType<{ className?: string }>;
   hint: string;
 }) {
   return (
@@ -62,12 +57,12 @@ function StatCard({
         <div className="mt-1 flex items-center gap-1 text-xs">
           <span
             className={
-              trend === "up"
-                ? "inline-flex items-center gap-0.5 text-emerald-600"
-                : "inline-flex items-center gap-0.5 text-red-600"
+              trend === 'up'
+                ? 'inline-flex items-center gap-0.5 text-success'
+                : 'inline-flex items-center gap-0.5 text-destructive'
             }
           >
-            {trend === "up" ? (
+            {trend === 'up' ? (
               <TrendingUp className="h-3 w-3" />
             ) : (
               <TrendingDown className="h-3 w-3" />
@@ -83,11 +78,11 @@ function StatCard({
 
 export function OverviewPage() {
   const { orders, drivers } = useRetailStore();
-  const activeDrivers = drivers.filter((d) => d.status !== "off_duty").length;
-  const inTransit = orders.filter((o) => o.status === "in_transit").length;
-  const deliveredToday = orders.filter((o) => o.status === "delivered").length;
+  const activeDrivers = drivers.filter((d) => d.status !== 'off_duty').length;
+  const inTransit = orders.filter((o) => o.status === 'in_transit').length;
+  const deliveredToday = orders.filter((o) => o.status === 'delivered').length;
   const pending = orders.filter((o) =>
-    ["new", "needs_review", "parsing", "ready"].includes(o.status)
+    ['new', 'needs_review', 'parsing', 'ready'].includes(o.status),
   ).length;
   const totalValueToday = orders.reduce((s, o) => s + o.totalValue, 0);
 
@@ -95,9 +90,7 @@ export function OverviewPage() {
     <div className="space-y-6">
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            ภาพรวมการจัดส่ง — Ausiris
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-tight">ภาพรวมการจัดส่ง — Ausiris</h1>
           <p className="text-sm text-muted-foreground">
             ทองคำแท่ง · ทองรูปพรรณ · เงินแท่ง · อัพเดต 2 นาทีที่แล้ว · ศุกร์ที่ 24 เมษายน 2026
           </p>
@@ -157,10 +150,10 @@ export function OverviewPage() {
                 <XAxis dataKey="day" tickLine={false} axisLine={false} className="text-xs" />
                 <YAxis tickLine={false} axisLine={false} className="text-xs" width={28} />
                 <Tooltip
-                  cursor={{ fill: "hsl(var(--muted))" }}
+                  cursor={{ fill: 'hsl(var(--muted))' }}
                   contentStyle={{
-                    background: "hsl(var(--background))",
-                    border: "1px solid hsl(var(--border))",
+                    background: 'hsl(var(--background))',
+                    border: '1px solid hsl(var(--border))',
                     borderRadius: 8,
                     fontSize: 12,
                   }}
@@ -193,8 +186,8 @@ export function OverviewPage() {
                 </Pie>
                 <Tooltip
                   contentStyle={{
-                    background: "hsl(var(--background))",
-                    border: "1px solid hsl(var(--border))",
+                    background: 'hsl(var(--background))',
+                    border: '1px solid hsl(var(--border))',
                     borderRadius: 8,
                     fontSize: 12,
                   }}
@@ -229,7 +222,7 @@ export function OverviewPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {drivers
-              .filter((d) => d.status !== "off_duty")
+              .filter((d) => d.status !== 'off_duty')
               .map((d) => {
                 const pct = (d.activeOrders / d.capacity) * 100;
                 return (
@@ -239,10 +232,10 @@ export function OverviewPage() {
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium">{d.name}</span>
                         <Badge
-                          variant={d.status === "available" ? "success" : "muted"}
+                          variant={d.status === 'available' ? 'success' : 'muted'}
                           className="h-5 px-1.5 text-[10px]"
                         >
-                          {d.status === "available" ? "ว่าง" : "กำลังส่ง"}
+                          {d.status === 'available' ? 'ว่าง' : 'กำลังส่ง'}
                         </Badge>
                       </div>
                       <div className="mt-1 flex items-center gap-2">
@@ -268,7 +261,7 @@ export function OverviewPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {orders
-              .filter((o) => o.status === "in_transit")
+              .filter((o) => o.status === 'in_transit')
               .map((o) => {
                 const driver = drivers.find((d) => d.id === o.assignedDriverId);
                 return (
@@ -281,12 +274,10 @@ export function OverviewPage() {
                     </div>
                     <div className="mt-1 text-sm font-medium">{o.customer.name}</div>
                     <div className="mt-0.5 text-xs text-muted-foreground">
-                      คนขับ: {driver?.name ?? "-"}
+                      คนขับ: {driver?.name ?? '-'}
                     </div>
                     <Progress value={65} className="mt-2 h-1.5" />
-                    <div className="mt-1 text-[11px] text-muted-foreground">
-                      ถึงใน ~18 นาที
-                    </div>
+                    <div className="mt-1 text-[11px] text-muted-foreground">ถึงใน ~18 นาที</div>
                   </div>
                 );
               })}

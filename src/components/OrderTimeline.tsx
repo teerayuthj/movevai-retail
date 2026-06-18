@@ -46,6 +46,7 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   driver_auto_assigned: { Icon: Sparkles, tone: 'info' },
   delivery_started: { Icon: Route, tone: 'info' },
   delivery_submitted: { Icon: ClipboardCheck, tone: 'warning' },
+  delivery_proof_revised: { Icon: Pencil, tone: 'warning' },
   delivery_confirmed: { Icon: CheckCircle2, tone: 'success' },
   delivery_completed: { Icon: PackageCheck, tone: 'success' },
   postal_batch_exported: { Icon: FileSpreadsheet, tone: 'info' },
@@ -63,11 +64,11 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
 };
 
 const TONE_CLASSES: Record<IconConfig['tone'], string> = {
-  neutral: 'bg-slate-100 text-slate-700 ring-slate-200',
-  info: 'bg-sky-50 text-sky-700 ring-sky-200',
-  success: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-  warning: 'bg-amber-50 text-amber-700 ring-amber-200',
-  danger: 'bg-red-50 text-red-700 ring-red-200',
+  neutral: 'bg-muted text-muted-foreground ring-border',
+  info: 'bg-info/10 text-info ring-info/20',
+  success: 'bg-success/10 text-success ring-success/20',
+  warning: 'bg-warning/10 text-warning ring-warning/20',
+  danger: 'bg-destructive/10 text-destructive ring-destructive/20',
   muted: 'bg-muted text-muted-foreground ring-muted',
 };
 

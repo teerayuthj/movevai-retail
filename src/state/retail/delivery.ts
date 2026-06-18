@@ -234,7 +234,9 @@ export function submitDeliveryState(
   input: SubmitDeliveryInput,
 ): RetailState {
   const order = current.orders.find((item) => item.id === orderId);
-  if (!order || order.status !== 'in_transit') return current;
+  if (!order || !['in_transit', 'pending_confirmation'].includes(order.status)) return current;
+
+  const isRevision = order.status === 'pending_confirmation';
 
   const at = nowIso();
   const driver = current.drivers.find((item) => item.id === order.assignedDriverId);
@@ -267,10 +269,10 @@ export function submitDeliveryState(
         next,
         needsReview
           ? {
-              type: 'delivery_submitted',
+              type: isRevision ? 'delivery_proof_revised' : 'delivery_submitted',
               at,
               actor: riderActor,
-              summary: 'rider ส่งมอบแล้ว — รออนุมัติ',
+              summary: isRevision ? 'rider แก้ไขและส่งหลักฐานใหม่' : 'rider ส่งมอบแล้ว — รออนุมัติ',
               details: proofDetails || undefined,
             }
           : {

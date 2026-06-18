@@ -1,14 +1,9 @@
-import { useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Progress } from "@/components/ui/progress";
-import { DriverAvatar } from "@/components/DriverAvatar";
+import { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+import { DriverAvatar } from '@/components/DriverAvatar';
 import {
   Bike,
   Car,
@@ -19,7 +14,7 @@ import {
   Play,
   CheckCircle2,
   XCircle,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   Driver,
   FailNextAction,
@@ -28,9 +23,9 @@ import {
   failReasonLabel,
   formatTHB,
   statusLabel,
-} from "@/data/mock";
-import { useRetailStore } from "@/state/retailStore";
-import { ResolutionDialog } from "@/components/ResolutionDialog";
+} from '@/data/mock';
+import { useRetailStore } from '@/state/retailStore';
+import { ResolutionDialog } from '@/components/ResolutionDialog';
 
 const FAIL_REASONS: { value: FailReason; label: string }[] = (
   Object.keys(failReasonLabel) as FailReason[]
@@ -40,21 +35,15 @@ const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
   Object.keys(failNextActionLabel) as FailNextAction[]
 ).map((value) => ({ value, label: failNextActionLabel[value] }));
 
-function VehicleIcon({ v }: { v: Driver["vehicle"] }) {
-  if (v === "motorcycle") return <Bike className="h-4 w-4" />;
-  if (v === "van") return <Car className="h-4 w-4" />;
+function VehicleIcon({ v }: { v: Driver['vehicle'] }) {
+  if (v === 'motorcycle') return <Bike className="h-4 w-4" />;
+  if (v === 'van') return <Car className="h-4 w-4" />;
   return <TruckIcon className="h-4 w-4" />;
 }
 
 export function DriversPage() {
-  const {
-    drivers,
-    orders,
-    startDelivery,
-    completeDelivery,
-    setDriverStatus,
-    failDelivery,
-  } = useRetailStore();
+  const { drivers, orders, startDelivery, completeDelivery, setDriverStatus, failDelivery } =
+    useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
 
   return (
@@ -69,8 +58,7 @@ export function DriversPage() {
           const pct = (d.activeOrders / d.capacity) * 100;
           const driverOrders = orders.filter(
             (order) =>
-              order.assignedDriverId === d.id &&
-              ["assigned", "in_transit"].includes(order.status)
+              order.assignedDriverId === d.id && ['assigned', 'in_transit'].includes(order.status),
           );
           const canToggleOffDuty = driverOrders.length === 0;
 
@@ -84,19 +72,19 @@ export function DriversPage() {
                       <span className="truncate text-sm font-semibold">{d.name}</span>
                       <Badge
                         variant={
-                          d.status === "available"
-                            ? "success"
-                            : d.status === "on_delivery"
-                            ? "muted"
-                            : "muted"
+                          d.status === 'available'
+                            ? 'success'
+                            : d.status === 'on_delivery'
+                              ? 'muted'
+                              : 'muted'
                         }
                         className="h-5 px-1.5 text-[10px]"
                       >
-                        {d.status === "available"
-                          ? "ว่าง"
-                          : d.status === "on_delivery"
-                          ? "กำลังส่ง"
-                          : "หยุด"}
+                        {d.status === 'available'
+                          ? 'ว่าง'
+                          : d.status === 'on_delivery'
+                            ? 'กำลังส่ง'
+                            : 'หยุด'}
                       </Badge>
                     </div>
                     <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
@@ -110,11 +98,11 @@ export function DriversPage() {
                     <span className="text-muted-foreground">ยานพาหนะ</span>
                     <span className="flex items-center gap-1 font-medium">
                       <VehicleIcon v={d.vehicle} />
-                      {d.vehicle === "motorcycle"
-                        ? "จักรยานยนต์"
-                        : d.vehicle === "van"
-                        ? "รถตู้"
-                        : "รถกระบะ"}
+                      {d.vehicle === 'motorcycle'
+                        ? 'จักรยานยนต์'
+                        : d.vehicle === 'van'
+                          ? 'รถตู้'
+                          : 'รถกระบะ'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between">
@@ -124,7 +112,7 @@ export function DriversPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">คะแนน</span>
                     <span className="flex items-center gap-0.5 font-medium">
-                      <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                      <Star className="h-3 w-3 fill-warning text-warning" />
                       {d.rating}
                     </span>
                   </div>
@@ -140,11 +128,11 @@ export function DriversPage() {
                 </div>
                 <div className="mt-4 flex gap-2">
                   <Button
-                    variant={d.status === "available" ? "secondary" : "outline"}
+                    variant={d.status === 'available' ? 'secondary' : 'outline'}
                     size="sm"
                     className="flex-1"
-                    onClick={() => setDriverStatus(d.id, "available")}
-                    disabled={d.status === "available" || driverOrders.length > 0}
+                    onClick={() => setDriverStatus(d.id, 'available')}
+                    disabled={d.status === 'available' || driverOrders.length > 0}
                   >
                     เปิดรับงาน
                   </Button>
@@ -152,8 +140,8 @@ export function DriversPage() {
                     variant="outline"
                     size="sm"
                     className="flex-1"
-                    onClick={() => setDriverStatus(d.id, "off_duty")}
-                    disabled={!canToggleOffDuty || d.status === "off_duty"}
+                    onClick={() => setDriverStatus(d.id, 'off_duty')}
+                    disabled={!canToggleOffDuty || d.status === 'off_duty'}
                   >
                     หยุดงาน
                   </Button>
@@ -172,10 +160,7 @@ export function DriversPage() {
                               {order.customer.name}
                             </div>
                           </div>
-                          <Badge
-                            variant="muted"
-                            className="h-5 shrink-0 px-1.5 text-[10px]"
-                          >
+                          <Badge variant="muted" className="h-5 shrink-0 px-1.5 text-[10px]">
                             {statusLabel[order.status]}
                           </Badge>
                         </div>
@@ -184,12 +169,12 @@ export function DriversPage() {
                             <Package className="h-3 w-3" />
                             {order.items.length} รายการ
                           </span>
-                          <span className="font-medium text-amber-800">
+                          <span className="font-medium text-warning">
                             {formatTHB(order.totalValue)}
                           </span>
                         </div>
                         <div className="mt-2 flex gap-2">
-                          {order.status === "assigned" ? (
+                          {order.status === 'assigned' ? (
                             <Button
                               size="sm"
                               className="h-7 flex-1 text-[11px]"
@@ -235,20 +220,20 @@ export function DriversPage() {
         title="บันทึกการส่งไม่สำเร็จ"
         description={
           failTargetId
-            ? `${orders.find((o) => o.id === failTargetId)?.code ?? ""} — ระบุเหตุผลและขั้นตอนต่อไป`
+            ? `${orders.find((o) => o.id === failTargetId)?.code ?? ''} — ระบุเหตุผลและขั้นตอนต่อไป`
             : undefined
         }
         reasons={FAIL_REASONS}
         actions={{
-          label: "ขั้นตอนต่อไป",
+          label: 'ขั้นตอนต่อไป',
           options: FAIL_ACTIONS,
-          defaultValue: "retry",
+          defaultValue: 'retry',
           helpText: (v) =>
-            v === "retry"
-              ? "กลับไปสถานะมอบหมาย ออกส่งรอบใหม่"
-              : v === "return"
-              ? "ย้ายไปแท็บส่งกลับ รอรับคืนสาขา"
-              : "ปิดงานเป็นส่งไม่สำเร็จ",
+            v === 'retry'
+              ? 'กลับไปสถานะมอบหมาย ออกส่งรอบใหม่'
+              : v === 'return'
+                ? 'ย้ายไปแท็บส่งกลับ รอรับคืนสาขา'
+                : 'ปิดงานเป็นส่งไม่สำเร็จ',
         }}
         confirmLabel="บันทึก"
         onCancel={() => setFailTargetId(null)}

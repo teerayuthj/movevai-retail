@@ -255,11 +255,11 @@ export function AppShell({ page, onChangePage, children }: Props) {
                 className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
               >
                 <MessageCircle className="h-4 w-4" />
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-emerald-500" />
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-success" />
               </a>
               <button className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent">
                 <Bell className="h-4 w-4" />
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500" />
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
               </button>
               <div className="ml-2 flex items-center gap-2">
                 <Avatar>

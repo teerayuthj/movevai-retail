@@ -344,7 +344,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                         disabled={!canAssign}
                         onClick={() => {
                           if (!selectedOrder || !selectedDriverId) return;
-                          assignOrder(selectedOrder.id, selectedDriverId);
+                          void assignOrder(selectedOrder.id, selectedDriverId);
                           setActiveTab('assigned');
                           setSelectedOrderId(selectedOrder.id);
                         }}
@@ -354,7 +354,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                       </Button>
                       <Button
                         variant="outline"
-                        className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         onClick={() => setCancelTargetId(selectedOrder.id)}
                       >
                         <Ban className="h-4 w-4" />
@@ -374,7 +374,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                       </Button>
                       <Button
                         variant="outline"
-                        className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
                         onClick={() => setCancelTargetId(selectedOrder.id)}
                       >
                         <Ban className="h-4 w-4" />

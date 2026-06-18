@@ -60,32 +60,21 @@ export type PlanOrdersInput = {
   note?: string;
 };
 
-export type RiderPushJobInput = {
-  id: string;
-  code: string;
-  title?: string;
-  body?: string;
-  customerName?: string;
-  customerPhone?: string;
-  customerAddress?: string;
-  totalValue?: number;
-  assignedDriverId: string;
-  receivedAt?: string;
-};
-
 export type RetailStore = RetailState & {
   createInternalChatOrder: (input: InternalChatOrderInput) => string;
-  importRiderPushJobs: (jobs: RiderPushJobInput[]) => void;
+  refreshRiderJobs: (driverCode: string) => Promise<void>;
+  /** ดึง orders + drivers จาก backend (ฝั่ง web) — ใช้ refresh/poll */
+  syncFromBackend: () => Promise<void>;
   updateOrder: (orderId: string, patch: Partial<Order>) => void;
   updateOrderCustomer: (orderId: string, customer: Order['customer']) => void;
   setShippingMethod: (orderId: string, method: ShippingMethod) => void;
   confirmOrder: (orderId: string, shippingMethod?: ShippingMethod) => void;
   finishParsingOrder: (orderId: string) => void;
-  assignOrder: (orderId: string, driverId: string) => void;
-  autoAssignReadyOrders: (orderIds?: string[]) => void;
-  startDelivery: (orderId: string) => void;
-  submitDelivery: (orderId: string, input: SubmitDeliveryInput) => void;
-  confirmDelivery: (orderId: string, input?: ConfirmDeliveryInput) => void;
+  assignOrder: (orderId: string, driverId: string) => Promise<void>;
+  autoAssignReadyOrders: (orderIds?: string[]) => Promise<void>;
+  startDelivery: (orderId: string) => Promise<void>;
+  submitDelivery: (orderId: string, input: SubmitDeliveryInput) => Promise<void>;
+  confirmDelivery: (orderId: string, input?: ConfirmDeliveryInput) => Promise<void>;
   completeDelivery: (orderId: string, success?: boolean) => void;
   setDriverStatus: (driverId: string, status: Driver['status']) => void;
   exportPostalBatch: (orderIds: string[], service: PostalService) => string;

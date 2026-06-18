@@ -52,7 +52,7 @@ export default function App() {
   // ไม่มี sidebar/topbar ของ admin มาครอบ เพื่อจำลองประสบการณ์เปิดบนมือถือจริง
   if (page === 'rider') {
     return (
-      <RetailProvider>
+      <RetailProvider mode="rider">
         <RiderConsolePage onExit={() => navigateToPage('overview')} />
       </RetailProvider>
     );

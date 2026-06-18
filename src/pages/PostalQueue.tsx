@@ -170,10 +170,10 @@ function PostalOrderCard({
           </div>
           <div className="mt-2 flex items-center justify-between border-t pt-2">
             <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-              <Coins className="h-3 w-3 text-amber-600" />
+              <Coins className="h-3 w-3 text-warning" />
               {paymentLabel[order.payment]}
             </div>
-            <span className="text-sm font-semibold tabular-nums text-amber-800">
+            <span className="text-sm font-semibold tabular-nums text-warning">
               {formatTHB(order.totalValue)}
             </span>
           </div>
@@ -576,7 +576,7 @@ function ReadyActionPanel({
       <div className="rounded-lg border bg-muted/30 p-3">
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium">เลือกแล้ว {selectedList.length} ออเดอร์</span>
-          <span className="font-semibold tabular-nums text-amber-800">
+          <span className="font-semibold tabular-nums text-warning">
             {formatTHB(selectedValue)}
           </span>
         </div>
@@ -607,7 +607,7 @@ function ReadyActionPanel({
       {selectedOrder && onRequestCancel && (
         <Button
           variant="outline"
-          className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+          className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
           onClick={onRequestCancel}
         >
           <Ban className="h-4 w-4" />
@@ -721,7 +721,7 @@ function AssignedActionPanel({
 
       <Button
         variant="outline"
-        className="w-full border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+        className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
         onClick={() => onRequestCancel(order.id)}
       >
         <Ban className="h-4 w-4" />
@@ -833,12 +833,12 @@ function ClosedPanel({ order }: { order: Order | null }) {
   }
   const tone =
     order.status === 'delivered'
-      ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+      ? 'border-success/30 bg-success/10 text-success'
       : order.status === 'returned'
-        ? 'border-sky-200 bg-sky-50 text-sky-900'
+        ? 'border-info/30 bg-info/10 text-info'
         : order.status === 'cancelled'
-          ? 'border-red-200 bg-red-50 text-red-900'
-          : 'border-amber-200 bg-amber-50 text-amber-900';
+          ? 'border-destructive/30 bg-destructive/10 text-destructive'
+          : 'border-warning/30 bg-warning/10 text-warning';
   return (
     <>
       <OrderSummary order={order} />
@@ -902,7 +902,7 @@ function OrderSummary({ order }: { order: Order }) {
         <div className="mt-0.5 text-xs text-muted-foreground">{order.customer.address}</div>
         <div className="mt-2 flex items-center justify-between border-t pt-2">
           <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
-          <span className="text-sm font-semibold tabular-nums text-amber-800">
+          <span className="text-sm font-semibold tabular-nums text-warning">
             {formatTHB(order.totalValue)}
           </span>
         </div>

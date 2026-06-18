@@ -121,6 +121,7 @@ export type OrderActivityEventType =
   | 'driver_auto_assigned'
   | 'delivery_started'
   | 'delivery_submitted'
+  | 'delivery_proof_revised'
   | 'delivery_confirmed'
   | 'delivery_completed'
   | 'postal_batch_exported'

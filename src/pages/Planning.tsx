@@ -132,7 +132,7 @@ function PlanningOrderCard({
           <span className="truncate">
             {plannedDriverName ? `คนขับตามแผน: ${plannedDriverName}` : 'ยังไม่เลือกคนขับ'}
           </span>
-          <span className="font-medium text-amber-800">{formatTHB(order.totalValue)}</span>
+          <span className="font-medium text-warning">{formatTHB(order.totalValue)}</span>
         </div>
       </div>
     </button>
@@ -614,7 +614,7 @@ export function PlanningPage() {
               </div>
 
               {awaitingItemsOrders.length > 0 && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
                   งานที่รอสินค้ามาครบยังปล่อยเข้าคิวได้ แต่ควรตรวจของก่อนปล่อยงานจริง
                 </div>
               )}

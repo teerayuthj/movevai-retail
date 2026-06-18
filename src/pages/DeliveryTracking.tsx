@@ -209,10 +209,10 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         open={!!riderCloseTargetId}
         order={orders.find((order) => order.id === riderCloseTargetId) ?? null}
         onCancel={() => setRiderCloseTargetId(null)}
-        onSubmit={(input) => {
+        onSubmit={async (input) => {
           if (!riderCloseTargetId) return;
           const target = orders.find((order) => order.id === riderCloseTargetId);
-          submitDelivery(riderCloseTargetId, input);
+          await submitDelivery(riderCloseTargetId, input);
           setSelectedOrderId(riderCloseTargetId);
           // งานเสี่ยงสูง → ไปแท็บรอยืนยัน, งานทั่วไป → ปิดเลยไปแท็บปิดงาน
           setActiveTab(target && requiresDeliveryReview(target) ? 'pending' : 'closed');
@@ -361,8 +361,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
                       <div className="flex gap-2">
                         <Button
                           className="flex-1"
-                          onClick={() => {
-                            confirmDelivery(selectedOrder.id);
+                          onClick={async () => {
+                            await confirmDelivery(selectedOrder.id);
                             setSelectedOrderId(selectedOrder.id);
                             setActiveTab('closed');
                           }}

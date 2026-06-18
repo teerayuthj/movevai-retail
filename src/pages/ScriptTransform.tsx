@@ -82,8 +82,8 @@ function TemplateCard({
         template.available
           ? selected
             ? 'border-primary bg-primary/5 ring-2 ring-primary/30'
-            : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-          : 'cursor-not-allowed border-slate-100 bg-slate-50 opacity-60',
+            : 'border-border bg-white hover:border-border hover:bg-muted'
+          : 'cursor-not-allowed border-border bg-muted opacity-60',
       )}
     >
       {selected && (
@@ -265,8 +265,8 @@ export function ScriptTransformPage() {
               pickFile(e.dataTransfer.files?.[0] ?? null);
             }}
             className={cn(
-              'rounded-2xl border border-dashed bg-slate-50 p-6 transition-colors',
-              dragging ? 'border-primary bg-primary/5' : 'border-slate-300',
+              'rounded-2xl border border-dashed bg-muted p-6 transition-colors',
+              dragging ? 'border-primary bg-primary/5' : 'border-border',
             )}
           >
             <div className="flex flex-col items-center gap-3 text-center">
@@ -296,7 +296,7 @@ export function ScriptTransformPage() {
           {file && (
             <div className="space-y-3">
               <div className="flex items-center gap-3 rounded-xl border bg-white px-4 py-3">
-                <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                <FileSpreadsheet className="h-4 w-4 text-success" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{file.name}</div>
                   <div className="text-xs text-muted-foreground">{formatFileSize(file.size)}</div>
@@ -312,8 +312,8 @@ export function ScriptTransformPage() {
               </div>
 
               {loadedWorkbook && loadedWorkbook.sheetNames.length > 1 && (
-                <div className="rounded-xl border bg-amber-50 px-4 py-3">
-                  <div className="mb-2 text-xs font-medium text-amber-800">
+                <div className="rounded-xl border bg-warning/10 px-4 py-3">
+                  <div className="mb-2 text-xs font-medium text-warning">
                     พบ {loadedWorkbook.sheetNames.length} sheets — เลือก sheet ที่ต้องการแปลง
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -326,7 +326,7 @@ export function ScriptTransformPage() {
                           'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors',
                           selectedSheet === name
                             ? 'border-primary bg-primary text-primary-foreground'
-                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50',
+                            : 'border-border bg-white text-muted-foreground hover:border-border hover:bg-muted',
                         )}
                       >
                         {name}
@@ -339,7 +339,7 @@ export function ScriptTransformPage() {
           )}
 
           {error && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
               {error}
             </div>
           )}
@@ -373,7 +373,7 @@ export function ScriptTransformPage() {
                   <CardDescription>
                     แปลง {result.rows.length} แถว จาก {result.sourceRowCount} แถว
                     {result.warnings.length > 0 && (
-                      <span className="ml-2 text-amber-600">
+                      <span className="ml-2 text-warning">
                         · warning {result.warnings.length} จุด
                       </span>
                     )}
@@ -392,12 +392,12 @@ export function ScriptTransformPage() {
                   {detectedEntries.map(([semantic, header]) => (
                     <div
                       key={semantic}
-                      className="flex items-center justify-between rounded-lg border bg-slate-50 px-3 py-2 text-xs"
+                      className="flex items-center justify-between rounded-lg border bg-muted px-3 py-2 text-xs"
                     >
                       <span className="font-mono text-muted-foreground">{semantic}</span>
                       {header ? (
                         <Badge variant="secondary" className="gap-1 font-mono">
-                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          <CheckCircle2 className="h-3 w-3 text-success" />
                           {header}
                         </Badge>
                       ) : (
@@ -416,7 +416,7 @@ export function ScriptTransformPage() {
                 </div>
                 <div className="overflow-x-auto rounded-xl border bg-white">
                   <table className="min-w-full text-xs">
-                    <thead className="bg-slate-100 text-left">
+                    <thead className="bg-muted text-left">
                       <tr>
                         {selectedTemplate.headers.map((h) => (
                           <th key={h} className="whitespace-nowrap px-2 py-1.5 font-mono">
@@ -427,7 +427,7 @@ export function ScriptTransformPage() {
                     </thead>
                     <tbody>
                       {previewRows.map((row, idx) => (
-                        <tr key={idx} className="border-t hover:bg-slate-50">
+                        <tr key={idx} className="border-t hover:bg-muted">
                           {selectedTemplate.headers.map((h) => (
                             <td key={h} className="whitespace-nowrap px-2 py-1.5">
                               {(row as Record<string, string>)[h]}
@@ -443,10 +443,10 @@ export function ScriptTransformPage() {
           </Card>
 
           {result.warnings.length > 0 && (
-            <Card className="border-amber-200">
+            <Card className="border-warning/30">
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  <AlertTriangle className="h-4 w-4 text-warning" />
                   <CardTitle className="text-base">Warnings ({result.warnings.length})</CardTitle>
                 </div>
                 <CardDescription>เคสที่ script ไม่มั่นใจ — ควรตรวจทานก่อนนำไปใช้</CardDescription>
@@ -454,7 +454,7 @@ export function ScriptTransformPage() {
               <CardContent>
                 <div className="max-h-72 overflow-y-auto rounded-xl border bg-white">
                   <table className="min-w-full text-xs">
-                    <thead className="bg-slate-100 text-left">
+                    <thead className="bg-muted text-left">
                       <tr>
                         <th className="px-3 py-2">แถว</th>
                         <th className="px-3 py-2">Field</th>

@@ -1,33 +1,15 @@
-import { drivers as initialDrivers, orders as initialOrders } from '@/data/mock';
-import type { Driver } from '@/data/mock';
-import { migrateOrders } from '@/state/retail/timeline';
+import { drivers as initialDrivers } from '@/data/mock';
 import type { RetailState } from '@/state/retail/types';
 
-export const STORAGE_KEY = 'movevai-retail:v1';
+// v2 intentionally drops the old cache because v1 mixed demo orders with
+// backend records. Keeping a separate key prevents stale mock workflow data
+// from being restored after the dashboard switches to backend authority.
+export const STORAGE_KEY = 'movevai-retail:v2';
 
 export const defaultState: RetailState = {
-  orders: migrateOrders(initialOrders),
+  orders: [],
   drivers: initialDrivers,
 };
-
-function mergeDriverDefaults(drivers: Driver[]): Driver[] {
-  return drivers.map((driver) => {
-    const defaultDriver = initialDrivers.find((item) => item.id === driver.id);
-
-    return {
-      ...defaultDriver,
-      ...driver,
-      avatarKey: driver.avatarKey || defaultDriver?.avatarKey || 'emerald',
-    };
-  });
-}
-
-function mergeOrderDefaults(orders: RetailState['orders']): RetailState['orders'] {
-  const existingIds = new Set(orders.map((order) => order.id));
-  const missingDefaults = initialOrders.filter((order) => !existingIds.has(order.id));
-
-  return migrateOrders([...orders, ...missingDefaults]);
-}
 
 export function loadState(): RetailState {
   if (typeof window === 'undefined') return defaultState;
@@ -41,10 +23,7 @@ export function loadState(): RetailState {
       return defaultState;
     }
 
-    return {
-      orders: mergeOrderDefaults(parsed.orders),
-      drivers: mergeDriverDefaults(parsed.drivers),
-    };
+    return parsed;
   } catch {
     return defaultState;
   }

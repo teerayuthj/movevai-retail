@@ -64,7 +64,7 @@ export function InboxPage() {
 
         <div className="flex items-center gap-2">
           <Badge variant="muted" className="gap-1">
-            <Coins className="h-3 w-3 text-amber-600" />
+            <Coins className="h-3 w-3 text-warning" />
             มูลค่าในคิว {formatTHB(inboxValue)}
           </Badge>
         </div>

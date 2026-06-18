@@ -30,19 +30,7 @@ type PushPayload = {
   customerAddress?: string;
   totalValue?: number;
   assignedDriverId?: string;
-};
-
-type RiderPushJob = {
-  id: string;
-  code: string;
-  title?: string;
-  body?: string;
-  customerName?: string;
-  customerPhone?: string;
-  customerAddress?: string;
-  totalValue?: number;
-  assignedDriverId: string;
-  receivedAt: string;
+  data?: unknown;
 };
 
 type BadgeNavigator = WorkerNavigator & {
@@ -52,9 +40,20 @@ type BadgeNavigator = WorkerNavigator & {
 
 const badgeCacheName = 'movevai-rider-badge';
 const badgeCountUrl = new URL('/__movevai/rider-badge-count', self.location.origin).toString();
-const pushJobCacheName = 'movevai-rider-push-jobs';
-const pushJobsUrl = new URL('/__movevai/rider-push-jobs', self.location.origin).toString();
-const defaultRiderId = 'D-02';
+
+function normalizePushPayload(payload: PushPayload): PushPayload {
+  if (!payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) {
+    return payload;
+  }
+
+  const data = payload.data as Partial<PushPayload> & { code?: string };
+  return {
+    ...data,
+    ...payload,
+    orderCode: payload.orderCode ?? data.orderCode ?? data.code,
+    data: payload.data,
+  };
+}
 
 async function readStoredBadgeCount() {
   const cache = await caches.open(badgeCacheName);
@@ -110,63 +109,9 @@ async function clearBadgeCount() {
   await applyAppBadge(0);
 }
 
-function extractOrderCode(payload: PushPayload) {
-  if (payload.orderCode?.trim()) return payload.orderCode.trim();
-  const text = `${payload.title ?? ''} ${payload.body ?? ''}`;
-  return text.match(/(?:#?[A-Z]{2,}|ORD)-[0-9A-Z-]+/i)?.[0]?.replace(/^#/, '') ?? 'PUSH-JOB';
-}
-
-function buildRiderPushJob(payload: PushPayload): RiderPushJob {
-  const receivedAt = new Date().toISOString();
-  const code = extractOrderCode(payload);
-
-  return {
-    id: payload.orderId?.trim() || `PUSH-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    code,
-    title: payload.title,
-    body: payload.body,
-    customerName: payload.customerName,
-    customerPhone: payload.customerPhone,
-    customerAddress: payload.customerAddress,
-    totalValue:
-      typeof payload.totalValue === 'number' && Number.isFinite(payload.totalValue)
-        ? payload.totalValue
-        : undefined,
-    assignedDriverId: payload.assignedDriverId ?? defaultRiderId,
-    receivedAt,
-  };
-}
-
-async function readQueuedPushJobs() {
-  const cache = await caches.open(pushJobCacheName);
-  const response = await cache.match(pushJobsUrl);
-  if (!response) return [] as RiderPushJob[];
-
-  try {
-    const data = (await response.json()) as { jobs?: unknown };
-    return Array.isArray(data.jobs) ? (data.jobs as RiderPushJob[]) : [];
-  } catch {
-    return [] as RiderPushJob[];
-  }
-}
-
-async function enqueuePushJob(payload: PushPayload) {
-  const cache = await caches.open(pushJobCacheName);
-  const jobs = await readQueuedPushJobs();
-  const job = buildRiderPushJob(payload);
-  const nextJobs = [...jobs, job].slice(-50);
-
-  await cache.put(
-    pushJobsUrl,
-    new Response(JSON.stringify({ jobs: nextJobs }), {
-      headers: { 'content-type': 'application/json' },
-    }),
-  );
-
+async function notifyOpenClients() {
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
   clients.forEach((client) => client.postMessage({ type: 'movevai:rider-push-job-added' }));
-
-  return job;
 }
 
 self.addEventListener('push', (event) => {
@@ -176,19 +121,20 @@ self.addEventListener('push', (event) => {
   } catch {
     payload = { body: event.data?.text() };
   }
+  payload = normalizePushPayload(payload);
 
   const title = payload.title ?? 'มีงานใหม่เข้ามา 🛵';
   event.waitUntil(
     (async () => {
       const badgeCount = await incrementBadgeCount(payload);
-      const job = await enqueuePushJob(payload);
+      await notifyOpenClients();
 
       await self.registration.showNotification(title, {
         body: payload.body ?? 'แตะเพื่อเปิดดูงาน',
         icon: '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
         tag: payload.tag ?? 'rider-new-job',
-        data: { url: payload.url ?? '/rider/assigned', badgeCount, orderId: job.id },
+        data: { url: payload.url ?? '/rider/assigned', badgeCount, orderId: payload.orderId },
       });
     })(),
   );
@@ -223,5 +169,5 @@ self.addEventListener('install', () => {
   void self.skipWaiting();
 });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(Promise.all([caches.delete('movevai-rider-push-jobs'), self.clients.claim()]));
 });

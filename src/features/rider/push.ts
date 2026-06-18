@@ -1,12 +1,11 @@
 // Web Push ฝั่ง client — ขอ permission, subscribe กับ push service, และยิง local notification ทดสอบ
 // public key มาจาก env (VITE_VAPID_PUBLIC_KEY) — ดู .env.example
-import type { RiderPushJobInput } from '@/state/retail/types';
-
 export type NotifPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
 export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-const pushJobCacheName = 'movevai-rider-push-jobs';
-const pushJobsUrl = new URL('/__movevai/rider-push-jobs', window.location.origin).toString();
+const RIDER_API_BASE_URL =
+  (import.meta.env.VITE_RIDER_API_BASE_URL as string | undefined) ?? '/api/rider';
+export const DEFAULT_RIDER_CODE = (import.meta.env.VITE_RIDER_CODE as string | undefined) ?? 'D-02';
 
 type BadgeNavigator = Navigator & {
   clearAppBadge?: () => Promise<void>;
@@ -46,53 +45,11 @@ export async function clearRiderAppBadge() {
   }
 }
 
-export async function drainQueuedRiderPushJobs(): Promise<RiderPushJobInput[]> {
-  if (typeof caches === 'undefined') return [];
-
-  try {
-    const cache = await caches.open(pushJobCacheName);
-    const response = await cache.match(pushJobsUrl);
-    if (!response) return [];
-
-    const data = (await response.json()) as { jobs?: unknown };
-    await cache.delete(pushJobsUrl);
-
-    if (!Array.isArray(data.jobs)) return [];
-    return data.jobs.filter((job): job is RiderPushJobInput => {
-      if (typeof job !== 'object' || job === null) return false;
-      const candidate = job as Partial<RiderPushJobInput>;
-      return (
-        typeof candidate.id === 'string' &&
-        typeof candidate.code === 'string' &&
-        typeof candidate.assignedDriverId === 'string'
-      );
-    });
-  } catch {
-    return [];
-  }
-}
-
 async function ensurePermission(): Promise<NotifPermission> {
   if (!isPushSupported()) return 'unsupported';
   let permission = Notification.permission;
   if (permission === 'default') permission = await Notification.requestPermission();
   return permission as NotifPermission;
-}
-
-/** local notification — เด้งบนเครื่องเดียวกับที่กด (ไม่ใช่ push ข้ามเครื่อง) */
-export async function fireLocalTestNotification(): Promise<NotifPermission> {
-  const permission = await ensurePermission();
-  if (permission !== 'granted') return permission;
-
-  const registration = await navigator.serviceWorker.ready;
-  await registration.showNotification('มีงานใหม่เข้ามา 🛵', {
-    body: 'ORD-2048 · คุณสมชาย ใจดี · แตะเพื่อเปิดดูงาน',
-    icon: '/pwa-192x192.png',
-    badge: '/pwa-192x192.png',
-    tag: 'rider-new-job-test',
-    data: { url: '/rider/assigned' },
-  });
-  return 'granted';
 }
 
 // VAPID public key (base64url) → Uint8Array สำหรับ applicationServerKey
@@ -105,30 +62,67 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return output;
 }
 
+function subscriptionUsesKey(subscription: PushSubscription, expectedKey: Uint8Array<ArrayBuffer>) {
+  const currentKey = subscription.options.applicationServerKey;
+  if (!currentKey) return false;
+
+  const current = new Uint8Array(currentKey);
+  return (
+    current.length === expectedKey.length &&
+    current.every((value, index) => value === expectedKey[index])
+  );
+}
+
 export type SubscribeResult =
   | { ok: true; subscription: PushSubscriptionJSON }
-  | { ok: false; reason: NotifPermission | 'no-vapid-key' };
+  | {
+      ok: false;
+      reason: NotifPermission | 'no-vapid-key' | 'backend-registration-failed';
+      status?: number;
+    };
 
-/** subscribe กับ push service → คืน subscription JSON ไว้ส่งให้ตัวยิง (scripts/send-push.mjs) */
-export async function subscribeToPush(): Promise<SubscribeResult> {
+/** subscribe กับ push service และผูกเครื่องนี้กับ rider ใน backend */
+export async function subscribeToPush(driverCode = DEFAULT_RIDER_CODE): Promise<SubscribeResult> {
   if (!VAPID_PUBLIC_KEY) return { ok: false, reason: 'no-vapid-key' };
 
   const permission = await ensurePermission();
   if (permission !== 'granted') return { ok: false, reason: permission };
 
   const registration = await navigator.serviceWorker.ready;
-  const existing = await registration.pushManager.getSubscription();
+  const applicationServerKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+  let existing = await registration.pushManager.getSubscription();
+  if (existing && !subscriptionUsesKey(existing, applicationServerKey)) {
+    await existing.unsubscribe();
+    existing = null;
+  }
   const subscription =
     existing ??
     (await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      applicationServerKey,
     }));
 
   const json = subscription.toJSON();
 
-  // dev: ส่ง subscription ไปเซฟที่เครื่อง dev อัตโนมัติ (ดู devPushSubscriptionSink ใน vite.config)
-  // ไม่ต้อง copy-paste ข้ามเครื่องเอง — best-effort ถ้าพลาดก็ยัง copy ด้วยมือได้
+  try {
+    const response = await fetch(`${RIDER_API_BASE_URL.replace(/\/$/, '')}/push-subscriptions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        driverCode,
+        subscription: json,
+        userAgent: navigator.userAgent,
+      }),
+    });
+
+    if (!response.ok) {
+      return { ok: false, reason: 'backend-registration-failed', status: response.status };
+    }
+  } catch {
+    return { ok: false, reason: 'backend-registration-failed' };
+  }
+
+  // เก็บ dev sink ไว้สำหรับ manual smoke test เท่านั้น
   if (import.meta.env.DEV) {
     try {
       await fetch('/__dev/push-subscription', {
@@ -142,34 +136,4 @@ export async function subscribeToPush(): Promise<SubscribeResult> {
   }
 
   return { ok: true, subscription: json };
-}
-
-export type DevPushTestResult =
-  | { ok: true }
-  | { ok: false; reason: 'dev-only' | 'send-failed' | 'invalid-response' };
-
-export async function sendDevPushTest(
-  subscription: PushSubscriptionJSON,
-): Promise<DevPushTestResult> {
-  if (!import.meta.env.DEV) return { ok: false, reason: 'dev-only' };
-
-  try {
-    const response = await fetch('/__dev/push-test', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        subscription,
-        payload: {
-          title: 'มีงานด่วนจาก Mac',
-          body: 'ORD-9001 · Push test เข้า iPhone เครื่องนี้',
-          url: '/rider/assigned',
-          tag: `rider-dev-test-${Date.now()}`,
-        },
-      }),
-    });
-
-    return response.ok ? { ok: true } : { ok: false, reason: 'send-failed' };
-  } catch {
-    return { ok: false, reason: 'invalid-response' };
-  }
 }

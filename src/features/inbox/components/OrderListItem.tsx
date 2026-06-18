@@ -84,7 +84,7 @@ export default function OrderListItem({
         <>
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
-            <span className="text-xs font-semibold tabular-nums text-amber-700">
+            <span className="text-xs font-semibold tabular-nums text-warning">
               {formatTHB(order.totalValue)}
             </span>
           </div>
@@ -104,7 +104,7 @@ export default function OrderListItem({
             </div>
           )}
           {order.confidence < 80 && (
-            <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+            <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
               <AlertTriangle className="h-3 w-3" />
               ต้องตรวจข้อมูล
             </div>
