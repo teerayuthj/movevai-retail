@@ -1,17 +1,44 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
-import { OverviewPage } from '@/pages/Overview';
-import { ChatIntakePage } from '@/pages/ChatIntake';
-import { ScriptTransformPage } from '@/pages/ScriptTransform';
-import { InboxPage } from '@/pages/Inbox';
-import { QueuePage } from '@/pages/Queue';
-import { DeliveryTrackingPage } from '@/pages/DeliveryTracking';
-import { PlanningPage } from '@/pages/Planning';
-import { PostalQueuePage } from '@/pages/PostalQueue';
-import { DriversPage } from '@/pages/Drivers';
-import { RiderConsolePage } from '@/pages/RiderConsole';
 import { RetailProvider } from '@/state/retailStore';
 import { getCanonicalPath, getPageFromPath, getPathForPage, type PageKey } from '@/lib/routes';
+
+// Lazy-load แต่ละหน้าเป็น chunk แยก เพื่อไม่ให้ surface ของ rider ต้องโหลด
+// dashboard admin + recharts ทั้งก้อน (เดิม bundle เดียว ~1.4MB → จอขาวตอนเปิดครั้งแรก)
+const OverviewPage = lazy(() =>
+  import('@/pages/Overview').then((m) => ({ default: m.OverviewPage })),
+);
+const ChatIntakePage = lazy(() =>
+  import('@/pages/ChatIntake').then((m) => ({ default: m.ChatIntakePage })),
+);
+const ScriptTransformPage = lazy(() =>
+  import('@/pages/ScriptTransform').then((m) => ({ default: m.ScriptTransformPage })),
+);
+const InboxPage = lazy(() => import('@/pages/Inbox').then((m) => ({ default: m.InboxPage })));
+const QueuePage = lazy(() => import('@/pages/Queue').then((m) => ({ default: m.QueuePage })));
+const DeliveryTrackingPage = lazy(() =>
+  import('@/pages/DeliveryTracking').then((m) => ({ default: m.DeliveryTrackingPage })),
+);
+const PlanningPage = lazy(() =>
+  import('@/pages/Planning').then((m) => ({ default: m.PlanningPage })),
+);
+const PostalQueuePage = lazy(() =>
+  import('@/pages/PostalQueue').then((m) => ({ default: m.PostalQueuePage })),
+);
+const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default: m.DriversPage })));
+const RiderConsolePage = lazy(() =>
+  import('@/pages/RiderConsole').then((m) => ({ default: m.RiderConsolePage })),
+);
+
+// อยู่ "ใน" Suspense → จะ mount ก็ต่อเมื่อ chunk ของหน้าโหลดเสร็จแล้ว
+// (ตอน suspend ทั้ง subtree ถูกแทนด้วย fallback, effect นี้จึงยังไม่ยิง)
+// พอ mount จริงค่อยลบ HTML splash → ไม่มีจอขาวคั่นระหว่างรอ chunk
+function SplashGate() {
+  useEffect(() => {
+    document.getElementById('app-splash')?.remove();
+  }, []);
+  return null;
+}
 
 export default function App() {
   const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
@@ -53,7 +80,10 @@ export default function App() {
   if (page === 'rider') {
     return (
       <RetailProvider mode="rider">
-        <RiderConsolePage onExit={() => navigateToPage('overview')} />
+        <Suspense fallback={null}>
+          <SplashGate />
+          <RiderConsolePage onExit={() => navigateToPage('overview')} />
+        </Suspense>
       </RetailProvider>
     );
   }
@@ -61,25 +91,28 @@ export default function App() {
   return (
     <RetailProvider>
       <AppShell page={page} onChangePage={navigateToPage}>
-        {page === 'overview' && <OverviewPage />}
-        {page === 'chat' && <ChatIntakePage onOpenInbox={() => navigateToPage('inbox')} />}
-        {page === 'script_transform' && <ScriptTransformPage />}
-        {page === 'inbox' && <InboxPage />}
-        {page === 'queue' && (
-          <QueuePage
-            locationSearch={locationSearch}
-            onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
-          />
-        )}
-        {page === 'delivery_tracking' && (
-          <DeliveryTrackingPage
-            locationSearch={locationSearch}
-            onOpenQueue={(search) => navigateToPage('queue', { search })}
-          />
-        )}
-        {page === 'planning' && <PlanningPage />}
-        {page === 'postal' && <PostalQueuePage />}
-        {page === 'drivers' && <DriversPage />}
+        <Suspense fallback={null}>
+          <SplashGate />
+          {page === 'overview' && <OverviewPage />}
+          {page === 'chat' && <ChatIntakePage onOpenInbox={() => navigateToPage('inbox')} />}
+          {page === 'script_transform' && <ScriptTransformPage />}
+          {page === 'inbox' && <InboxPage />}
+          {page === 'queue' && (
+            <QueuePage
+              locationSearch={locationSearch}
+              onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
+            />
+          )}
+          {page === 'delivery_tracking' && (
+            <DeliveryTrackingPage
+              locationSearch={locationSearch}
+              onOpenQueue={(search) => navigateToPage('queue', { search })}
+            />
+          )}
+          {page === 'planning' && <PlanningPage />}
+          {page === 'postal' && <PostalQueuePage />}
+          {page === 'drivers' && <DriversPage />}
+        </Suspense>
       </AppShell>
     </RetailProvider>
   );

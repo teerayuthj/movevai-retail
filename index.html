@@ -14,6 +14,47 @@
     <title>MoveVai Retail — Logistics Dashboard</title>
   </head>
   <body>
+    <!-- Splash โผล่ทันทีจาก HTML (ไม่ต้องรอ JS bundle) เพื่อกำจัดจอขาวตอนเปิดครั้งแรก
+         main.tsx จะลบ #app-splash ออกหลัง React mount เสร็จ -->
+    <style>
+      #app-splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        background: #ffffff;
+        z-index: 9999;
+      }
+      #app-splash .spinner {
+        width: 38px;
+        height: 38px;
+        border: 3px solid #dcfce7;
+        border-top-color: #16a34a;
+        border-radius: 50%;
+        animation: app-splash-spin 0.7s linear infinite;
+      }
+      #app-splash .label {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        font-size: 14px;
+        color: #16a34a;
+        letter-spacing: 0.02em;
+      }
+      @keyframes app-splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <div id="app-splash">
+      <div class="spinner"></div>
+      <div class="label">กำลังโหลด…</div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
