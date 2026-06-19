@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { planningCancelReasonLabel } from '@/data/mock';
 import { formatOverdueDuration, formatPlanningDate } from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
+import { cn } from '@/lib/utils';
 import { BellRing, Ban, Clock, RefreshCw, Route, UserCog } from 'lucide-react';
 
 function formatScheduledPush(route: PlanningRoute) {
@@ -73,11 +74,12 @@ export function PublishedRoutesCard({
           return (
             <div
               key={route.id}
-              className={
-                cancelled
-                  ? 'rounded-xl border border-dashed bg-muted/30 p-3 text-xs opacity-80'
-                  : 'rounded-xl border p-3 text-xs'
-              }
+              className={cn(
+                'rounded-xl border p-3 text-xs',
+                cancelled && 'border-dashed bg-muted/30 opacity-80',
+                overdueMinutes != null &&
+                  'border-destructive/50 border-l-4 border-l-destructive bg-destructive/5',
+              )}
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2 font-medium">
@@ -103,10 +105,7 @@ export function PublishedRoutesCard({
                 {route.plannedTime ? `${route.plannedTime} น.` : 'ไม่ระบุเวลา'}
               </div>
               {overdueMinutes != null && (
-                <Badge
-                  variant="outline"
-                  className="mt-2 border-destructive/30 bg-destructive/10 text-destructive"
-                >
+                <Badge variant="destructive" className="mt-2">
                   <Clock className="h-3 w-3" />
                   {formatOverdueDuration(overdueMinutes)}
                 </Badge>
