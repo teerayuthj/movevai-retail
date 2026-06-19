@@ -54,7 +54,9 @@ export function canReleasePlannedOrder(order: Order, dateKey = getTodayDateKey()
   return (
     canPlanOrder(order) &&
     order.deliveryPlan?.releaseState === 'planned' &&
-    order.deliveryPlan.plannedDate === dateKey
+    order.deliveryPlan.plannedDate === dateKey &&
+    !!order.deliveryPlan.plannedDriverId &&
+    (order.dispatchReadiness ?? 'ready') === 'ready'
   );
 }
 

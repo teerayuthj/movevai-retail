@@ -29,12 +29,7 @@ import {
   markPostalHandedOverState,
   setPostalTrackingState,
 } from '@/state/retail/postal';
-import {
-  clearPlannedOrdersState,
-  planOrdersState,
-  releasePlannedOrdersState,
-  setDispatchReadinessState,
-} from '@/state/retail/planning';
+import { clearPlannedOrdersState, setDispatchReadinessState } from '@/state/retail/planning';
 import type {
   ConfirmDeliveryInput,
   RetailState,
@@ -42,12 +37,16 @@ import type {
   SubmitDeliveryInput,
 } from '@/state/retail/types';
 import {
+  clearPlanning as clearPlanningApi,
   confirmAppDelivery,
   fetchAppDrivers,
   fetchAppOrders,
   fetchRiderOrders,
+  publishPlanningRoute,
+  savePlanning,
   startRiderOrder,
   submitRiderOrder,
+  syncAppOrder,
   syncAndAssignOrder,
 } from '@/lib/retailApi';
 
@@ -338,24 +337,60 @@ export function RetailProvider({
   );
 
   const planOrders = useCallback(
-    (orderIds: string[], input: Parameters<RetailStore['planOrders']>[1]) => {
-      commit((current) => planOrdersState(current, orderIds, input));
+    async (orderIds: string[], input: Parameters<RetailStore['planOrders']>[1]) => {
+      const selected = state.orders.filter((order) => orderIds.includes(order.id));
+      const synced = await Promise.all(selected.map(syncAppOrder));
+      const canonical = await savePlanning({
+        orderIds: synced.map((order) => order.id),
+        plannedDate: input.plannedDate,
+        driverCode: input.plannedDriverId,
+        dispatchReadiness: input.dispatchReadiness,
+        note: input.note,
+      });
+      commit((current) => ({
+        ...current,
+        orders: canonical.reduce(replaceOrder, current.orders),
+      }));
     },
-    [commit],
+    [commit, state.orders],
   );
 
   const clearPlannedOrders = useCallback(
-    (orderIds: string[]) => {
+    async (orderIds: string[]) => {
+      await clearPlanningApi(orderIds);
       commit((current) => clearPlannedOrdersState(current, orderIds));
     },
     [commit],
   );
 
   const releasePlannedOrders = useCallback(
-    (orderIds: string[]) => {
-      commit((current) => releasePlannedOrdersState(current, orderIds));
+    async (orderIds: string[]) => {
+      const selected = state.orders.filter((order) => orderIds.includes(order.id));
+      const first = selected[0];
+      const plannedDate = first?.deliveryPlan?.plannedDate;
+      const driverCode = first?.deliveryPlan?.plannedDriverId;
+      if (!plannedDate || !driverCode) {
+        throw new Error('กรุณาบันทึกวันส่งและ Rider ก่อน Publish');
+      }
+      if (
+        selected.some(
+          (order) =>
+            order.deliveryPlan?.plannedDate !== plannedDate ||
+            order.deliveryPlan?.plannedDriverId !== driverCode,
+        )
+      ) {
+        throw new Error('orders ใน Route ต้องเป็นวันส่งและ Rider เดียวกัน');
+      }
+      const route = await publishPlanningRoute({
+        orderIds,
+        plannedDate,
+        driverCode,
+        note: first.deliveryPlan?.note,
+      });
+      await syncFromBackend();
+      return route;
     },
-    [commit],
+    [state.orders, syncFromBackend],
   );
 
   const setDispatchReadiness = useCallback(
@@ -364,9 +399,19 @@ export function RetailProvider({
       readiness: Parameters<RetailStore['setDispatchReadiness']>[1],
       note?: Parameters<RetailStore['setDispatchReadiness']>[2],
     ) => {
+      const order = state.orders.find((item) => item.id === orderId);
+      if (order?.deliveryPlan?.releaseState === 'planned') {
+        return planOrders([orderId], {
+          plannedDate: order.deliveryPlan.plannedDate,
+          plannedDriverId: order.deliveryPlan.plannedDriverId,
+          dispatchReadiness: readiness,
+          note: note ?? order.deliveryPlan.note,
+        });
+      }
       commit((current) => setDispatchReadinessState(current, orderId, readiness, note));
+      return Promise.resolve();
     },
-    [commit],
+    [commit, planOrders, state.orders],
   );
 
   const resetDemoData = useCallback(() => {

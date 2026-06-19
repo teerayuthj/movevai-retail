@@ -10,6 +10,7 @@ import type {
   ProofOfDelivery,
   ShippingMethod,
 } from '@/data/mock';
+import type { PlanningRoute } from '@/lib/retailApi';
 
 export type RetailState = {
   orders: Order[];
@@ -86,9 +87,13 @@ export type RetailStore = RetailState & {
   markReturning: (orderId: string, input: MarkReturningInput) => void;
   markReturned: (orderId: string, input?: MarkReturnedInput) => void;
   retryDelivery: (orderId: string) => void;
-  planOrders: (orderIds: string[], input: PlanOrdersInput) => void;
-  clearPlannedOrders: (orderIds: string[]) => void;
-  releasePlannedOrders: (orderIds: string[]) => void;
-  setDispatchReadiness: (orderId: string, readiness: DispatchReadiness, note?: string) => void;
+  planOrders: (orderIds: string[], input: PlanOrdersInput) => Promise<void>;
+  clearPlannedOrders: (orderIds: string[]) => Promise<void>;
+  releasePlannedOrders: (orderIds: string[]) => Promise<PlanningRoute>;
+  setDispatchReadiness: (
+    orderId: string,
+    readiness: DispatchReadiness,
+    note?: string,
+  ) => Promise<void>;
   resetDemoData: () => void;
 };

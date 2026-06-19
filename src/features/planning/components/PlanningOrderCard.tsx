@@ -15,6 +15,10 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
   const plannedDriverName = order.deliveryPlan?.plannedDriverId
     ? drivers.find((driver) => driver.id === order.deliveryPlan?.plannedDriverId)?.name
     : undefined;
+  const totalQuantity = order.items.reduce((total, item) => total + item.qty, 0);
+  const itemSummary = order.items
+    .map((item) => `${item.name} ${item.weight} × ${item.qty}`)
+    .join(', ');
 
   return (
     <button
@@ -48,10 +52,14 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
           <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
         </div>
         <Badge variant={selected ? 'default' : 'outline'} className="shrink-0">
-          {selected ? 'เลือกแล้ว' : `${order.items.length} รายการ`}
+          {selected ? 'เลือกแล้ว' : `${totalQuantity} ชิ้น`}
         </Badge>
       </div>
       <div className="mt-2 grid gap-1 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-1.5">
+          <Package className="h-3 w-3 shrink-0" />
+          <span className="truncate">{itemSummary}</span>
+        </div>
         <div className="flex items-center gap-1.5">
           <Package className="h-3 w-3 shrink-0" />
           <span className="truncate">{order.customer.address}</span>

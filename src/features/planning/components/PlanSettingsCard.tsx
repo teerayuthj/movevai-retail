@@ -1,13 +1,8 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
-import {
-  dispatchReadinessLabel,
-  type DispatchReadiness,
-  type Driver,
-  type Order,
-} from '@/data/mock';
-import { CalendarClock, CheckCircle2, Clock3, XCircle } from 'lucide-react';
+import { dispatchReadinessLabel, type DispatchReadiness, type Driver } from '@/data/mock';
+import { CalendarClock, XCircle } from 'lucide-react';
 
 type PlanSettingsCardProps = {
   drivers: Driver[];
@@ -23,9 +18,6 @@ type PlanSettingsCardProps = {
   onApply: () => void;
   onClearPlans: () => void;
   clearDisabled: boolean;
-  /** เมื่อเลือก order เดียว — เปิดปุ่มปรับความพร้อมสินค้าอย่างเร็ว */
-  singleSelectedOrder: Order | null;
-  onSetReadiness: (orderId: string, value: DispatchReadiness, note?: string) => void;
 };
 
 export function PlanSettingsCard({
@@ -42,8 +34,6 @@ export function PlanSettingsCard({
   onApply,
   onClearPlans,
   clearDisabled,
-  singleSelectedOrder,
-  onSetReadiness,
 }: PlanSettingsCardProps) {
   return (
     <Card>
@@ -110,44 +100,6 @@ export function PlanSettingsCard({
             ล้างแผนที่เลือก
           </Button>
         </div>
-
-        {singleSelectedOrder && (
-          <div className="rounded-xl border bg-muted/20 p-3">
-            <div className="mb-2 text-[11px] font-medium text-muted-foreground">
-              ปรับความพร้อมสินค้าอย่างเร็ว
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant={
-                  (singleSelectedOrder.dispatchReadiness ?? 'ready') === 'ready'
-                    ? 'default'
-                    : 'outline'
-                }
-                onClick={() =>
-                  onSetReadiness(singleSelectedOrder.id, 'ready', planNote || undefined)
-                }
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                พร้อมปล่อยงาน
-              </Button>
-              <Button
-                size="sm"
-                variant={
-                  (singleSelectedOrder.dispatchReadiness ?? 'ready') === 'awaiting_items'
-                    ? 'default'
-                    : 'outline'
-                }
-                onClick={() =>
-                  onSetReadiness(singleSelectedOrder.id, 'awaiting_items', planNote || undefined)
-                }
-              >
-                <Clock3 className="h-4 w-4" />
-                รอสินค้ามาครบ
-              </Button>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

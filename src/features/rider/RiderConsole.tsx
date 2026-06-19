@@ -7,14 +7,29 @@ import { CheckCircle2, ClipboardList } from 'lucide-react';
 import { RIDER_JOB_STATUSES, RIDER_TABS, type RiderTab } from './riderTabs';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { useRiderTab } from './hooks/useRiderTab';
-import { clearRiderAppBadge, currentPermission, isPushSupported, subscribeToPush } from './push';
+import {
+  clearRiderAppBadge,
+  currentPermission,
+  DEFAULT_RIDER_CODE,
+  isPushSupported,
+  subscribeToPush,
+} from './push';
 import { RiderHeader } from './components/RiderHeader';
 import { JobCard } from './components/JobCard';
 import { RiderTabBar } from './components/RiderTabBar';
 import { RiderCompletedList } from './components/RiderCompletedList';
 import { RiderProfileSheet } from './components/RiderProfileSheet';
 
-const DEMO_RIDER_ID = 'D-02';
+const RIDER_STORAGE_KEY = 'movevai:rider-code';
+
+function resolveRiderCode() {
+  const fromUrl = new URLSearchParams(window.location.search).get('rider')?.trim();
+  if (fromUrl) {
+    localStorage.setItem(RIDER_STORAGE_KEY, fromUrl);
+    return fromUrl;
+  }
+  return localStorage.getItem(RIDER_STORAGE_KEY) || DEFAULT_RIDER_CODE;
+}
 
 export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const { orders, drivers, startDelivery, submitDelivery, refreshRiderJobs } = useRetailStore();
@@ -22,8 +37,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const [profileOpen, setProfileOpen] = useState(false);
   const install = useInstallPrompt();
   const { activeTab, setTab } = useRiderTab();
+  const [riderCode] = useState(resolveRiderCode);
 
-  const rider = drivers.find((driver) => driver.id === DEMO_RIDER_ID) ?? drivers[0] ?? null;
+  const rider = drivers.find((driver) => driver.id === riderCode) ?? null;
 
   const myJobs = useMemo(
     () =>
@@ -72,8 +88,8 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   }, [rider, install.installed]);
 
   const refreshJobs = useCallback(async () => {
-    await refreshRiderJobs(DEMO_RIDER_ID);
-  }, [refreshRiderJobs]);
+    await refreshRiderJobs(riderCode);
+  }, [refreshRiderJobs, riderCode]);
 
   useEffect(() => {
     void refreshJobs();
@@ -99,7 +115,16 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     };
   }, [refreshJobs]);
 
-  const tabJobs = activeTab ? myJobs.filter((order) => order.status === activeTab) : [];
+  const tabJobs = activeTab
+    ? myJobs
+        .filter((order) => order.status === activeTab)
+        .sort((a, b) => {
+          const dateCompare = (a.deliveryPlan?.plannedDate ?? '').localeCompare(
+            b.deliveryPlan?.plannedDate ?? '',
+          );
+          return dateCompare || (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0);
+        })
+    : [];
 
   return (
     <div className="flex min-h-dvh w-full justify-center bg-muted/40">
@@ -130,14 +155,29 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
             <RiderCompletedList riderCode={rider.id} />
           ) : (
             <>
-              {tabJobs.map((order) => (
-                <JobCard
-                  key={order.id}
-                  order={order}
-                  onStart={() => void startDelivery(order.id)}
-                  onClose={() => setCloseTargetId(order.id)}
-                />
-              ))}
+              {tabJobs.map((order, index) => {
+                const showDate =
+                  activeTab === 'assigned' &&
+                  order.deliveryPlan?.plannedDate !== tabJobs[index - 1]?.deliveryPlan?.plannedDate;
+                return (
+                  <div key={order.id}>
+                    {showDate && order.deliveryPlan?.plannedDate && (
+                      <div className="mb-2 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">
+                        งานวันที่{' '}
+                        {new Date(`${order.deliveryPlan.plannedDate}T00:00:00`).toLocaleDateString(
+                          'th-TH',
+                          { dateStyle: 'full' },
+                        )}
+                      </div>
+                    )}
+                    <JobCard
+                      order={order}
+                      onStart={() => void startDelivery(order.id)}
+                      onClose={() => setCloseTargetId(order.id)}
+                    />
+                  </div>
+                );
+              })}
               {activeTab && tabJobs.length === 0 && (
                 <div className="py-12 text-center text-sm text-muted-foreground">
                   <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />

@@ -56,6 +56,18 @@ export type DeliveryPlan = {
   note?: string;
 };
 
+export type DeliveryRoute = {
+  id: string;
+  code: string;
+  plannedDate: string;
+  status: 'published' | 'active' | 'completed';
+  sequence: number;
+  stopCount?: number;
+  driverCode?: string;
+  pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
+  pushError?: string;
+};
+
 /** บันทึกการเก็บเงินปลายทางตอนปิดงาน */
 export type CodCollection = {
   collected: boolean;
@@ -199,6 +211,7 @@ export type Order = {
   assignedDriverId?: string;
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
   deliveryPlan?: DeliveryPlan;
+  deliveryRoute?: DeliveryRoute;
   proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก rider
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ

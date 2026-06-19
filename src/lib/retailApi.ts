@@ -6,7 +6,7 @@ const RIDER_API_BASE =
   (import.meta.env.VITE_RIDER_API_BASE_URL as string | undefined) ?? '/api/rider';
 const APP_API_BASE = (import.meta.env.VITE_APP_API_BASE_URL as string | undefined) ?? '/api/app';
 
-type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
+export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
 type ApiOrder = Order & { assignedDriver?: ApiDriver };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
@@ -76,6 +76,27 @@ function serializeOrderForBackend(order: Order) {
   };
 }
 
+export type PlanningRoute = {
+  id: string;
+  code: string;
+  plannedDate: string;
+  status: 'published' | 'active' | 'completed';
+  note?: string;
+  publishedAt: string;
+  driver: ApiDriver;
+  pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
+  pushError?: string;
+  stops: { id: string; sequence: number; status: string; order: ApiOrder }[];
+};
+
+function normalizeRoute(route: PlanningRoute): PlanningRoute {
+  return {
+    ...route,
+    driver: { ...route.driver, id: route.driver.code },
+    stops: route.stops.map((stop) => ({ ...stop, order: normalizeOrder(stop.order) })),
+  };
+}
+
 // อ่าน orders จาก backend สำหรับ dashboard ฝั่ง web (ใช้ refresh/poll)
 export async function fetchAppOrders(params?: { status?: string; take?: number }) {
   const search = new URLSearchParams();
@@ -128,6 +149,62 @@ export async function syncAndAssignOrder(order: Order, driverCode: string) {
     body: JSON.stringify({ order: serializeOrderForBackend(order), driverCode }),
   });
   return normalizeOrder(result);
+}
+
+export async function syncAppOrder(order: Order) {
+  const result = await request<ApiOrder>(`${APP_API_BASE}/orders/sync`, {
+    method: 'POST',
+    body: JSON.stringify({ order: serializeOrderForBackend(order) }),
+  });
+  return normalizeOrder(result);
+}
+
+export async function savePlanning(input: {
+  orderIds: string[];
+  plannedDate: string;
+  driverCode?: string;
+  dispatchReadiness?: Order['dispatchReadiness'];
+  note?: string;
+}) {
+  const result = await request<{ items: ApiOrder[] }>(`${APP_API_BASE}/planning/plans`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return result.items.map(normalizeOrder);
+}
+
+export async function clearPlanning(orderIds: string[]) {
+  return request<{ cleared: number }>(`${APP_API_BASE}/planning/plans/clear`, {
+    method: 'POST',
+    body: JSON.stringify({ orderIds }),
+  });
+}
+
+export async function publishPlanningRoute(input: {
+  orderIds: string[];
+  plannedDate: string;
+  driverCode: string;
+  note?: string;
+}) {
+  const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/publish`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return normalizeRoute(route);
+}
+
+export async function fetchPlanningRoutes(date?: string) {
+  const search = date ? `?date=${encodeURIComponent(date)}` : '';
+  const routes = await request<PlanningRoute[]>(`${APP_API_BASE}/planning/routes${search}`);
+  return routes.map(normalizeRoute);
+}
+
+export async function retryPlanningRoutePush(routeId: string) {
+  const route = await request<PlanningRoute>(
+    `${APP_API_BASE}/planning/routes/${encodeURIComponent(routeId)}/push/retry`,
+    { method: 'POST' },
+  );
+  return normalizeRoute(route);
 }
 
 export async function fetchRiderOrders(driverCode: string) {
