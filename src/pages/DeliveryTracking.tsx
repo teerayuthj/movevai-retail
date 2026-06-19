@@ -1,33 +1,30 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
-import { MobileDetailSheet } from '@/components/MobileDetailSheet';
+import { DetailDrawer } from '@/components/DetailDrawer';
 import {
   DriverSummary,
-  EmptyState,
   OrderSummary,
   ProofOfDeliveryInfo,
-  QueueOrderCard,
   ResolutionInfo,
 } from '@/components/delivery/DeliveryExecutionShared';
 import {
   type FailNextAction,
   type FailReason,
+  type Order,
   failNextActionLabel,
   failReasonLabel,
+  formatTHB,
+  paymentLabel,
   statusLabel,
 } from '@/data/mock';
-import {
-  deliveryTrackingTabLabels,
-  requiresDeliveryReview,
-  type DeliveryTrackingTab,
-} from '@/lib/deliveryExecution';
+import { requiresDeliveryReview, type DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import {
   fetchAppOrder,
   fetchDeliveryTrackingCounts,
@@ -35,13 +32,22 @@ import {
   type DeliveryTrackingCounts,
 } from '@/lib/retailApi';
 import { useRetailStore } from '@/state/retailStore';
+import { cn } from '@/lib/utils';
 import {
   AlertCircle,
+  ArrowUpRight,
+  Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Coins,
+  IdCard,
   Loader2,
+  MapPin,
   PackageCheck,
+  Phone,
+  Undo2,
   Search,
   Truck,
   XCircle,
@@ -54,6 +60,10 @@ const EMPTY_COUNTS: DeliveryTrackingCounts = {
   returning: 0,
   closed: 0,
 };
+
+// มุมมองหน้า — 'needs_action' คือ union ของ pending + returning (งานที่ admin ต้องลงมือ)
+// ส่วนที่เหลือ map ตรงกับ DeliveryTrackingTab ของ backend
+type TrackingView = 'needs_action' | DeliveryTrackingTab;
 
 const FAIL_REASONS: { value: FailReason; label: string }[] = (
   Object.keys(failReasonLabel) as FailReason[]
@@ -68,18 +78,22 @@ type DeliveryTrackingPageProps = {
   onOpenQueue: (search?: string) => void;
 };
 
-function parseTrackingSearch(locationSearch: string) {
+function parseTrackingSearch(locationSearch: string): {
+  view: TrackingView | null;
+  orderId: string | null;
+} {
   const params = new URLSearchParams(locationSearch);
   const tab = params.get('tab');
   const orderId = params.get('order');
 
-  return {
-    tab:
-      tab === 'in_transit' || tab === 'pending' || tab === 'returning' || tab === 'closed'
-        ? (tab as DeliveryTrackingTab)
-        : null,
-    orderId: orderId || null,
-  };
+  const view: TrackingView | null =
+    tab === 'in_transit' || tab === 'pending' || tab === 'returning' || tab === 'closed'
+      ? (tab as DeliveryTrackingTab)
+      : tab === 'needs_action'
+        ? 'needs_action'
+        : null;
+
+  return { view, orderId: orderId || null };
 }
 
 function buildQueueSearch(orderId?: string) {
@@ -93,15 +107,14 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [riderCloseTargetId, setRiderCloseTargetId] = useState<string | null>(null);
+  const [isViewMenuOpen, setIsViewMenuOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [page, setPage] = useState(1);
-  const [trackingOrders, setTrackingOrders] = useState<typeof orders>([]);
+  const [trackingOrders, setTrackingOrders] = useState<Order[]>([]);
   const [trackingCounts, setTrackingCounts] = useState<DeliveryTrackingCounts>(EMPTY_COUNTS);
   const [trackingTotal, setTrackingTotal] = useState(0);
-  const [selectedOrderDetail, setSelectedOrderDetail] = useState<(typeof orders)[number] | null>(
-    null,
-  );
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
   const [isListLoading, setIsListLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -110,8 +123,11 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   const detailRequestId = useRef(0);
   const parsedSearch = useMemo(() => parseTrackingSearch(locationSearch), [locationSearch]);
 
-  const [activeTab, setActiveTab] = useState<DeliveryTrackingTab>(parsedSearch.tab ?? 'in_transit');
+  const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'needs_action');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(parsedSearch.orderId);
+
+  const isPaginated = view !== 'needs_action';
+  const needsActionCount = trackingCounts.pending + trackingCounts.returning;
 
   const selectedOrder =
     (selectedOrderDetail?.id === selectedOrderId ? selectedOrderDetail : null) ??
@@ -124,15 +140,11 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   const totalPages = Math.max(1, Math.ceil(trackingTotal / PAGE_SIZE));
 
   useEffect(() => {
-    if (parsedSearch.tab) {
-      setActiveTab(parsedSearch.tab);
-    }
-  }, [parsedSearch.tab]);
+    if (parsedSearch.view) setView(parsedSearch.view);
+  }, [parsedSearch.view]);
 
   useEffect(() => {
-    if (parsedSearch.orderId) {
-      setSelectedOrderId(parsedSearch.orderId);
-    }
+    if (parsedSearch.orderId) setSelectedOrderId(parsedSearch.orderId);
   }, [parsedSearch.orderId]);
 
   useEffect(() => {
@@ -147,22 +159,39 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     const requestId = ++listRequestId.current;
     setIsListLoading(true);
     setLoadError(null);
-    void fetchDeliveryTrackingOrders({
-      tab: activeTab,
-      query: debouncedQuery,
-      take: PAGE_SIZE,
-      skip: (page - 1) * PAGE_SIZE,
-    })
+
+    const load =
+      view === 'needs_action'
+        ? // รวม 2 สถานะที่ต้องลงมือไว้ในมุมมองเดียว — ส่งกลับขึ้นก่อน (ค้างที่สาขานานสุด)
+          Promise.all([
+            fetchDeliveryTrackingOrders({
+              tab: 'returning',
+              query: debouncedQuery,
+              take: PAGE_SIZE,
+              skip: 0,
+            }),
+            fetchDeliveryTrackingOrders({
+              tab: 'pending',
+              query: debouncedQuery,
+              take: PAGE_SIZE,
+              skip: 0,
+            }),
+          ]).then(([returning, pending]) => ({
+            orders: [...returning.orders, ...pending.orders],
+            total: returning.total + pending.total,
+          }))
+        : fetchDeliveryTrackingOrders({
+            tab: view,
+            query: debouncedQuery,
+            take: PAGE_SIZE,
+            skip: (page - 1) * PAGE_SIZE,
+          });
+
+    void load
       .then((result) => {
         if (requestId !== listRequestId.current) return;
         setTrackingOrders(result.orders);
         setTrackingTotal(result.total);
-        setSelectedOrderId((current) =>
-          current &&
-          (result.orders.some((order) => order.id === current) || current === parsedSearch.orderId)
-            ? current
-            : null,
-        );
       })
       .catch((error: unknown) => {
         if (requestId !== listRequestId.current) return;
@@ -171,7 +200,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       .finally(() => {
         if (requestId === listRequestId.current) setIsListLoading(false);
       });
-  }, [activeTab, debouncedQuery, page, parsedSearch.orderId, refreshKey]);
+  }, [view, debouncedQuery, page, refreshKey]);
 
   useEffect(() => {
     void fetchDeliveryTrackingCounts()
@@ -198,8 +227,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       });
   }, [selectedOrderId, refreshKey]);
 
-  function changeTab(tab: DeliveryTrackingTab) {
-    setActiveTab(tab);
+  function changeView(next: TrackingView) {
+    setView(next);
     setPage(1);
     setSelectedOrderId(null);
   }
@@ -208,133 +237,188 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     setRefreshKey((current) => current + 1);
   }
 
-  // สรุปออเดอร์ + หลักฐาน — ใช้ซ้ำทั้งคอลัมน์ขวา (เดสก์ท็อป) และ overlay (มือถือ)
-  const detailSummary = selectedOrder ? (
-    <>
-      <div>
-        <div className="text-[11px] font-medium text-muted-foreground">Order</div>
-        <div className="mt-1">
-          <OrderSummary order={selectedOrder} />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-1">
-        <Badge
-          variant={
-            selectedOrder.status === 'in_transit'
-              ? 'info'
-              : selectedOrder.status === 'pending_confirmation' ||
-                  selectedOrder.status === 'returning'
-                ? 'warning'
-                : 'muted'
-          }
-        >
-          {statusLabel[selectedOrder.status]}
-        </Badge>
-        {selectedOrder.deliveryPlan?.releaseState === 'released' && (
-          <Badge variant="info">จาก Planning</Badge>
-        )}
-        {selectedDriver && <Badge variant="muted">คนขับ: {selectedDriver.name}</Badge>}
-        {isDetailLoading && (
-          <Badge variant="muted" className="gap-1">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            กำลังโหลดรายละเอียด
-          </Badge>
-        )}
-      </div>
-
-      {!isDetailLoading && selectedOrder.proofOfDelivery && (
-        <ProofOfDeliveryInfo order={selectedOrder} driverName={selectedDriver?.name} />
-      )}
-
-      {(selectedOrder.status === 'returning' ||
-        selectedOrder.status === 'failed' ||
-        selectedOrder.status === 'cancelled' ||
-        selectedOrder.status === 'returned') &&
-        selectedOrder.resolution && <ResolutionInfo order={selectedOrder} />}
-    </>
-  ) : null;
-
-  // ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งเดสก์ท็อปและ footer ของ overlay มือถือ
-  const statusActions = selectedOrder ? (
-    <>
-      {selectedOrder.status === 'in_transit' && (
+  // ── ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งบนการ์ด inline และ footer ของ drawer ──
+  function renderActions(order: Order) {
+    if (order.status === 'in_transit') {
+      return (
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={() => setRiderCloseTargetId(selectedOrder.id)}>
+          <Button className="flex-1" onClick={() => setRiderCloseTargetId(order.id)}>
             <Truck className="h-4 w-4" />
             rider ปิดงาน
           </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() => setFailTargetId(selectedOrder.id)}
-          >
+          <Button variant="outline" className="flex-1" onClick={() => setFailTargetId(order.id)}>
             <XCircle className="h-4 w-4" />
             ไม่สำเร็จ
           </Button>
         </div>
-      )}
+      );
+    }
 
-      {selectedOrder.status === 'pending_confirmation' && (
+    if (order.status === 'pending_confirmation') {
+      return (
         <div className="flex gap-2">
           <Button
             className="flex-1"
             onClick={async () => {
-              await confirmDelivery(selectedOrder.id);
-              setSelectedOrderId(selectedOrder.id);
-              setActiveTab('closed');
-              setPage(1);
+              await confirmDelivery(order.id);
+              setSelectedOrderId(null);
               refreshTracking();
             }}
           >
             <CheckCircle2 className="h-4 w-4" />
             ยืนยันปิดงาน
           </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={() => setFailTargetId(selectedOrder.id)}
-          >
+          <Button variant="outline" className="flex-1" onClick={() => setFailTargetId(order.id)}>
             <XCircle className="h-4 w-4" />
-            ตีกลับ/ไม่สำเร็จ
+            ตีกลับ
           </Button>
         </div>
-      )}
+      );
+    }
 
-      {selectedOrder.status === 'returning' && (
+    if (order.status === 'returning') {
+      return (
         <Button
           className="w-full"
           onClick={() => {
-            markReturned(selectedOrder.id);
-            setSelectedOrderId(selectedOrder.id);
-            setActiveTab('closed');
+            markReturned(order.id);
+            setSelectedOrderId(null);
+            refreshTracking();
           }}
         >
           <PackageCheck className="h-4 w-4" />
           รับคืนเข้าสาขาแล้ว
         </Button>
-      )}
+      );
+    }
 
-      {(selectedOrder.status === 'delivered' ||
-        selectedOrder.status === 'failed' ||
-        selectedOrder.status === 'cancelled' ||
-        selectedOrder.status === 'returned') && (
-        <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-          งานนี้ปิดแล้ว ไม่มี action เพิ่มเติมในหน้าติดตาม
-        </div>
-      )}
-    </>
-  ) : null;
+    return (
+      <div className="rounded-lg border border-dashed p-3 text-center text-xs text-muted-foreground">
+        งานนี้ปิดแล้ว ไม่มี action เพิ่มเติม
+      </div>
+    );
+  }
+
+  // ── การ์ดในรายการ: สรุป + หลักฐานย่อ + ปุ่ม action ในตัว ──
+  function TrackingCard({ order }: { order: Order }) {
+    const pod = order.proofOfDelivery;
+    const tone =
+      order.status === 'in_transit'
+        ? 'border-l-info'
+        : order.status === 'pending_confirmation' || order.status === 'returning'
+          ? 'border-l-warning'
+          : 'border-l-muted-foreground/30';
+    const isActionable =
+      order.status === 'in_transit' ||
+      order.status === 'pending_confirmation' ||
+      order.status === 'returning';
+
+    return (
+      <div
+        className={cn(
+          'rounded-lg border border-l-[3px] bg-card transition-colors',
+          tone,
+          selectedOrderId === order.id && 'ring-1 ring-primary',
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setSelectedOrderId(order.id)}
+          className="block w-full p-4 pb-3 text-left"
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-xs font-medium">{order.code}</span>
+              <Badge
+                variant={
+                  order.status === 'in_transit'
+                    ? 'info'
+                    : order.status === 'pending_confirmation' || order.status === 'returning'
+                      ? 'warning'
+                      : 'muted'
+                }
+                className="h-5 px-1.5 text-[10px]"
+              >
+                {statusLabel[order.status]}
+              </Badge>
+              {order.requiresIdCheck && (
+                <Badge
+                  variant="warning"
+                  className="h-5 gap-0.5 border-destructive/30 bg-destructive/10 px-1.5 text-[10px] text-destructive"
+                >
+                  <IdCard className="h-2.5 w-2.5" />
+                  ตรวจบัตร
+                </Badge>
+              )}
+              {order.payment === 'cod' && (
+                <Badge variant="info" className="h-5 px-1.5 text-[10px]">
+                  COD
+                </Badge>
+              )}
+            </div>
+            <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </div>
+
+          <div className="mt-1.5 text-sm font-medium">{order.customer.name}</div>
+          <div className="mt-1 space-y-1 text-[11px] text-muted-foreground">
+            <div className="flex items-start gap-1.5">
+              <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+              <span className="line-clamp-1">{order.customer.address}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Phone className="h-3 w-3" />
+              <span>{order.customer.phone}</span>
+            </div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between border-t pt-2">
+            <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Coins className="h-3 w-3 text-warning" />
+              {paymentLabel[order.payment]}
+            </div>
+            <span className="text-sm font-semibold tabular-nums text-warning">
+              {formatTHB(order.totalValue)}
+            </span>
+          </div>
+
+          {pod && (
+            <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-success">
+              <span className="inline-flex items-center gap-1 rounded-md bg-success/10 px-1.5 py-0.5">
+                <CheckCircle2 className="h-2.5 w-2.5" />
+                หลักฐานครบจาก rider
+              </span>
+            </div>
+          )}
+          {order.resolution?.reason && order.status === 'returning' && (
+            <div className="mt-2 text-[11px] text-destructive">
+              เหตุ:{' '}
+              {failReasonLabel[order.resolution.reason as FailReason] ?? order.resolution.reason}
+            </div>
+          )}
+        </button>
+
+        {isActionable && <div className="px-4 pb-4">{renderActions(order)}</div>}
+      </div>
+    );
+  }
+
+  // แท็บเดียวคุมทั้งหมด — ตัวเลขเป็น badge ในแท็บ (ไม่แยกการ์ด KPI เพื่อเลี่ยงความกำกวมว่าคลิกได้ไหม)
+  const TABS: { view: TrackingView; label: string; icon: typeof Truck; count: number }[] = [
+    { view: 'needs_action', label: 'ต้องทำ', icon: AlertCircle, count: needsActionCount },
+    { view: 'in_transit', label: 'กำลังจัดส่ง', icon: Truck, count: trackingCounts.in_transit },
+    { view: 'pending', label: 'รอยืนยัน', icon: CheckCircle2, count: trackingCounts.pending },
+    { view: 'returning', label: 'ส่งกลับ', icon: Undo2, count: trackingCounts.returning },
+    { view: 'closed', label: 'ปิดงานแล้ว', icon: PackageCheck, count: trackingCounts.closed },
+  ];
+  const currentTab = TABS.find((tab) => tab.view === view) ?? TABS[0];
 
   return (
-    <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">ติดตามการจัดส่ง</h1>
-          <p className="text-sm text-muted-foreground">
-            ติดตามงานที่กำลังวิ่ง ส่งกลับ และงานที่ปิดแล้ว โดยใช้สถานะจริงจาก workflow เดิม
-          </p>
-        </div>
+    <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight">ติดตามการจัดส่ง</h1>
+        <p className="text-sm text-muted-foreground">
+          สายพานงานตามสถานะจริง — งานที่ต้องลงมืออยู่บนสุด จัดการได้ในที่เดียว
+        </p>
       </div>
 
       <ResolutionDialog
@@ -342,7 +426,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         title="บันทึกการส่งไม่สำเร็จ"
         description={
           failTargetId
-            ? `${selectedOrder?.id === failTargetId ? selectedOrder.code : (orders.find((order) => order.id === failTargetId)?.code ?? '')} — เลือกเหตุผลและขั้นตอนต่อไป`
+            ? `${trackingOrders.find((o) => o.id === failTargetId)?.code ?? orders.find((o) => o.id === failTargetId)?.code ?? ''} — เลือกเหตุผลและขั้นตอนต่อไป`
             : undefined
         }
         reasons={FAIL_REASONS}
@@ -354,7 +438,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             value === 'retry'
               ? 'ออเดอร์จะกลับเป็นสถานะมอบหมาย คนขับเดิมรับไปส่งใหม่'
               : value === 'return'
-                ? 'ออเดอร์จะถูกย้ายไปแท็บส่งกลับ รอรับคืนเข้าสาขา'
+                ? 'ออเดอร์จะถูกย้ายไปงานส่งกลับ รอรับคืนเข้าสาขา'
                 : 'ปิดงานเป็นส่งไม่สำเร็จ — ภายหลังยังกดส่งกลับสาขาได้',
         }}
         confirmLabel="บันทึก"
@@ -362,114 +446,202 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         onConfirm={({ reason, note, action }) => {
           if (!failTargetId || !action) return;
 
-          failDelivery(failTargetId, {
-            reason,
-            nextAction: action,
-            note,
-          });
+          failDelivery(failTargetId, { reason, nextAction: action, note });
 
           if (action === 'retry') {
             onOpenQueue(buildQueueSearch(failTargetId));
             return;
           }
 
-          setSelectedOrderId(failTargetId);
-          setActiveTab(action === 'return' ? 'returning' : 'closed');
+          setSelectedOrderId(null);
           setFailTargetId(null);
+          changeView(action === 'return' ? 'needs_action' : 'closed');
+          refreshTracking();
         }}
       />
 
       <RiderCloseJobDialog
         open={!!riderCloseTargetId}
         order={
-          selectedOrder?.id === riderCloseTargetId
-            ? selectedOrder
-            : (orders.find((order) => order.id === riderCloseTargetId) ?? null)
+          trackingOrders.find((o) => o.id === riderCloseTargetId) ??
+          orders.find((o) => o.id === riderCloseTargetId) ??
+          null
         }
         onCancel={() => setRiderCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!riderCloseTargetId) return;
           const target =
-            selectedOrder?.id === riderCloseTargetId
-              ? selectedOrder
-              : orders.find((order) => order.id === riderCloseTargetId);
+            trackingOrders.find((o) => o.id === riderCloseTargetId) ??
+            orders.find((o) => o.id === riderCloseTargetId);
           await submitDelivery(riderCloseTargetId, input);
-          setSelectedOrderId(riderCloseTargetId);
-          // งานเสี่ยงสูง → ไปแท็บรอยืนยัน, งานทั่วไป → ปิดเลยไปแท็บปิดงาน
-          setActiveTab(target && requiresDeliveryReview(target) ? 'pending' : 'closed');
+          setSelectedOrderId(null);
           setRiderCloseTargetId(null);
+          // งานเสี่ยงสูง → ไปแท็บต้องทำ (รอยืนยัน), งานทั่วไป → ปิดเลย
+          changeView(target && requiresDeliveryReview(target) ? 'needs_action' : 'closed');
           refreshTracking();
         }}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px_380px]">
-        <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
-          <CardHeader className="pb-3">
-            <div className="space-y-3">
-              <CardTitle className="text-sm">รายการติดตาม</CardTitle>
-              <div className="flex flex-col gap-3">
-                <Tabs
-                  value={activeTab}
-                  onValueChange={(value) => changeTab(value as DeliveryTrackingTab)}
-                  className="w-full"
+      {/* มือถือ: dropdown เลือกมุมมอง — ไม่มี scroll แนวนอน */}
+      <div className="lg:hidden">
+        <Popover open={isViewMenuOpen} onOpenChange={setIsViewMenuOpen}>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className={cn(
+                'flex h-11 w-full items-center justify-between rounded-xl border bg-card px-4 text-sm',
+                currentTab.view === 'needs_action' && currentTab.count > 0 && 'text-warning',
+              )}
+            >
+              <span className="flex items-center gap-2">
+                <currentTab.icon className="h-4 w-4" />
+                <span className="font-medium">{currentTab.label}</span>
+                <span
+                  className={cn(
+                    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
+                    currentTab.view === 'needs_action' && currentTab.count > 0
+                      ? 'bg-warning/15 text-warning'
+                      : 'bg-muted text-muted-foreground',
+                  )}
                 >
-                  <div className="w-full">
-                    <TabsList className="flex h-auto w-full flex-nowrap justify-start gap-1.5 overflow-x-auto rounded-2xl bg-muted/70 p-1.5 lg:flex-wrap">
-                      {(Object.keys(deliveryTrackingTabLabels) as DeliveryTrackingTab[]).map(
-                        (tab) => (
-                          <TabsTrigger
-                            key={tab}
-                            value={tab}
-                            className="h-10 shrink-0 gap-2 rounded-xl px-3.5 text-sm text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs"
-                          >
-                            <span>{deliveryTrackingTabLabels[tab]}</span>
-                            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background/80 px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
-                              {trackingCounts[tab].toLocaleString('th-TH')}
-                            </span>
-                          </TabsTrigger>
-                        ),
-                      )}
-                    </TabsList>
-                  </div>
-                </Tabs>
-                <div className="relative w-full max-w-xl">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    value={query}
-                    onChange={(event) => setQuery(event.target.value)}
-                    placeholder="ค้นหา order, ลูกค้า, เบอร์โทร, คนขับ..."
-                    className="h-10 rounded-xl pl-9"
-                  />
-                </div>
-              </div>
+                  {currentTab.count.toLocaleString('th-TH')}
+                </span>
+              </span>
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-sm p-1">
+            {TABS.map((tab) => {
+              const active = view === tab.view;
+              const urgent = tab.view === 'needs_action' && tab.count > 0;
+              return (
+                <button
+                  key={tab.view}
+                  type="button"
+                  onClick={() => {
+                    changeView(tab.view);
+                    setIsViewMenuOpen(false);
+                  }}
+                  className={cn(
+                    'flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition-colors hover:bg-muted',
+                    active && 'bg-muted/60',
+                    urgent && 'text-warning',
+                  )}
+                >
+                  <tab.icon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1 text-left font-medium">{tab.label}</span>
+                  <span
+                    className={cn(
+                      'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
+                      urgent ? 'bg-warning/15 text-warning' : 'bg-muted text-muted-foreground',
+                    )}
+                  >
+                    {tab.count.toLocaleString('th-TH')}
+                  </span>
+                  {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                </button>
+              );
+            })}
+          </PopoverContent>
+        </Popover>
+      </div>
+
+      {/* เดสก์ท็อป: แท็บเดียวคุมมุมมอง — ตัวเลขเป็น badge ในแท็บ */}
+      <div className="hidden lg:block">
+        <div className="inline-flex min-w-full gap-1.5 rounded-2xl bg-muted/70 p-1.5">
+          {TABS.map((tab) => {
+            const active = view === tab.view;
+            const Icon = tab.icon;
+            const isAction = tab.view === 'needs_action';
+            const urgent = isAction && tab.count > 0;
+            return (
+              <button
+                key={tab.view}
+                type="button"
+                onClick={() => changeView(tab.view)}
+                className={cn(
+                  'flex h-10 shrink-0 items-center gap-2 rounded-xl px-3.5 text-sm transition-colors',
+                  active
+                    ? 'bg-background shadow-xs'
+                    : 'text-muted-foreground hover:text-foreground',
+                  active && urgent && 'text-warning',
+                  active && !urgent && 'text-foreground',
+                  !active && urgent && 'text-warning',
+                )}
+              >
+                <Icon className="h-4 w-4" />
+                <span>{tab.label}</span>
+                <span
+                  className={cn(
+                    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
+                    urgent
+                      ? 'bg-warning/15 text-warning'
+                      : active
+                        ? 'bg-muted text-muted-foreground'
+                        : 'bg-background/80 text-muted-foreground',
+                  )}
+                >
+                  {tab.count.toLocaleString('th-TH')}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <Card className="flex min-h-[calc(100vh-16rem)] flex-col overflow-hidden">
+        <CardHeader className="gap-3 pb-3">
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm">
+              {TABS.find((tab) => tab.view === view)?.label ?? 'ต้องดำเนินการ'}
+            </CardTitle>
+            <span className="text-[11px] text-muted-foreground">
+              {trackingTotal.toLocaleString('th-TH')} รายการ
+            </span>
+          </div>
+          <div className="relative w-full max-w-xl">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="ค้นหา order, ลูกค้า, เบอร์โทร, คนขับ..."
+              className="h-10 rounded-xl pl-9"
+            />
+          </div>
+        </CardHeader>
+
+        <CardContent className="relative flex-1 space-y-2 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+          {trackingOrders.map((order) => (
+            <TrackingCard key={order.id} order={order} />
+          ))}
+
+          {!isListLoading && !loadError && trackingOrders.length === 0 && (
+            <div className="py-16 text-center text-sm text-muted-foreground">
+              <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
+              {view === 'needs_action'
+                ? 'เคลียร์งานหมดแล้ว ไม่มีอะไรค้าง 🎉'
+                : 'ไม่มีรายการในสถานะนี้'}
             </div>
-          </CardHeader>
-          <CardContent className="tracking-list-scroll relative flex-1 space-y-2 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
-            {trackingOrders.map((order) => (
-              <QueueOrderCard
-                key={order.id}
-                order={order}
-                selected={selectedOrderId === order.id}
-                onClick={() => setSelectedOrderId(order.id)}
-                statusText={statusLabel[order.status]}
-              />
-            ))}
-            {!isListLoading && !loadError && trackingOrders.length === 0 && <EmptyState />}
-            {isListLoading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-background/70">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            )}
-            {loadError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center text-xs text-destructive">
-                <AlertCircle className="mx-auto mb-2 h-4 w-4" />
-                <div>{loadError}</div>
-                <Button variant="outline" size="sm" className="mt-3" onClick={refreshTracking}>
-                  ลองใหม่
-                </Button>
-              </div>
-            )}
-          </CardContent>
+          )}
+
+          {isListLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-background/70">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          )}
+
+          {loadError && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 text-center text-xs text-destructive">
+              <AlertCircle className="mx-auto mb-2 h-4 w-4" />
+              <div>{loadError}</div>
+              <Button variant="outline" size="sm" className="mt-3" onClick={refreshTracking}>
+                ลองใหม่
+              </Button>
+            </div>
+          )}
+        </CardContent>
+
+        {isPaginated && (
           <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
             <span>
               {trackingTotal === 0
@@ -503,73 +675,74 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
               </Button>
             </div>
           </div>
-        </Card>
+        )}
+      </Card>
 
-        <Card className="hidden h-[calc(100vh-12rem)] flex-col overflow-hidden lg:flex">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">ข้อมูลคนขับ</CardTitle>
-            <CardDescription>
-              {selectedOrder
-                ? `${selectedOrder.code} · ${statusLabel[selectedOrder.status]}`
-                : 'เลือก order ก่อน'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-auto">
-            {isDetailLoading && !selectedOrder ? (
-              <div className="flex h-full items-center justify-center">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <DriverSummary driver={selectedDriver} order={selectedOrder} />
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="hidden h-[calc(100vh-12rem)] space-y-4 overflow-auto lg:block">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">สถานะและการดำเนินการ</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {selectedOrder ? (
-                <>
-                  {detailSummary}
-                  {statusActions}
-                </>
-              ) : (
-                <div className="py-8 text-center text-sm text-muted-foreground">
-                  เลือก order จากคอลัมน์ซ้าย
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          <OrderTimeline
-            order={selectedOrder}
-            description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้"
-            compact
-          />
-        </div>
-      </div>
-
-      {/* มือถือ: เปิดรายละเอียด + อนุมัติแบบเต็มจอ (ซ่อนบนเดสก์ท็อปที่ใช้ 3 คอลัมน์) */}
-      <MobileDetailSheet
+      {/* รายละเอียดเชิงลึก — drawer ขวา (เดสก์ท็อป) / เต็มจอ (มือถือ) เปิดเมื่อเลือก order */}
+      <DetailDrawer
         open={!!selectedOrder}
         title={<span className="font-mono">{selectedOrder?.code}</span>}
         subtitle={selectedOrder ? statusLabel[selectedOrder.status] : undefined}
         onClose={() => setSelectedOrderId(null)}
-        footer={statusActions}
+        footer={selectedOrder ? renderActions(selectedOrder) : undefined}
       >
-        {detailSummary}
-        <div>
-          <div className="mb-1 text-[11px] font-medium text-muted-foreground">ข้อมูลคนขับ</div>
-          <DriverSummary driver={selectedDriver} order={selectedOrder} />
-        </div>
-        <OrderTimeline
-          order={selectedOrder}
-          description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้"
-          compact
-        />
-      </MobileDetailSheet>
+        {selectedOrder && (
+          <>
+            <div>
+              <div className="text-[11px] font-medium text-muted-foreground">Order</div>
+              <div className="mt-1">
+                <OrderSummary order={selectedOrder} />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1">
+              <Badge
+                variant={
+                  selectedOrder.status === 'in_transit'
+                    ? 'info'
+                    : selectedOrder.status === 'pending_confirmation' ||
+                        selectedOrder.status === 'returning'
+                      ? 'warning'
+                      : 'muted'
+                }
+              >
+                {statusLabel[selectedOrder.status]}
+              </Badge>
+              {selectedOrder.deliveryPlan?.releaseState === 'released' && (
+                <Badge variant="info">จาก Planning</Badge>
+              )}
+              {selectedDriver && <Badge variant="muted">คนขับ: {selectedDriver.name}</Badge>}
+              {isDetailLoading && (
+                <Badge variant="muted" className="gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  กำลังโหลด
+                </Badge>
+              )}
+            </div>
+
+            {!isDetailLoading && selectedOrder.proofOfDelivery && (
+              <ProofOfDeliveryInfo order={selectedOrder} driverName={selectedDriver?.name} />
+            )}
+
+            {(selectedOrder.status === 'returning' ||
+              selectedOrder.status === 'failed' ||
+              selectedOrder.status === 'cancelled' ||
+              selectedOrder.status === 'returned') &&
+              selectedOrder.resolution && <ResolutionInfo order={selectedOrder} />}
+
+            <div>
+              <div className="mb-1 text-[11px] font-medium text-muted-foreground">ข้อมูลคนขับ</div>
+              <DriverSummary driver={selectedDriver} order={selectedOrder} />
+            </div>
+
+            <OrderTimeline
+              order={selectedOrder}
+              description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้"
+              compact
+            />
+          </>
+        )}
+      </DetailDrawer>
     </div>
   );
 }

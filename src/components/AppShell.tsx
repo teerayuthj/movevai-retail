@@ -16,12 +16,14 @@ import {
   FileSpreadsheet,
   Smartphone,
   Menu,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPathForPage, type PageKey } from '@/lib/routes';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useRetailStore } from '@/state/retailStore';
 import { canPlanOrder, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
@@ -55,6 +57,7 @@ function CollapsedSidebarTooltip({ label, enabled, children }: CollapsedSidebarT
 export function AppShell({ page, onChangePage, children }: Props) {
   const [q, setQ] = useState('');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
 
@@ -241,19 +244,63 @@ export function AppShell({ page, onChangePage, children }: Props) {
             })}
           </nav>
           <div className={cn('border-t', collapsed ? 'p-1.5' : 'p-3')}>
-            <CollapsedSidebarTooltip label="รีเซ็ตข้อมูลทดสอบ" enabled={collapsed}>
-              <button
-                onClick={resetDemoData}
-                aria-label="รีเซ็ตข้อมูลทดสอบ"
-                className={cn(
-                  'relative flex items-center rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-foreground',
-                  collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-3 px-3 py-2',
-                )}
+            <Popover open={isUserMenuOpen} onOpenChange={setIsUserMenuOpen}>
+              <CollapsedSidebarTooltip
+                label="James Teerayuth"
+                enabled={collapsed && !isUserMenuOpen}
               >
-                <Settings className="h-[18px] w-[18px]" strokeWidth={2.15} />
-                {!collapsed && 'รีเซ็ตข้อมูลทดสอบ'}
-              </button>
-            </CollapsedSidebarTooltip>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="เมนูผู้ใช้"
+                    className={cn(
+                      'flex items-center rounded-lg transition-colors hover:bg-accent',
+                      collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-2.5 px-2 py-1.5',
+                    )}
+                  >
+                    <Avatar className="h-8 w-8 shrink-0">
+                      <AvatarFallback>JT</AvatarFallback>
+                    </Avatar>
+                    {!collapsed && (
+                      <>
+                        <div className="min-w-0 flex-1 text-left leading-tight">
+                          <div className="truncate text-sm font-medium">James Teerayuth</div>
+                          <div className="truncate text-[11px] text-muted-foreground">
+                            teerayuth.james@gmail.com
+                          </div>
+                        </div>
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+                      </>
+                    )}
+                  </button>
+                </PopoverTrigger>
+              </CollapsedSidebarTooltip>
+              <PopoverContent
+                side={collapsed ? 'right' : 'top'}
+                align={collapsed ? 'end' : 'start'}
+                sideOffset={collapsed ? 12 : 8}
+                className="w-56 p-1"
+              >
+                <div className="px-2 py-1.5">
+                  <div className="truncate text-sm font-medium">James Teerayuth</div>
+                  <div className="truncate text-[11px] text-muted-foreground">
+                    teerayuth.james@gmail.com
+                  </div>
+                </div>
+                <div className="my-1 h-px bg-border" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetDemoData();
+                    setIsUserMenuOpen(false);
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                >
+                  <Settings className="h-4 w-4 shrink-0" strokeWidth={2.15} />
+                  รีเซ็ตข้อมูลทดสอบ
+                </button>
+              </PopoverContent>
+            </Popover>
           </div>
         </aside>
 
@@ -294,14 +341,6 @@ export function AppShell({ page, onChangePage, children }: Props) {
                 <Bell className="h-4 w-4" />
                 <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
               </button>
-              <div className="ml-2 flex items-center gap-2">
-                <Avatar>
-                  <AvatarFallback>JT</AvatarFallback>
-                </Avatar>
-                <div className="leading-tight">
-                  <div className="text-sm font-medium">James Teerayuth</div>
-                </div>
-              </div>
             </div>
           </header>
           <main className="p-4 sm:p-6">{children}</main>
