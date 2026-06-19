@@ -23,6 +23,26 @@ export function formatPlanningDate(dateKey: string, locale = 'th-TH') {
   });
 }
 
+/** เวลาเริ่มต้นของช่องเวลาจัดส่ง: ปัดขึ้นเป็นชั่วโมงถัดไป (13:20 → 14:00, 13:00 → 13:00) */
+export function getNextHourTime(date = new Date()) {
+  const next = new Date(date);
+  if (next.getMinutes() > 0 || next.getSeconds() > 0 || next.getMilliseconds() > 0) {
+    next.setHours(next.getHours() + 1);
+  }
+  next.setMinutes(0, 0, 0);
+  return `${`${next.getHours()}`.padStart(2, '0')}:00`;
+}
+
+export function formatPlanningTime(time: string | undefined) {
+  return time ? `${time} น.` : undefined;
+}
+
+export function formatPlanningDateTime(dateKey: string, time?: string, locale = 'th-TH') {
+  const date = formatPlanningDate(dateKey, locale);
+  const formattedTime = formatPlanningTime(time);
+  return formattedTime ? `${date} ${formattedTime}` : date;
+}
+
 export function normalizeOrderPlanning(order: Order): Order {
   return {
     ...order,

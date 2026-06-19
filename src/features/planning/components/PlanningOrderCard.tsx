@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/mock';
-import { formatPlanningDate, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import { formatPlanningDateTime, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { Package } from 'lucide-react';
 
@@ -35,7 +35,10 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
             <span className="font-mono text-xs font-medium">{order.code}</span>
             {isUnreleasedPlannedOrder(order) ? (
               <Badge variant="info" className="h-5 px-1.5 text-[10px]">
-                {formatPlanningDate(order.deliveryPlan!.plannedDate)}
+                {formatPlanningDateTime(
+                  order.deliveryPlan!.plannedDate,
+                  order.deliveryPlan!.plannedTime,
+                )}
               </Badge>
             ) : (
               <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">

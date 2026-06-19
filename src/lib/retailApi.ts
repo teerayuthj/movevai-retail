@@ -80,12 +80,16 @@ export type PlanningRoute = {
   id: string;
   code: string;
   plannedDate: string;
+  plannedTime?: string;
+  scheduledFor?: string;
   status: 'published' | 'active' | 'completed';
   note?: string;
   publishedAt: string;
   driver: ApiDriver;
   pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
   pushError?: string;
+  reminderPushStatus?: 'queued' | 'running' | 'succeeded' | 'failed';
+  reminderPushError?: string;
   stops: { id: string; sequence: number; status: string; order: ApiOrder }[];
 };
 
@@ -162,6 +166,7 @@ export async function syncAppOrder(order: Order) {
 export async function savePlanning(input: {
   orderIds: string[];
   plannedDate: string;
+  plannedTime?: string;
   driverCode?: string;
   dispatchReadiness?: Order['dispatchReadiness'];
   note?: string;
@@ -183,6 +188,7 @@ export async function clearPlanning(orderIds: string[]) {
 export async function publishPlanningRoute(input: {
   orderIds: string[];
   plannedDate: string;
+  plannedTime?: string;
   driverCode: string;
   note?: string;
 }) {

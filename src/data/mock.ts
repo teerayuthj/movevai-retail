@@ -50,6 +50,7 @@ export type DispatchReadiness = 'ready' | 'awaiting_items';
 
 export type DeliveryPlan = {
   plannedDate: string; // local date key in YYYY-MM-DD
+  plannedTime?: string; // local time in HH:mm (24h)
   plannedDriverId?: string;
   releaseState: 'planned' | 'released';
   releasedAt?: string;
@@ -164,6 +165,7 @@ export type OrderActivityChangeField =
   | 'status'
   | 'dispatchReadiness'
   | 'deliveryPlan.plannedDate'
+  | 'deliveryPlan.plannedTime'
   | 'deliveryPlan.plannedDriverId'
   | 'deliveryPlan.releaseState';
 

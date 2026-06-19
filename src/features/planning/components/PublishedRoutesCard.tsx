@@ -2,7 +2,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { PlanningRoute } from '@/lib/retailApi';
-import { BellRing, RefreshCw, Route } from 'lucide-react';
+import { BellRing, Clock, RefreshCw, Route } from 'lucide-react';
+
+function formatScheduledPush(route: PlanningRoute) {
+  if (!route.plannedTime) return null;
+  if (route.reminderPushStatus === 'succeeded') return `เตือนเวลา ${route.plannedTime} น. แล้ว`;
+  if (route.reminderPushStatus === 'failed') return `เตือนเวลา ${route.plannedTime} น. ไม่สำเร็จ`;
+  return `รอเตือนเมื่อถึงเวลา ${route.plannedTime} น.`;
+}
 
 export function PublishedRoutesCard({
   routes,
@@ -34,14 +41,23 @@ export function PublishedRoutesCard({
                       : 'secondary'
                 }
               >
-                <BellRing className="h-3 w-3" /> {route.pushStatus}
+                <BellRing className="h-3 w-3" /> แจ้งงาน {route.pushStatus}
               </Badge>
             </div>
             <div className="mt-2 text-muted-foreground">
               {route.driver.name} · {route.stops.length} จุดส่ง
             </div>
+            {formatScheduledPush(route) && (
+              <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                <Clock className="h-3 w-3 shrink-0" />
+                {formatScheduledPush(route)}
+              </div>
+            )}
             {route.pushError && <div className="mt-2 text-destructive">{route.pushError}</div>}
-            {route.pushStatus === 'failed' && (
+            {route.reminderPushError && (
+              <div className="mt-2 text-destructive">{route.reminderPushError}</div>
+            )}
+            {(route.pushStatus === 'failed' || route.reminderPushStatus === 'failed') && (
               <Button
                 className="mt-2"
                 size="sm"

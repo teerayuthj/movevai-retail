@@ -9,6 +9,8 @@ type PlanSettingsCardProps = {
   selectedCount: number;
   planDate: string;
   onPlanDate: (value: string) => void;
+  planTime: string;
+  onPlanTime: (value: string) => void;
   plannedDriverId: string;
   onPlannedDriverId: (value: string) => void;
   readiness: DispatchReadiness;
@@ -25,6 +27,8 @@ export function PlanSettingsCard({
   selectedCount,
   planDate,
   onPlanDate,
+  planTime,
+  onPlanTime,
   plannedDriverId,
   onPlannedDriverId,
   readiness,
@@ -46,9 +50,34 @@ export function PlanSettingsCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-2">
-          <label className="text-[11px] font-medium text-muted-foreground">วันจัดส่งตามแผน</label>
-          <DatePicker value={planDate} onChange={onPlanDate} className="w-full" />
+        <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-2">
+            <label className="text-[11px] font-medium text-muted-foreground">วันจัดส่งตามแผน</label>
+            <DatePicker value={planDate} onChange={onPlanDate} className="w-full" />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-[11px] font-medium text-muted-foreground">เวลาจัดส่ง</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="time"
+                value={planTime}
+                onChange={(event) => onPlanTime(event.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              {planTime && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-8 shrink-0 text-muted-foreground"
+                  onClick={() => onPlanTime('')}
+                  aria-label="ล้างเวลา"
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-2">

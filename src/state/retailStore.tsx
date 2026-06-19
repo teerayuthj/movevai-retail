@@ -343,6 +343,7 @@ export function RetailProvider({
       const canonical = await savePlanning({
         orderIds: synced.map((order) => order.id),
         plannedDate: input.plannedDate,
+        plannedTime: input.plannedTime,
         driverCode: input.plannedDriverId,
         dispatchReadiness: input.dispatchReadiness,
         note: input.note,
@@ -368,6 +369,7 @@ export function RetailProvider({
       const selected = state.orders.filter((order) => orderIds.includes(order.id));
       const first = selected[0];
       const plannedDate = first?.deliveryPlan?.plannedDate;
+      const plannedTime = first?.deliveryPlan?.plannedTime;
       const driverCode = first?.deliveryPlan?.plannedDriverId;
       if (!plannedDate || !driverCode) {
         throw new Error('กรุณาบันทึกวันส่งและ Rider ก่อน Publish');
@@ -384,6 +386,7 @@ export function RetailProvider({
       const route = await publishPlanningRoute({
         orderIds,
         plannedDate,
+        plannedTime,
         driverCode,
         note: first.deliveryPlan?.note,
       });
@@ -403,6 +406,7 @@ export function RetailProvider({
       if (order?.deliveryPlan?.releaseState === 'planned') {
         return planOrders([orderId], {
           plannedDate: order.deliveryPlan.plannedDate,
+          plannedTime: order.deliveryPlan.plannedTime,
           plannedDriverId: order.deliveryPlan.plannedDriverId,
           dispatchReadiness: readiness,
           note: note ?? order.deliveryPlan.note,

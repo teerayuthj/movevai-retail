@@ -56,6 +56,7 @@ export type ConfirmDeliveryInput = {
 
 export type PlanOrdersInput = {
   plannedDate: string;
+  plannedTime?: string;
   plannedDriverId?: string;
   dispatchReadiness?: DispatchReadiness;
   note?: string;

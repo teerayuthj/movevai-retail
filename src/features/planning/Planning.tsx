@@ -11,6 +11,7 @@ import {
   canPlanOrder,
   canReleasePlannedOrder,
   formatPlanningDate,
+  getNextHourTime,
   getPlannedLoadCount,
   getTodayDateKey,
   getTomorrowDateKey,
@@ -32,6 +33,7 @@ export function PlanningPage() {
   const [query, setQuery] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [planDate, setPlanDate] = useState(() => getDefaultPlanningDate(orders));
+  const [planTime, setPlanTime] = useState(() => getNextHourTime());
   const [plannedDriverId, setPlannedDriverId] = useState('');
   const [readiness, setReadiness] = useState<DispatchReadiness>('ready');
   const [planNote, setPlanNote] = useState('');
@@ -56,7 +58,7 @@ export function PlanningPage() {
   const selectedOrderSnapshot = selectedOrders
     .map(
       (order) =>
-        `${order.id}:${order.deliveryPlan?.plannedDate ?? ''}:${order.deliveryPlan?.plannedDriverId ?? ''}:${order.dispatchReadiness ?? 'ready'}:${order.deliveryPlan?.note ?? ''}`,
+        `${order.id}:${order.deliveryPlan?.plannedDate ?? ''}:${order.deliveryPlan?.plannedTime ?? ''}:${order.deliveryPlan?.plannedDriverId ?? ''}:${order.dispatchReadiness ?? 'ready'}:${order.deliveryPlan?.note ?? ''}`,
     )
     .join('|');
   const selectedPlannedOrders = selectedOrders.filter((order) => isUnreleasedPlannedOrder(order));
@@ -75,9 +77,24 @@ export function PlanningPage() {
   const singleSelectedOrder = selectedOrders.length === 1 ? selectedOrders[0] : null;
 
   useEffect(() => {
-    void fetchPlanningRoutes(selectedDate)
-      .then(setRoutes)
-      .catch((error) => setOperationError(error instanceof Error ? error.message : String(error)));
+    let cancelled = false;
+    const refreshRoutes = () => {
+      void fetchPlanningRoutes(selectedDate)
+        .then((nextRoutes) => {
+          if (!cancelled) setRoutes(nextRoutes);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setOperationError(error instanceof Error ? error.message : String(error));
+          }
+        });
+    };
+    refreshRoutes();
+    const intervalId = window.setInterval(refreshRoutes, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
   }, [selectedDate]);
 
   useEffect(() => {
@@ -95,6 +112,12 @@ export function PlanningPage() {
     )
       ? firstOrder.deliveryPlan?.plannedDate
       : undefined;
+    const sharedTime = selectedOrders.every(
+      (order) =>
+        (order.deliveryPlan?.plannedTime ?? '') === (firstOrder.deliveryPlan?.plannedTime ?? ''),
+    )
+      ? (firstOrder.deliveryPlan?.plannedTime ?? '')
+      : '';
     const sharedDriver = selectedOrders.every(
       (order) => order.deliveryPlan?.plannedDriverId === firstOrder.deliveryPlan?.plannedDriverId,
     )
@@ -112,6 +135,7 @@ export function PlanningPage() {
       : '';
 
     setPlanDate(sharedDate ?? selectedDate);
+    setPlanTime(sharedTime || getNextHourTime());
     setPlannedDriverId(sharedDriver ?? '');
     setReadiness(sharedReadiness);
     setPlanNote(sharedNote);
@@ -132,6 +156,7 @@ export function PlanningPage() {
   const clearSelection = () => {
     setSelectedOrderIds([]);
     setPlanDate(selectedDate);
+    setPlanTime(getNextHourTime());
     setPlannedDriverId('');
     setReadiness('ready');
     setPlanNote('');
@@ -146,6 +171,7 @@ export function PlanningPage() {
         selectedOrders.map((order) => order.id),
         {
           plannedDate: planDate,
+          plannedTime: planTime || undefined,
           plannedDriverId: plannedDriverId || undefined,
           dispatchReadiness: readiness,
           note: planNote.trim() || undefined,
@@ -329,6 +355,8 @@ export function PlanningPage() {
             selectedCount={selectedOrders.length}
             planDate={planDate}
             onPlanDate={setPlanDate}
+            planTime={planTime}
+            onPlanTime={setPlanTime}
             plannedDriverId={plannedDriverId}
             onPlannedDriverId={setPlannedDriverId}
             readiness={readiness}
