@@ -42,7 +42,8 @@ export function PlanningPage() {
     cancelRoute,
     reassignRoute,
   } = useRetailStore();
-  const [selectedDate, setSelectedDate] = useState(() => getDefaultPlanningDate(orders));
+  // เปิดหน้าที่งานวันนี้ก่อนเสมอ เพื่อให้งาน active/เลยเวลาหาเจอและจัดการได้ทันที
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateKey());
   const [query, setQuery] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [planDate, setPlanDate] = useState(() => getDefaultPlanningDate(orders));
