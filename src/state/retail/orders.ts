@@ -12,6 +12,22 @@ import {
 import type { CancelOrderInput, RetailState } from '@/state/retail/types';
 
 export const CANCELLABLE: Order['status'][] = ['new', 'needs_review', 'ready', 'assigned'];
+const DRIVER_BUSY_STATUSES: Order['status'][] = ['in_transit', 'pending_confirmation', 'returning'];
+
+function driverHasBusyOrder(
+  orders: Order[],
+  driverId: string | undefined,
+  excludingOrderId?: string,
+): boolean {
+  if (!driverId) return false;
+
+  return orders.some(
+    (order) =>
+      order.id !== excludingOrderId &&
+      order.assignedDriverId === driverId &&
+      DRIVER_BUSY_STATUSES.includes(order.status),
+  );
+}
 
 export function updateOrderState(
   current: RetailState,
@@ -225,9 +241,12 @@ export function cancelOrderState(
             ...driver,
             activeOrders: Math.max(0, driver.activeOrders - 1),
             status:
-              Math.max(0, driver.activeOrders - 1) === 0 && driver.status === 'on_delivery'
-                ? 'available'
-                : driver.status,
+              Math.max(0, driver.activeOrders - 1) > 0 &&
+              driverHasBusyOrder(current.orders, driver.id, orderId)
+                ? 'on_delivery'
+                : driver.status === 'off_duty'
+                  ? 'off_duty'
+                  : 'available',
           }
         : driver,
     ),

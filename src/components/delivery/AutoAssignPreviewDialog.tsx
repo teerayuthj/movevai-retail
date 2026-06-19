@@ -145,7 +145,7 @@ export function AutoAssignPreviewDialog({
                     <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
                     <span className="line-clamp-1">{proposal.order.customer.address}</span>
                   </div>
-                  <div className="mt-0.5 text-[11px] font-semibold tabular-nums text-amber-800">
+                  <div className="mt-0.5 text-[11px] font-semibold tabular-nums text-warning">
                     {formatTHB(proposal.order.totalValue)}
                   </div>
                 </div>
@@ -170,7 +170,7 @@ export function AutoAssignPreviewDialog({
                         key={i}
                         className="flex items-start gap-1 text-[11px] text-muted-foreground"
                       >
-                        <Check className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
+                        <Check className="mt-0.5 h-3 w-3 shrink-0 text-success" />
                         <span>{reason}</span>
                       </li>
                     ))}
@@ -181,8 +181,8 @@ export function AutoAssignPreviewDialog({
           })}
 
           {blocked.length > 0 && (
-            <div className="mt-3 space-y-2 rounded-lg border border-amber-200 bg-amber-50/60 p-3">
-              <div className="flex items-center gap-1.5 text-xs font-medium text-amber-800">
+            <div className="mt-3 space-y-2 rounded-lg border border-warning/30 bg-warning/10 p-3">
+              <div className="flex items-center gap-1.5 text-xs font-medium text-warning">
                 <Users className="h-3.5 w-3.5" />
                 จ่ายงานอัตโนมัติไม่ได้ ({blocked.length}) — ต้องมอบหมายเอง
               </div>

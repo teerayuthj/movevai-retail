@@ -121,6 +121,7 @@ export type OrderActivityEventType =
   | 'driver_auto_assigned'
   | 'delivery_started'
   | 'delivery_submitted'
+  | 'delivery_proof_revised'
   | 'delivery_confirmed'
   | 'delivery_completed'
   | 'postal_batch_exported'
@@ -240,7 +241,7 @@ export const drivers: Driver[] = [
     vehicle: 'van',
     zone: 'สีลม - สาทร',
     status: 'on_delivery',
-    activeOrders: 4,
+    activeOrders: 3,
     capacity: 10,
     rating: 4.7,
     highValueCertified: true,
@@ -498,6 +499,44 @@ export const orders: Order[] = [
     shippingMethod: 'thai_post',
   },
   {
+    id: 'O-1047',
+    code: '#AUS-1047',
+    source: 'line_text',
+    status: 'assigned',
+    receivedAt: '2026-04-24T10:18:00',
+    lineContact: {
+      displayName: 'K.Narin',
+      lineUserId: 'U-8f7e6d...1c2b',
+    },
+    handledBy: {
+      name: 'วัชรพล สิริพัฒน์',
+      department: 'Customer Service',
+    },
+    confidence: 98,
+    customer: {
+      name: 'คุณนรินทร์ รัตนชัย',
+      phone: '092-114-7788',
+      address: 'อาคาร Empire Tower ชั้น 18 ถ.สาทรใต้ แขวงยานนาวา เขตสาทร กทม. 10120',
+      idCard: 'x-xxxx-xxxxx-21-9',
+    },
+    items: [
+      {
+        sku: 'AUS-INV-9999-5G',
+        name: 'AUSIRIS ทองคำแท่ง 99.99% Investment Grade',
+        purity: '99.99%',
+        weight: '5 กรัม',
+        qty: 2,
+        unitPrice: 16400,
+      },
+    ],
+    note: 'นัดรับที่ lobby อาคาร · โทรก่อนถึง 10 นาที · ลูกค้าชำระครบแล้ว',
+    totalValue: 32800,
+    payment: 'prepaid',
+    requiresIdCheck: true,
+    insured: true,
+    assignedDriverId: 'D-02',
+  },
+  {
     id: 'O-1039',
     code: '#AUS-1039',
     source: 'line_text',
@@ -620,6 +659,60 @@ export const orders: Order[] = [
     requiresIdCheck: true,
     insured: true,
     assignedDriverId: 'D-02',
+  },
+  {
+    id: 'O-1037',
+    code: '#AUS-1037',
+    source: 'manual',
+    status: 'pending_confirmation',
+    receivedAt: '2026-04-24T06:48:00',
+    handledBy: {
+      name: 'ณัฐรดา พงศ์ธนากุล',
+      department: 'Wholesale Desk',
+      role: 'Account Executive',
+    },
+    confidence: 100,
+    customer: {
+      name: 'บจก. กิตติภัณฑ์ จิวเวลรี่',
+      phone: '02-678-4400',
+      address: '55 อาคารธนิยะพลาซ่า ชั้น 2 ถ.สีลม แขวงสุริยวงศ์ เขตบางรัก กทม. 10500',
+      idCard: 'เลขนิติบุคคล 0105562xxxxx',
+    },
+    items: [
+      {
+        sku: 'AUS-BAR-9999-20G',
+        name: 'AUSIRIS ทองคำแท่ง 99.99%',
+        purity: '99.99%',
+        weight: '20 กรัม',
+        qty: 4,
+        unitPrice: 64600,
+      },
+    ],
+    note: 'ส่งถึงผู้จัดการร้านเท่านั้น · เก็บสลิปโอนก่อนออกจากร้าน',
+    totalValue: 258400,
+    payment: 'transfer_on_delivery',
+    requiresIdCheck: true,
+    insured: true,
+    assignedDriverId: 'D-02',
+    proofOfDelivery: {
+      photoCount: 2,
+      signatureCaptured: true,
+      otpVerified: true,
+      idVerified: true,
+      location: {
+        lat: 13.7288,
+        lng: 100.5331,
+        label: 'ธนิยะพลาซ่า สีลม',
+      },
+      cod: {
+        collected: true,
+        method: 'transfer',
+        amount: 258400,
+        note: 'SCB slip 20260424-1037',
+      },
+      capturedByDriverId: 'D-02',
+      capturedAt: '2026-04-24T10:36:00',
+    },
   },
   {
     id: 'O-1040',

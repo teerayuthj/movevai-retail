@@ -21,7 +21,98 @@ type PushPayload = {
   body?: string;
   tag?: string;
   url?: string;
+  badgeCount?: number;
+  unreadCount?: number;
+  orderId?: string;
+  orderCode?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerAddress?: string;
+  totalValue?: number;
+  assignedDriverId?: string;
+  data?: unknown;
 };
+
+type BadgeNavigator = WorkerNavigator & {
+  setAppBadge?: (contents?: number) => Promise<void>;
+  clearAppBadge?: () => Promise<void>;
+};
+
+const badgeCacheName = 'movevai-rider-badge';
+const badgeCountUrl = new URL('/__movevai/rider-badge-count', self.location.origin).toString();
+
+function normalizePushPayload(payload: PushPayload): PushPayload {
+  if (!payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) {
+    return payload;
+  }
+
+  const data = payload.data as Partial<PushPayload> & { code?: string };
+  return {
+    ...data,
+    ...payload,
+    orderCode: payload.orderCode ?? data.orderCode ?? data.code,
+    data: payload.data,
+  };
+}
+
+async function readStoredBadgeCount() {
+  const cache = await caches.open(badgeCacheName);
+  const response = await cache.match(badgeCountUrl);
+  if (!response) return 0;
+
+  try {
+    const data = (await response.json()) as { count?: unknown };
+    return typeof data.count === 'number' && Number.isFinite(data.count)
+      ? Math.max(0, Math.floor(data.count))
+      : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function writeStoredBadgeCount(count: number) {
+  const cache = await caches.open(badgeCacheName);
+  await cache.put(
+    badgeCountUrl,
+    new Response(JSON.stringify({ count }), {
+      headers: { 'content-type': 'application/json' },
+    }),
+  );
+}
+
+async function applyAppBadge(count: number) {
+  const badgeNavigator = self.navigator as BadgeNavigator;
+  if (count > 0 && badgeNavigator.setAppBadge) {
+    await badgeNavigator.setAppBadge(count);
+    return;
+  }
+  if (count === 0 && badgeNavigator.clearAppBadge) {
+    await badgeNavigator.clearAppBadge();
+  }
+}
+
+function getPayloadBadgeCount(payload: PushPayload) {
+  const explicitCount = payload.badgeCount ?? payload.unreadCount;
+  if (typeof explicitCount !== 'number' || !Number.isFinite(explicitCount)) return null;
+  return Math.max(0, Math.floor(explicitCount));
+}
+
+async function incrementBadgeCount(payload: PushPayload) {
+  const nextCount = getPayloadBadgeCount(payload) ?? (await readStoredBadgeCount()) + 1;
+  await writeStoredBadgeCount(nextCount);
+  await applyAppBadge(nextCount);
+  return nextCount;
+}
+
+async function clearBadgeCount() {
+  await writeStoredBadgeCount(0);
+  await applyAppBadge(0);
+}
+
+async function notifyOpenClients() {
+  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  clients.forEach((client) => client.postMessage({ type: 'movevai:rider-push-job-added' }));
+}
 
 self.addEventListener('push', (event) => {
   let payload: PushPayload = {};
@@ -30,16 +121,22 @@ self.addEventListener('push', (event) => {
   } catch {
     payload = { body: event.data?.text() };
   }
+  payload = normalizePushPayload(payload);
 
   const title = payload.title ?? 'มีงานใหม่เข้ามา 🛵';
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: payload.body ?? 'แตะเพื่อเปิดดูงาน',
-      icon: '/pwa-192x192.png',
-      badge: '/pwa-192x192.png',
-      tag: payload.tag ?? 'rider-new-job',
-      data: { url: payload.url ?? '/rider/assigned' },
-    }),
+    (async () => {
+      const badgeCount = await incrementBadgeCount(payload);
+      await notifyOpenClients();
+
+      await self.registration.showNotification(title, {
+        body: payload.body ?? 'แตะเพื่อเปิดดูงาน',
+        icon: '/pwa-192x192.png',
+        badge: '/pwa-192x192.png',
+        tag: payload.tag ?? 'rider-new-job',
+        data: { url: payload.url ?? '/rider/assigned', badgeCount, orderId: payload.orderId },
+      });
+    })(),
   );
 });
 
@@ -60,10 +157,17 @@ self.addEventListener('notificationclick', (event) => {
   );
 });
 
+self.addEventListener('message', (event) => {
+  const data = event.data as { type?: string } | undefined;
+  if (data?.type !== 'movevai:rider-clear-badge') return;
+
+  event.waitUntil(clearBadgeCount());
+});
+
 // อัปเดต SW ใหม่ทันที (ให้ push handler ล่าสุดมีผลเร็ว)
 self.addEventListener('install', () => {
   void self.skipWaiting();
 });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(Promise.all([caches.delete('movevai-rider-push-jobs'), self.clients.claim()]));
 });

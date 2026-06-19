@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Coins } from 'lucide-react';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { MobileDetailSheet } from '@/components/MobileDetailSheet';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { cancelReasonLabel, formatTHB, type CancelReason } from '@/data/mock';
+import { cancelReasonLabel, formatTHB, statusLabel, type CancelReason } from '@/data/mock';
 import OrderDetail from '@/features/inbox/components/OrderDetail';
 import OrderListPanel from '@/features/inbox/components/OrderListPanel';
 import {
@@ -36,6 +37,8 @@ export function InboxPage() {
   });
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [query, setQuery] = useState('');
+  // มือถือ: เปิด overlay รายละเอียดเฉพาะตอนแตะรายการ (กัน auto-select เด้งทับ list)
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const { inboxOrders, filteredOrders, filterCounts, inboxValue } = useOrderFiltering(
     orders,
@@ -53,7 +56,7 @@ export function InboxPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Order Inbox — คำสั่งซื้อ</h1>
           <p className="text-sm text-muted-foreground">
@@ -64,7 +67,7 @@ export function InboxPage() {
 
         <div className="flex items-center gap-2">
           <Badge variant="muted" className="gap-1">
-            <Coins className="h-3 w-3 text-amber-600" />
+            <Coins className="h-3 w-3 text-warning" />
             มูลค่าในคิว {formatTHB(inboxValue)}
           </Badge>
         </div>
@@ -74,7 +77,10 @@ export function InboxPage() {
         <OrderListPanel
           filteredOrders={filteredOrders}
           selectedId={selectedId}
-          onSelect={setSelectedId}
+          onSelect={(id) => {
+            setSelectedId(id);
+            setMobileDetailOpen(true);
+          }}
           filter={filter}
           onFilterChange={setFilter}
           query={query}
@@ -82,7 +88,7 @@ export function InboxPage() {
           filterCounts={filterCounts}
         />
 
-        <Card className="h-[calc(100vh-12rem)] overflow-auto p-6">
+        <Card className="hidden h-[calc(100vh-12rem)] overflow-auto p-6 lg:block">
           {selected ? (
             <OrderDetail
               order={selected}
@@ -97,6 +103,25 @@ export function InboxPage() {
           )}
         </Card>
       </div>
+
+      {/* มือถือ: เปิดรายละเอียดออเดอร์เต็มจอ (action ต่าง ๆ อยู่ใน OrderDetail แล้ว) */}
+      <MobileDetailSheet
+        open={!!selected && mobileDetailOpen}
+        title={<span className="font-mono">{selected?.code}</span>}
+        subtitle={selected ? statusLabel[selected.status] : undefined}
+        onClose={() => setMobileDetailOpen(false)}
+      >
+        {selected && (
+          <OrderDetail
+            order={selected}
+            onConfirm={confirmOrder}
+            onFinishParsing={finishParsingOrder}
+            onSaveCustomer={updateOrderCustomer}
+            onChangeShippingMethod={setShippingMethod}
+            onRequestCancel={setCancelTargetId}
+          />
+        )}
+      </MobileDetailSheet>
 
       <ResolutionDialog
         open={!!cancelTargetId}

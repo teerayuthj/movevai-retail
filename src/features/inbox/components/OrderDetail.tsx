@@ -86,7 +86,7 @@ function ItemRow({ item, index }: { item: OrderItem; index: number }) {
   return (
     <div className="px-6 py-3">
       <div className="flex items-start gap-3">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-amber-100 text-xs font-semibold text-amber-900">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-warning/15 text-xs font-semibold text-warning">
           {index + 1}
         </div>
 
@@ -109,7 +109,7 @@ function ItemRow({ item, index }: { item: OrderItem; index: number }) {
           </div>
 
           {item.note && (
-            <div className="mt-1 flex items-start gap-1 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-800">
+            <div className="mt-1 flex items-start gap-1 rounded border border-warning/30 bg-warning/10 px-2 py-1 text-[11px] text-warning">
               <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>{item.note}</span>
             </div>
@@ -187,7 +187,10 @@ export default function OrderDetail({
               </Badge>
             )}
             {isHighValue && (
-              <Badge variant="warning" className="gap-1 border-red-300 bg-red-50 text-red-700">
+              <Badge
+                variant="warning"
+                className="gap-1 border-destructive/30 bg-destructive/10 text-destructive"
+              >
                 <ShieldCheck className="h-3 w-3" />
                 High-value
               </Badge>
@@ -232,7 +235,7 @@ export default function OrderDetail({
               variant="outline"
               size="sm"
               onClick={() => onRequestCancel(order.id)}
-              className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+              className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               <Ban className="h-3.5 w-3.5" /> ยกเลิก
             </Button>
@@ -331,10 +334,10 @@ export default function OrderDetail({
         </CardContent>
       </Card>
 
-      <div className="grid gap-3 rounded-lg border bg-linear-to-r from-amber-50 to-background p-4 md:grid-cols-4">
+      <div className="grid gap-3 rounded-lg border bg-linear-to-r from-warning/10 to-background p-4 md:grid-cols-4">
         <div>
           <div className="text-[11px] font-medium text-muted-foreground">มูลค่ารวม</div>
-          <div className="mt-0.5 text-xl font-semibold tabular-nums text-amber-800">
+          <div className="mt-0.5 text-xl font-semibold tabular-nums text-warning">
             {formatTHB(order.totalValue)}
           </div>
         </div>
@@ -358,7 +361,7 @@ export default function OrderDetail({
             <ShieldCheck
               className={cn(
                 'h-3.5 w-3.5',
-                order.insured ? 'text-emerald-600' : 'text-muted-foreground',
+                order.insured ? 'text-success' : 'text-muted-foreground',
               )}
             />
             {order.insured ? 'คุ้มครอง 100%' : 'ยังไม่ทำประกัน'}
@@ -372,7 +375,7 @@ export default function OrderDetail({
         onChange={(method) => onChangeShippingMethod(order.id, method)}
       />
 
-      <Card className="border-slate-200 bg-slate-50/60">
+      <Card className="border-border bg-muted">
         <CardContent className="space-y-3 py-4">
           <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
             <div>
@@ -432,11 +435,11 @@ export default function OrderDetail({
       </Card>
 
       {lowConfidence && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600" />
+        <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
+          <AlertTriangle className="mt-0.5 h-4 w-4 text-warning" />
           <div className="text-xs">
-            <div className="font-medium text-amber-900">ต้องตรวจข้อมูลบางรายการ</div>
-            <div className="text-amber-700">
+            <div className="font-medium text-warning">ต้องตรวจข้อมูลบางรายการ</div>
+            <div className="text-warning">
               โปรดตรวจจำนวนชิ้น น้ำหนัก และยอดรวมเทียบกับสลิปก่อนยืนยันเข้าคิว
             </div>
           </div>
@@ -446,7 +449,7 @@ export default function OrderDetail({
       <Tabs defaultValue="parsed">
         <TabsList>
           <TabsTrigger value="parsed" className="gap-2 pr-4">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-linear-to-br from-sky-500 to-emerald-500 text-white shadow-xs">
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-linear-to-br from-info to-success text-white shadow-xs">
               <Sparkles className="h-3 w-3" />
             </span>
             <span>ข้อมูลที่ AI แปลง</span>
@@ -472,7 +475,7 @@ export default function OrderDetail({
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-sm">
-                  <Coins className="h-4 w-4 text-amber-600" /> รายการทองคำ / เงิน
+                  <Coins className="h-4 w-4 text-warning" /> รายการทองคำ / เงิน
                 </CardTitle>
                 <Badge variant="muted">{order.items.length} รายการ</Badge>
               </div>
@@ -489,7 +492,7 @@ export default function OrderDetail({
                   ราคาปิด (อ้างอิงสมาคมค้าทองคำ{' '}
                   {new Date(order.receivedAt).toLocaleDateString('th')})
                 </span>
-                <span className="text-base font-semibold tabular-nums text-amber-800">
+                <span className="text-base font-semibold tabular-nums text-warning">
                   {formatTHB(order.totalValue)}
                 </span>
               </div>
@@ -533,7 +536,7 @@ export default function OrderDetail({
                     </Avatar>
                     <div className="max-w-xl">
                       <div className="mb-0.5 text-[10px] text-muted-foreground">Internal Chat</div>
-                      <div className="whitespace-pre-line rounded-2xl rounded-bl-sm border bg-sky-50 p-3 font-mono text-xs text-sky-950">
+                      <div className="whitespace-pre-line rounded-2xl rounded-bl-sm border bg-info/10 p-3 font-mono text-xs text-info">
                         {order.rawText ?? 'ไม่มีข้อความต้นฉบับ'}
                       </div>
                       <div className="mt-0.5 text-[10px] text-muted-foreground">
@@ -598,7 +601,7 @@ export default function OrderDetail({
                       <div className="mb-0.5 text-[10px] text-muted-foreground">
                         {order.lineContact.displayName}
                       </div>
-                      <div className="whitespace-pre-line rounded-2xl rounded-bl-sm border bg-[#eaf4d8] p-3 font-mono text-xs text-green-950">
+                      <div className="whitespace-pre-line rounded-2xl rounded-bl-sm border border-success/20 bg-success/10 p-3 font-mono text-xs text-success">
                         {buildRawText(order)}
                       </div>
                       <div className="mt-0.5 text-[10px] text-muted-foreground">
@@ -627,7 +630,7 @@ export default function OrderDetail({
                         </div>
                         <div className="rounded-2xl rounded-bl-sm border p-3">
                           <div className="flex items-center gap-2 text-sm">
-                            <FileSpreadsheet className="h-4 w-4 text-emerald-600" />
+                            <FileSpreadsheet className="h-4 w-4 text-success" />
                             <span className="font-medium">ausiris_orders_20260424.xlsx</span>
                             <Badge variant="muted">24 KB</Badge>
                           </div>

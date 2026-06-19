@@ -9,3 +9,6 @@ dev-dist/
 
 # device push subscription (มี endpoint เฉพาะเครื่อง — อย่า commit)
 scripts/push-subscription.json
+
+.claude
+.husky

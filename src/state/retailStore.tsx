@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import {
   assignOrderState,
   autoAssignReadyOrdersState,
@@ -41,19 +41,51 @@ import type {
   RetailStore,
   SubmitDeliveryInput,
 } from '@/state/retail/types';
+import {
+  confirmAppDelivery,
+  fetchAppDrivers,
+  fetchAppOrders,
+  fetchRiderOrders,
+  startRiderOrder,
+  submitRiderOrder,
+  syncAndAssignOrder,
+} from '@/lib/retailApi';
+
+const RIDER_JOB_STATUSES = ['assigned', 'in_transit', 'pending_confirmation', 'delivered'];
+const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
+
+function replaceOrder(orders: RetailState['orders'], canonical: RetailState['orders'][number]) {
+  const exists = orders.some((order) => order.id === canonical.id || order.code === canonical.code);
+  return exists
+    ? orders.map((order) =>
+        order.id === canonical.id || order.code === canonical.code ? canonical : order,
+      )
+    : [...orders, canonical];
+}
 
 const StoreContext = createContext<RetailStore | null>(null);
 
-export function RetailProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<RetailState>(loadState);
+export function RetailProvider({
+  children,
+  mode = 'web',
+}: {
+  children: React.ReactNode;
+  mode?: 'web' | 'rider';
+}) {
+  const [state, setState] = useState<RetailState>(() =>
+    mode === 'rider' ? { orders: [], drivers: defaultState.drivers } : loadState(),
+  );
 
-  const commit = useCallback((updater: (current: RetailState) => RetailState) => {
-    setState((current) => {
-      const next = updater(current);
-      persistState(next);
-      return next;
-    });
-  }, []);
+  const commit = useCallback(
+    (updater: (current: RetailState) => RetailState) => {
+      setState((current) => {
+        const next = updater(current);
+        if (mode === 'web') persistState(next);
+        return next;
+      });
+    },
+    [mode],
+  );
 
   const updateOrder = useCallback(
     (orderId: string, patch: Parameters<RetailStore['updateOrder']>[1]) => {
@@ -76,6 +108,53 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
     },
     [commit],
   );
+
+  const refreshRiderJobs = useCallback(
+    async (driverCode: string) => {
+      const remote = await fetchRiderOrders(driverCode);
+      commit((current) => ({
+        ...current,
+        orders: [
+          ...current.orders.filter(
+            (order) =>
+              order.assignedDriverId !== driverCode || !RIDER_JOB_STATUSES.includes(order.status),
+          ),
+          ...remote.orders,
+        ],
+        drivers: current.drivers.map((driver) =>
+          driver.id === driverCode ? remote.driver : driver,
+        ),
+      }));
+    },
+    [commit],
+  );
+
+  // Backend is authoritative for workflow orders. Keep only local intake drafts
+  // that have not been synced yet; assigned/in-transit/closed records must come
+  // from the backend so stale demo data cannot reappear after refresh.
+  const syncFromBackend = useCallback(async () => {
+    const [{ orders: remoteOrders }, remoteDrivers] = await Promise.all([
+      fetchAppOrders({ take: 200 }),
+      fetchAppDrivers(),
+    ]);
+    commit((current) => {
+      const remoteIds = new Set(remoteOrders.map((order) => order.id));
+      const remoteCodes = new Set(remoteOrders.map((order) => order.code));
+      const localDrafts = current.orders.filter(
+        (order) =>
+          LOCAL_DRAFT_STATUSES.includes(order.status) &&
+          !remoteIds.has(order.id) &&
+          !remoteCodes.has(order.code),
+      );
+      return { ...current, orders: [...localDrafts, ...remoteOrders], drivers: remoteDrivers };
+    });
+  }, [commit]);
+
+  // โหลดข้อมูลจาก backend ครั้งแรกเมื่อเปิด dashboard ฝั่ง web
+  useEffect(() => {
+    if (mode !== 'web') return;
+    void syncFromBackend();
+  }, [mode, syncFromBackend]);
 
   const updateOrderCustomer = useCallback(
     (orderId: string, customer: Parameters<RetailStore['updateOrderCustomer']>[1]) => {
@@ -106,36 +185,69 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
   );
 
   const assignOrder = useCallback(
-    (orderId: string, driverId: string) => {
-      commit((current) => assignOrderState(current, orderId, driverId));
+    async (orderId: string, driverId: string) => {
+      const order = state.orders.find((item) => item.id === orderId);
+      if (!order) return;
+      const canonical = await syncAndAssignOrder(order, driverId);
+      commit((current) => {
+        const assigned = assignOrderState(current, orderId, driverId);
+        return { ...assigned, orders: replaceOrder(assigned.orders, canonical) };
+      });
     },
-    [commit],
+    [commit, state.orders],
   );
 
   const autoAssignReadyOrders = useCallback(
-    (orderIds?: string[]) => {
-      commit((current) => autoAssignReadyOrdersState(current, orderIds));
+    async (orderIds?: string[]) => {
+      const next = autoAssignReadyOrdersState(state, orderIds);
+      const changed = next.orders.filter((order) => {
+        const before = state.orders.find((item) => item.id === order.id);
+        return before?.assignedDriverId !== order.assignedDriverId && order.assignedDriverId;
+      });
+      const canonical = await Promise.all(
+        changed.map((order) => syncAndAssignOrder(order, order.assignedDriverId!)),
+      );
+      commit(() => ({
+        ...next,
+        orders: canonical.reduce(replaceOrder, next.orders),
+      }));
     },
-    [commit],
+    [commit, state],
   );
 
   const startDelivery = useCallback(
-    (orderId: string) => {
-      commit((current) => startDeliveryState(current, orderId));
+    async (orderId: string) => {
+      const order = state.orders.find((item) => item.id === orderId);
+      if (!order?.assignedDriverId) return;
+      const canonical = await startRiderOrder(orderId, order.assignedDriverId);
+      commit((current) => {
+        const started = startDeliveryState(current, orderId);
+        return { ...started, orders: replaceOrder(started.orders, canonical) };
+      });
     },
-    [commit],
+    [commit, state.orders],
   );
 
   const submitDelivery = useCallback(
-    (orderId: string, input: SubmitDeliveryInput) => {
-      commit((current) => submitDeliveryState(current, orderId, input));
+    async (orderId: string, input: SubmitDeliveryInput) => {
+      const order = state.orders.find((item) => item.id === orderId);
+      if (!order?.assignedDriverId) return;
+      const canonical = await submitRiderOrder(orderId, order.assignedDriverId, input);
+      commit((current) => {
+        const submitted = submitDeliveryState(current, orderId, input);
+        return { ...submitted, orders: replaceOrder(submitted.orders, canonical) };
+      });
     },
-    [commit],
+    [commit, state.orders],
   );
 
   const confirmDelivery = useCallback(
-    (orderId: string, input?: ConfirmDeliveryInput) => {
-      commit((current) => confirmDeliveryState(current, orderId, input));
+    async (orderId: string, input?: ConfirmDeliveryInput) => {
+      const canonical = await confirmAppDelivery(orderId, input);
+      commit((current) => {
+        const confirmed = confirmDeliveryState(current, orderId, input);
+        return { ...confirmed, orders: replaceOrder(confirmed.orders, canonical) };
+      });
     },
     [commit],
   );
@@ -259,12 +371,15 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
 
   const resetDemoData = useCallback(() => {
     commit(() => defaultState);
-  }, [commit]);
+    void syncFromBackend();
+  }, [commit, syncFromBackend]);
 
   const value = useMemo<RetailStore>(
     () => ({
       ...state,
       createInternalChatOrder,
+      refreshRiderJobs,
+      syncFromBackend,
       updateOrder,
       updateOrderCustomer,
       setShippingMethod,
@@ -295,6 +410,8 @@ export function RetailProvider({ children }: { children: React.ReactNode }) {
     [
       state,
       createInternalChatOrder,
+      refreshRiderJobs,
+      syncFromBackend,
       updateOrder,
       updateOrderCustomer,
       setShippingMethod,

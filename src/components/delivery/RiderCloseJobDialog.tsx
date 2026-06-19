@@ -22,7 +22,7 @@ type Props = {
   open: boolean;
   order: Order | null;
   onCancel: () => void;
-  onSubmit: (input: SubmitDeliveryInput) => void;
+  onSubmit: (input: SubmitDeliveryInput) => void | Promise<void>;
 };
 
 // จำลองพิกัด GPS ตอนปิดงาน (ของจริงดึงจากอุปกรณ์ rider)
@@ -230,7 +230,7 @@ function CameraCaptureSheet({
         {cameraError && (
           <div className="absolute inset-x-4 rounded-lg bg-black/75 px-4 py-3 text-sm">
             <div className="flex items-start gap-2">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
               <span>{cameraError}</span>
             </div>
           </div>
@@ -373,13 +373,18 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [step, setStep] = useState<CloseStep>('photo');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && order) {
-      setPhotos([]);
-      setSignatureDataUrl(null);
-      setStep('photo');
-      setCameraOpen(true);
+      const existingProof = order.proofOfDelivery;
+      setPhotos(existingProof?.photos ?? []);
+      setSignatureDataUrl(existingProof?.signatureDataUrl ?? null);
+      setStep(existingProof ? 'review' : 'photo');
+      setCameraOpen(!existingProof);
+      setSubmitting(false);
+      setSubmitError(null);
     }
   }, [open, order]);
 
@@ -398,16 +403,26 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
   const canSubmit = missing.length === 0;
   const currentStepIndex = CLOSE_STEPS.findIndex((item) => item.key === step);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) return;
-    onSubmit({
-      photoCount: photos.length,
-      photos,
-      signatureCaptured,
-      signatureDataUrl: signatureDataUrl ?? undefined,
-      otpVerified: false,
-      location: MOCK_LOCATION,
-    });
+    setSubmitting(true);
+    setSubmitError(null);
+    try {
+      await onSubmit({
+        photoCount: photos.length,
+        photos,
+        signatureCaptured,
+        signatureDataUrl: signatureDataUrl ?? undefined,
+        otpVerified: false,
+        location: MOCK_LOCATION,
+      });
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : 'บันทึกหลักฐานไม่สำเร็จ กรุณาลองใหม่',
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handlePhotoCaptured = (dataUrl: string) => {
@@ -421,7 +436,9 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
       <div className="flex h-dvh w-full flex-col overflow-hidden border bg-background shadow-xl sm:h-auto sm:max-h-[90dvh] sm:max-w-md sm:rounded-xl">
         <div className="flex items-start justify-between border-b px-5 pb-4 pt-safe">
           <div>
-            <h2 className="text-base font-semibold">ปิดงาน (rider)</h2>
+            <h2 className="text-base font-semibold">
+              {order.status === 'pending_confirmation' ? 'แก้ไขหลักฐาน' : 'ปิดงาน (rider)'}
+            </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {order.code} · {order.customer.name} · {formatTHB(order.totalValue)}
             </p>
@@ -462,7 +479,7 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
                   className={cn(
                     'flex min-h-14 flex-col items-center justify-center rounded-lg border px-1.5 py-2 text-[11px] font-medium transition-colors',
                     active && 'border-primary bg-primary/10 text-primary',
-                    !active && done && 'border-emerald-200 bg-emerald-50 text-emerald-700',
+                    !active && done && 'border-success/30 bg-success/10 text-success',
                     !active && !done && 'text-muted-foreground',
                     !canNavigate && 'opacity-45',
                   )}
@@ -471,7 +488,7 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
                     className={cn(
                       'mb-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px]',
                       active && 'bg-primary text-primary-foreground',
-                      !active && done && 'bg-emerald-500 text-white',
+                      !active && done && 'bg-success text-white',
                       !active && !done && 'bg-muted text-muted-foreground',
                     )}
                   >
@@ -544,15 +561,15 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
               <SignaturePad onChange={setSignatureDataUrl} />
 
               {signatureCaptured && (
-                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-xs text-emerald-800">
+                <div className="rounded-lg border border-success/30 bg-success/10 p-3">
+                  <div className="mb-2 flex items-center gap-2 text-xs text-success">
                     <CheckCircle2 className="h-4 w-4 shrink-0" />
                     บันทึกลายเซ็นแล้ว
                   </div>
                   <img
                     src={signatureDataUrl}
                     alt="ลายเซ็นที่บันทึกแล้ว"
-                    className="h-20 w-full rounded-md border border-emerald-200 bg-white object-contain"
+                    className="h-20 w-full rounded-md border border-success/30 bg-white object-contain"
                   />
                 </div>
               )}
@@ -612,12 +629,12 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
               </div>
 
               <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
-                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-600" />
+                <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" />
                 ปั๊กตำแหน่ง GPS อัตโนมัติ — {MOCK_LOCATION.label}
               </div>
 
               {willReview && (
-                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-warning">
                   <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
                   งานนี้เป็นงานเสี่ยงสูง — เมื่อกดปิด จะส่งเข้าคิวรออนุมัติก่อนปิดจริง
                 </div>
@@ -627,8 +644,13 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
         </div>
 
         <div className="border-t bg-muted/30 px-5 pb-safe pt-3">
+          {submitError && (
+            <div className="mb-2 rounded-md bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+              {submitError}
+            </div>
+          )}
           {missing.length > 0 && (
-            <div className="mb-2 text-[11px] text-amber-700">
+            <div className="mb-2 text-[11px] text-warning">
               ต้องทำก่อนปิด: {missing.join(' · ')}
             </div>
           )}
@@ -673,8 +695,14 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
                     แก้ไข
                   </Button>
                 )}
-                <Button size="sm" disabled={!canSubmit} onClick={handleSubmit}>
-                  {willReview ? 'ส่งรออนุมัติ' : 'ปิดงาน — ส่งสำเร็จ'}
+                <Button size="sm" disabled={!canSubmit || submitting} onClick={handleSubmit}>
+                  {submitting
+                    ? 'กำลังบันทึก...'
+                    : order.status === 'pending_confirmation'
+                      ? 'บันทึกและส่งตรวจใหม่'
+                      : willReview
+                        ? 'ส่งรออนุมัติ'
+                        : 'ปิดงาน — ส่งสำเร็จ'}
                 </Button>
               </div>
             )}

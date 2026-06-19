@@ -6,12 +6,15 @@ import {
   Banknote,
   CheckCircle2,
   ClipboardCheck,
+  Clock3,
+  Image,
   IdCard,
   MapPin,
   Navigation,
   Package,
   Phone,
   ShieldCheck,
+  PenLine,
 } from 'lucide-react';
 
 export function JobCard({
@@ -40,7 +43,7 @@ export function JobCard({
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{order.customer.address}</span>
         </div>
-        <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-sky-600">
+        <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-info">
           <Phone className="h-3.5 w-3.5" />
           <span>{order.customer.phone}</span>
         </a>
@@ -67,11 +70,62 @@ export function JobCard({
         )}
       </div>
 
+      {order.status === 'pending_confirmation' && order.proofOfDelivery && (
+        <div className="mt-3 rounded-lg border border-warning/25 bg-warning/5 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold">หลักฐานที่ส่งล่าสุด</div>
+            <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+              <Clock3 className="h-3 w-3" />
+              {new Date(order.proofOfDelivery.capturedAt).toLocaleString('th-TH', {
+                day: 'numeric',
+                month: 'short',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </div>
+          </div>
+
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {order.proofOfDelivery.photos?.[0] && (
+              <img
+                src={order.proofOfDelivery.photos[0]}
+                alt="รูปหลักฐานการส่งมอบ"
+                className="aspect-4/3 w-full rounded-md border object-cover"
+              />
+            )}
+            {order.proofOfDelivery.signatureDataUrl && (
+              <img
+                src={order.proofOfDelivery.signatureDataUrl}
+                alt="ลายเซ็นผู้รับ"
+                className="aspect-4/3 w-full rounded-md border bg-white object-contain"
+              />
+            )}
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <Image className="h-3 w-3" />
+              รูป {order.proofOfDelivery.photoCount}
+            </span>
+            {order.proofOfDelivery.signatureCaptured && (
+              <span className="inline-flex items-center gap-1">
+                <PenLine className="h-3 w-3" /> ลายเซ็นแล้ว
+              </span>
+            )}
+            {order.proofOfDelivery.location?.label && (
+              <span className="inline-flex items-center gap-1">
+                <MapPin className="h-3 w-3" /> {order.proofOfDelivery.location.label}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-3 flex items-center justify-end border-t pt-3">
         {order.status === 'assigned' && (
           <Button size="sm" onClick={onStart}>
             <Navigation className="h-4 w-4" />
-            เริ่มเดินทาง
+            รับงาน
           </Button>
         )}
         {order.status === 'in_transit' && (
@@ -81,10 +135,16 @@ export function JobCard({
           </Button>
         )}
         {order.status === 'pending_confirmation' && (
-          <Badge variant="warning" className="gap-1">
-            <ClipboardCheck className="h-3 w-3" />
-            รออนุมัติ
-          </Badge>
+          <div className="flex w-full items-center justify-between gap-2">
+            <Badge variant="warning" className="gap-1">
+              <ClipboardCheck className="h-3 w-3" />
+              รอตรวจสอบ
+            </Badge>
+            <Button size="sm" variant="outline" onClick={onClose}>
+              <PenLine className="h-3.5 w-3.5" />
+              แก้ไขหลักฐาน
+            </Button>
+          </div>
         )}
         {order.status === 'delivered' && (
           <Badge variant="success" className="gap-1">

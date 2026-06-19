@@ -189,8 +189,8 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
       </div>
 
       <div className="flex items-center gap-3 rounded-lg border p-3">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50">
-          <FileSpreadsheet className="h-5 w-5 text-emerald-600" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-success/10">
+          <FileSpreadsheet className="h-5 w-5 text-success" />
         </div>
         <div>
           <div className="text-sm font-medium">ausiris_orders_20260424.xlsx</div>
@@ -214,16 +214,16 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
                 isDone && index !== PARSE_STEPS.length - 1 && 'opacity-50',
                 index === PARSE_STEPS.length - 1 &&
                   done &&
-                  'border border-emerald-200 bg-emerald-50',
+                  'border border-success/30 bg-success/10',
               )}
             >
               <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center">
                 {isDone && index < PARSE_STEPS.length - 1 ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <CheckCircle2 className="h-4 w-4 text-success" />
                 ) : isActive ? (
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 ) : index === PARSE_STEPS.length - 1 && done ? (
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  <CheckCircle2 className="h-4 w-4 text-success" />
                 ) : (
                   <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />
                 )}
@@ -234,7 +234,7 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
                   className={cn(
                     'text-sm font-medium',
                     isActive && 'text-primary',
-                    index === PARSE_STEPS.length - 1 && done && 'text-emerald-800',
+                    index === PARSE_STEPS.length - 1 && done && 'text-success',
                   )}
                 >
                   {parseStep.label}
@@ -271,7 +271,7 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
                     key={column.field}
                     className={cn(
                       'flex items-start gap-3 px-4 py-2.5',
-                      column.issue && 'bg-amber-50/50',
+                      column.issue && 'bg-warning/10',
                     )}
                   >
                     <div className="w-44 shrink-0">
@@ -293,7 +293,7 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
                         </span>
                       </div>
                       {column.issue && (
-                        <div className="mt-1 flex items-start gap-1 text-[11px] text-amber-800">
+                        <div className="mt-1 flex items-start gap-1 text-[11px] text-warning">
                           <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                           <span>{column.issue}</span>
                         </div>
@@ -356,7 +356,7 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
                 {EXCEL_ROWS.map((row) => (
                   <tr
                     key={row.id}
-                    className={cn('border-b last:border-0', row.warn && 'bg-amber-50/60')}
+                    className={cn('border-b last:border-0', row.warn && 'bg-warning/10')}
                   >
                     <td className="px-3 py-2 tabular-nums text-muted-foreground">{row.id}</td>
                     <td className="px-3 py-2 font-medium">{row.raw[0]}</td>
@@ -370,7 +370,7 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
                         className={cn(
                           row.warn &&
                             row.raw[2].match(WEIGHT_UNIT_RE) &&
-                            'font-medium text-amber-700',
+                            'font-medium text-warning',
                         )}
                       >
                         {row.raw[2]}
@@ -396,7 +396,7 @@ export default function ExcelParsingView({ order, onFinishParsing }: ExcelParsin
           </div>
 
           {done && (
-            <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+            <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-[11px] text-success">
               <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
               <span>
                 AI จับคู่ SKU และแปลงหน่วยน้ำหนักครบแล้ว · กด <strong>ยืนยันส่งเข้า Inbox</strong>{' '}

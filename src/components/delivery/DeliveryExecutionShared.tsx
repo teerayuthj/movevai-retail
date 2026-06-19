@@ -158,7 +158,7 @@ export function QueueOrderCard({
             {order.totalValue >= 500000 && (
               <Badge
                 variant="warning"
-                className="h-5 gap-0.5 border-red-300 bg-red-50 px-1.5 text-[10px] text-red-700"
+                className="h-5 gap-0.5 border-destructive/30 bg-destructive/10 px-1.5 text-[10px] text-destructive"
               >
                 <ShieldCheck className="h-2.5 w-2.5" />
                 High-value
@@ -194,10 +194,10 @@ export function QueueOrderCard({
       </div>
       <div className="mt-2 flex items-center justify-between border-t pt-2">
         <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-          <Coins className="h-3 w-3 text-amber-600" />
+          <Coins className="h-3 w-3 text-warning" />
           {paymentLabel[order.payment]}
         </div>
-        <span className="text-sm font-semibold tabular-nums text-amber-800">
+        <span className="text-sm font-semibold tabular-nums text-warning">
           {formatTHB(order.totalValue)}
         </span>
       </div>
@@ -216,7 +216,7 @@ export function OrderSummary({ order }: { order: Order }) {
       <div className="mt-0.5 text-xs text-muted-foreground">{order.customer.address}</div>
       <div className="mt-2 flex items-center justify-between border-t pt-2">
         <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
-        <span className="text-sm font-semibold tabular-nums text-amber-800">
+        <span className="text-sm font-semibold tabular-nums text-warning">
           {formatTHB(order.totalValue)}
         </span>
       </div>
@@ -331,8 +331,8 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
   const capturedBy = driverName || pod.capturedByDriverId || 'คนขับ';
 
   return (
-    <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3 text-xs">
-      <div className="flex items-center justify-between font-medium text-emerald-900">
+    <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-xs">
+      <div className="flex items-center justify-between font-medium text-success">
         <span className="flex items-center gap-1.5">
           <ShieldCheck className="h-3.5 w-3.5" />
           หลักฐานปิดงานจาก rider
@@ -346,8 +346,8 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
       </div>
       <ul className="mt-2 space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="flex items-start gap-1.5 text-emerald-900">
-            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-emerald-600" />
+          <li key={i} className="flex items-start gap-1.5 text-success">
+            <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" />
             <span>{item}</span>
           </li>
         ))}
@@ -361,7 +361,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
               href={src}
               target="_blank"
               rel="noreferrer"
-              className="aspect-4/3 overflow-hidden rounded-md border border-emerald-200"
+              className="aspect-4/3 overflow-hidden rounded-md border border-success/30"
             >
               <img src={src} alt={`รูปหลักฐาน ${i + 1}`} className="h-full w-full object-cover" />
             </a>
@@ -371,16 +371,16 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
 
       {pod.signatureDataUrl && (
         <div className="mt-2">
-          <div className="text-[10px] text-emerald-800/80">ลายเซ็นผู้รับ</div>
+          <div className="text-[10px] text-success/80">ลายเซ็นผู้รับ</div>
           <img
             src={pod.signatureDataUrl}
             alt="ลายเซ็นผู้รับ"
-            className="mt-1 h-16 w-full rounded-md border border-emerald-200 bg-white object-contain"
+            className="mt-1 h-16 w-full rounded-md border border-success/30 bg-white object-contain"
           />
         </div>
       )}
 
-      <div className="mt-2 text-[10px] text-emerald-800/80">บันทึกโดย {capturedBy}</div>
+      <div className="mt-2 text-[10px] text-success/80">บันทึกโดย {capturedBy}</div>
     </div>
   );
 }
@@ -394,12 +394,12 @@ export function ResolutionInfo({ order }: { order: Order }) {
     : undefined;
   const tone =
     r.type === 'cancelled'
-      ? 'border-red-200 bg-red-50 text-red-900'
+      ? 'border-destructive/30 bg-destructive/10 text-destructive'
       : r.type === 'failed'
-        ? 'border-amber-200 bg-amber-50 text-amber-900'
+        ? 'border-warning/30 bg-warning/10 text-warning'
         : r.type === 'returning'
-          ? 'border-sky-200 bg-sky-50 text-sky-900'
-          : 'border-emerald-200 bg-emerald-50 text-emerald-900';
+          ? 'border-info/30 bg-info/10 text-info'
+          : 'border-success/30 bg-success/10 text-success';
   const title =
     r.type === 'cancelled'
       ? 'ยกเลิกแล้ว'
@@ -437,7 +437,7 @@ export function ResolutionInfo({ order }: { order: Order }) {
 export function EmptyState({ title = 'ไม่มีรายการในสถานะนี้' }: { title?: string }) {
   return (
     <div className="py-12 text-center text-sm text-muted-foreground">
-      <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-emerald-500" />
+      <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
       {title}
     </div>
   );
@@ -452,7 +452,7 @@ export function QueueAiAssessment() {
       </div>
       <ul className="mt-2 space-y-1 text-muted-foreground">
         <li className="flex items-center gap-1.5">
-          <ShieldCheck className="h-3 w-3 text-emerald-600" />
+          <ShieldCheck className="h-3 w-3 text-success" />
           ประกันขนส่งครอบคลุม
         </li>
         <li className="flex items-center gap-1.5">
@@ -483,7 +483,7 @@ export function QueueCancelButton({
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center justify-center gap-2 rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 hover:text-red-800',
+        'inline-flex items-center justify-center gap-2 rounded-md border border-destructive/30 px-4 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 hover:text-destructive',
         fullWidth && 'w-full',
       )}
     >
