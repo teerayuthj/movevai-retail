@@ -1,9 +1,9 @@
 import type { Driver, Order, ProofOfDelivery } from '@/data/mock';
 import { formatTHB } from '@/data/mock';
-import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import { getAssignedOrderOverdueMinutes, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 
 export type DriverQueueTab = 'ready' | 'assigned';
-export type DeliveryTrackingTab = 'in_transit' | 'pending' | 'returning' | 'closed';
+export type DeliveryTrackingTab = 'overdue' | 'in_transit' | 'pending' | 'returning' | 'closed';
 
 export const driverQueueTabLabels: Record<DriverQueueTab, string> = {
   ready: 'รอมอบหมาย',
@@ -11,6 +11,7 @@ export const driverQueueTabLabels: Record<DriverQueueTab, string> = {
 };
 
 export const deliveryTrackingTabLabels: Record<DeliveryTrackingTab, string> = {
+  overdue: 'เลยกำหนด',
   in_transit: 'กำลังจัดส่ง',
   pending: 'รอยืนยัน',
   returning: 'ส่งกลับ',
@@ -24,6 +25,13 @@ export function getDriverQueueTab(order: Order): DriverQueueTab | null {
 }
 
 export function getDeliveryTrackingTab(order: Order): DeliveryTrackingTab | null {
+  if (
+    order.status === 'assigned' &&
+    order.deliveryPlan?.releaseState === 'released' &&
+    getAssignedOrderOverdueMinutes(order) != null
+  ) {
+    return 'overdue';
+  }
   if (order.status === 'in_transit') return 'in_transit';
   if (order.status === 'pending_confirmation') return 'pending';
   if (order.status === 'returning') return 'returning';

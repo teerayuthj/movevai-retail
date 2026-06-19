@@ -1,4 +1,5 @@
 import type { Order } from '@/data/mock';
+import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 
 export function getRiderJobScheduledAt(order: Order): number | null {
   const plan = order.deliveryPlan;
@@ -9,8 +10,5 @@ export function getRiderJobScheduledAt(order: Order): number | null {
 }
 
 export function getRiderJobOverdueMinutes(order: Order, nowMs: number): number | null {
-  if (order.status !== 'assigned') return null;
-  const scheduledAt = getRiderJobScheduledAt(order);
-  if (scheduledAt == null || nowMs < scheduledAt) return null;
-  return Math.floor((nowMs - scheduledAt) / 60_000);
+  return getAssignedOrderOverdueMinutes(order, nowMs);
 }

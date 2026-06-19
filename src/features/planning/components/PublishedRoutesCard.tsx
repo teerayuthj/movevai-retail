@@ -6,7 +6,7 @@ import { planningCancelReasonLabel } from '@/data/mock';
 import { formatOverdueDuration, formatPlanningDate } from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
-import { BellRing, Ban, Clock, RefreshCw, Route, UserCog } from 'lucide-react';
+import { BellRing, Ban, Clock, RefreshCw, Route } from 'lucide-react';
 
 function formatScheduledPush(route: PlanningRoute) {
   if (!route.plannedTime) return null;
@@ -26,33 +26,12 @@ function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
   return Math.floor((nowMs - scheduledAt) / 60_000);
 }
 
-function canCancelRoute(route: PlanningRoute) {
-  return (
-    route.status !== 'cancelled' &&
-    route.status !== 'completed' &&
-    route.stops.every((stop) => stop.status === 'planned' || stop.status === 'assigned')
-  );
-}
-
-// ระหว่างทางย้ายเฉพาะจุดที่ยัง assigned ได้ ส่วนจุดที่เริ่มส่งแล้วคงอยู่กับคนขับเดิม
-function canReassignRoute(route: PlanningRoute) {
-  return (
-    route.status !== 'cancelled' &&
-    route.status !== 'completed' &&
-    route.stops.some((stop) => stop.status === 'planned' || stop.status === 'assigned')
-  );
-}
-
 export function PublishedRoutesCard({
   routes,
   onRetry,
-  onCancel,
-  onReassign,
 }: {
   routes: PlanningRoute[];
   onRetry: (routeId: string) => void;
-  onCancel: (route: PlanningRoute) => void;
-  onReassign: (route: PlanningRoute) => void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -65,7 +44,9 @@ export function PublishedRoutesCard({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm">Routes ที่ Publish แล้ว</CardTitle>
-        <CardDescription>สถานะงานและ Push notification ของวันที่เลือก</CardDescription>
+        <CardDescription>
+          ดูสถานะของวันที่เลือก — งานเลยกำหนดและการเปลี่ยนคนขับจัดการที่หน้าติดตามการจัดส่ง
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {routes.map((route) => {
@@ -137,23 +118,6 @@ export function PublishedRoutesCard({
                       <RefreshCw className="h-3.5 w-3.5" /> Retry Push
                     </Button>
                   )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!canReassignRoute(route)}
-                    onClick={() => onReassign(route)}
-                  >
-                    <UserCog className="h-3.5 w-3.5" /> เปลี่ยนคนขับ
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/5"
-                    disabled={!canCancelRoute(route)}
-                    onClick={() => onCancel(route)}
-                  >
-                    <Ban className="h-3.5 w-3.5" /> ยกเลิก Route
-                  </Button>
                 </div>
               )}
             </div>

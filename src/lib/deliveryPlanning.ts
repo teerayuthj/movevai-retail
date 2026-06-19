@@ -58,6 +58,15 @@ export function formatOverdueDuration(minutes: number) {
   return `เลยเวลานัดส่ง ${days} วัน${remainingHours ? ` ${remainingHours} ชม.` : ''}`;
 }
 
+export function getAssignedOrderOverdueMinutes(order: Order, nowMs = Date.now()) {
+  const plan = order.deliveryPlan;
+  if (order.status !== 'assigned' || !plan?.plannedDate || !plan.plannedTime) return null;
+
+  const scheduledAt = new Date(`${plan.plannedDate}T${plan.plannedTime}:00+07:00`).getTime();
+  if (Number.isNaN(scheduledAt) || nowMs < scheduledAt) return null;
+  return Math.floor((nowMs - scheduledAt) / 60_000);
+}
+
 export function normalizeOrderPlanning(order: Order): Order {
   return {
     ...order,

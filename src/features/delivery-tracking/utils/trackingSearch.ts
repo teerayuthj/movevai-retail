@@ -13,7 +13,11 @@ export function parseTrackingSearch(locationSearch: string): {
   const orderId = params.get('order');
 
   const view: TrackingView | null =
-    tab === 'in_transit' || tab === 'pending' || tab === 'returning' || tab === 'closed'
+    tab === 'overdue' ||
+    tab === 'in_transit' ||
+    tab === 'pending' ||
+    tab === 'returning' ||
+    tab === 'closed'
       ? (tab as DeliveryTrackingTab)
       : tab === 'needs_action'
         ? 'needs_action'
