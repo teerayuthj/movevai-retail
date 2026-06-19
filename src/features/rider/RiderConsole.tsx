@@ -19,6 +19,7 @@ import { JobCard } from './components/JobCard';
 import { RiderTabBar } from './components/RiderTabBar';
 import { RiderCompletedList } from './components/RiderCompletedList';
 import { RiderProfileSheet } from './components/RiderProfileSheet';
+import { RiderPushSetupBanner } from './components/RiderPushSetupBanner';
 
 const RIDER_STORAGE_KEY = 'movevai:rider-code';
 
@@ -78,14 +79,14 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     void clearRiderAppBadge();
   }, [activeTab]);
 
-  // คง subscription push ให้สดเมื่อเปิดแอป (เดิม RiderPushSetupBanner ทำให้ตอน mount
-  // แต่ตอนนี้ banner ย้ายไปอยู่ใน profile sheet ที่ไม่ได้ mount ตลอด)
+  // คง subscription ของเครื่องนี้ให้สดเมื่อเคยอนุญาต Push แล้ว
+  // ใช้ได้ทั้ง PWA และ Desktop Web ที่เปิดผ่าน HTTPS/localhost
   useEffect(() => {
-    if (!rider || !install.installed || !isPushSupported() || currentPermission() !== 'granted') {
+    if (!rider || !isPushSupported() || currentPermission() !== 'granted') {
       return;
     }
     void subscribeToPush(rider.id);
-  }, [rider, install.installed]);
+  }, [rider]);
 
   const refreshJobs = useCallback(async () => {
     await refreshRiderJobs(riderCode);
@@ -131,6 +132,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
       {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
       <div className="relative flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
         <RiderHeader rider={rider} onOpenProfile={() => setProfileOpen(true)} />
+        {rider && <RiderPushSetupBanner installed={install.installed} riderCode={rider.id} />}
 
         {/* job list */}
         <div className="flex-1 space-y-2.5 overflow-auto p-3 pb-safe">
