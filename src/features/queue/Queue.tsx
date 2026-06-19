@@ -16,7 +16,7 @@ import {
   QueueOrderCard,
 } from '@/components/delivery/DeliveryExecutionShared';
 import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/mock';
-import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
+import { getTomorrowDateKey, isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
   compareOrderPriority,
   driverQueueTabLabels,
@@ -26,7 +26,7 @@ import {
   type DriverQueueTab,
 } from '@/lib/deliveryExecution';
 import { useRetailStore } from '@/state/retailStore';
-import { Ban, CheckCircle2, Route, Search, Sparkles } from 'lucide-react';
+import { Ban, CalendarClock, CheckCircle2, Route, Search, Sparkles } from 'lucide-react';
 import { AssignmentPanel } from './components/AssignmentPanel';
 import { buildTrackingSearch, parseQueueSearch } from './utils/queueSearch';
 
@@ -37,14 +37,24 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
 type QueuePageProps = {
   locationSearch: string;
   onOpenTracking: (search?: string) => void;
+  onOpenPlanning: (search?: string) => void;
 };
 
-export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
-  const { orders, drivers, assignOrder, autoAssignReadyOrders, startDelivery, cancelOrder } =
-    useRetailStore();
+export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: QueuePageProps) {
+  const {
+    orders,
+    drivers,
+    assignOrder,
+    autoAssignReadyOrders,
+    startDelivery,
+    cancelOrder,
+    planOrders,
+  } = useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
+  const [planningTargetId, setPlanningTargetId] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState('');
 
   const workflowOrders = orders.filter(
     (order) => getDriverQueueTab(order) && isVisibleInExecutionQueue(order),
@@ -143,6 +153,22 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     onOpenTracking(buildTrackingSearch(selectedOrderForFocus));
   };
 
+  const moveToPlanning = async (orderId: string) => {
+    setPlanningTargetId(orderId);
+    setOperationError('');
+    try {
+      await planOrders([orderId], {
+        plannedDate: getTomorrowDateKey(),
+        dispatchReadiness: 'ready',
+      });
+      onOpenPlanning(`?order=${encodeURIComponent(orderId)}`);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setPlanningTargetId(null);
+    }
+  };
+
   const routeTargetOrders =
     activeTab === 'assigned' && selectedOrder?.status === 'assigned'
       ? [selectedOrder]
@@ -152,27 +178,36 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
   const assignmentActions = selectedOrder ? (
     <>
       {selectedOrder.status === 'ready' && (
-        <div className="flex gap-2">
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              disabled={!canAssign}
+              onClick={() => {
+                if (!selectedOrder || !selectedDriverId) return;
+                void assignOrder(selectedOrder.id, selectedDriverId);
+                setActiveTab('assigned');
+                setSelectedOrderId(selectedOrder.id);
+              }}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              ส่งวันนี้
+            </Button>
+            <Button
+              variant="outline"
+              disabled={planningTargetId === selectedOrder.id}
+              onClick={() => void moveToPlanning(selectedOrder.id)}
+            >
+              <CalendarClock className="h-4 w-4" />
+              วางแผนล่วงหน้า
+            </Button>
+          </div>
           <Button
-            className="flex-1"
-            disabled={!canAssign}
-            onClick={() => {
-              if (!selectedOrder || !selectedDriverId) return;
-              void assignOrder(selectedOrder.id, selectedDriverId);
-              setActiveTab('assigned');
-              setSelectedOrderId(selectedOrder.id);
-            }}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            มอบหมาย
-          </Button>
-          <Button
-            variant="outline"
-            className="border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            variant="ghost"
+            className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
             onClick={() => setCancelTargetId(selectedOrder.id)}
           >
             <Ban className="h-4 w-4" />
-            ยกเลิก
+            ยกเลิกออเดอร์
           </Button>
         </div>
       )}
@@ -203,9 +238,9 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">คิวจัดส่ง</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">จ่ายงานวันนี้</h1>
           <p className="text-sm text-muted-foreground">
-            มอบหมาย driver สำหรับออเดอร์ที่พร้อมส่ง และปล่อยงานเข้ารอบ Route ก่อนออกจัดส่ง
+            ส่งทันทีให้เลือกคนขับที่นี่ หรือนำงานไปวางแผนล่วงหน้าโดยไม่แสดงซ้ำสองหน้า
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
@@ -223,7 +258,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
             สร้าง Route
           </Button>
           <Button onClick={() => setAutoPreviewOpen(true)} disabled={readyOrders.length === 0}>
-            <Sparkles className="h-4 w-4" /> Auto-assign ทั้งหมด
+            <Sparkles className="h-4 w-4" /> Auto-assign งานวันนี้
           </Button>
         </div>
       </div>
@@ -258,11 +293,17 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
         }}
       />
 
+      {operationError && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          {operationError}
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[1fr_320px_380px]">
         <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <div className="space-y-3">
-              <CardTitle className="text-sm">คิวจัดส่ง</CardTitle>
+              <CardTitle className="text-sm">งานพร้อมจ่ายวันนี้</CardTitle>
               <div className="flex flex-col gap-3">
                 <Tabs
                   value={activeTab}
