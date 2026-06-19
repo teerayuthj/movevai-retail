@@ -32,7 +32,9 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
               type="button"
               className={cn(
                 'flex h-11 w-full items-center justify-between rounded-xl border bg-card px-4 text-sm',
-                currentTab.view === 'needs_action' && currentTab.count > 0 && 'text-warning',
+                currentTab.view === 'overdue' && currentTab.count > 0
+                  ? 'text-destructive'
+                  : currentTab.view === 'needs_action' && currentTab.count > 0 && 'text-warning',
               )}
             >
               <span className="flex items-center gap-2">
@@ -41,9 +43,11 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
                 <span
                   className={cn(
                     'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
-                    currentTab.view === 'needs_action' && currentTab.count > 0
-                      ? 'bg-warning/15 text-warning'
-                      : 'bg-muted text-muted-foreground',
+                    currentTab.view === 'overdue' && currentTab.count > 0
+                      ? 'bg-destructive/15 text-destructive'
+                      : currentTab.view === 'needs_action' && currentTab.count > 0
+                        ? 'bg-warning/15 text-warning'
+                        : 'bg-muted text-muted-foreground',
                   )}
                 >
                   {currentTab.count.toLocaleString('th-TH')}
@@ -55,6 +59,7 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
           <PopoverContent align="start" className="w-[calc(100vw-2rem)] max-w-sm p-1">
             {tabs.map((tab) => {
               const active = view === tab.view;
+              const overdue = tab.view === 'overdue' && tab.count > 0;
               const urgent = tab.view === 'needs_action' && tab.count > 0;
               return (
                 <button
@@ -67,7 +72,7 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
                   className={cn(
                     'flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm transition-colors hover:bg-muted',
                     active && 'bg-muted/60',
-                    urgent && 'text-warning',
+                    overdue ? 'text-destructive' : urgent && 'text-warning',
                   )}
                 >
                   <tab.icon className="h-4 w-4 shrink-0" />
@@ -75,7 +80,11 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
                   <span
                     className={cn(
                       'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
-                      urgent ? 'bg-warning/15 text-warning' : 'bg-muted text-muted-foreground',
+                      overdue
+                        ? 'bg-destructive/15 text-destructive'
+                        : urgent
+                          ? 'bg-warning/15 text-warning'
+                          : 'bg-muted text-muted-foreground',
                     )}
                   >
                     {tab.count.toLocaleString('th-TH')}
@@ -94,8 +103,8 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
           {tabs.map((tab) => {
             const active = view === tab.view;
             const Icon = tab.icon;
-            const isAction = tab.view === 'needs_action';
-            const urgent = isAction && tab.count > 0;
+            const overdue = tab.view === 'overdue' && tab.count > 0;
+            const urgent = tab.view === 'needs_action' && tab.count > 0;
             return (
               <button
                 key={tab.view}
@@ -106,8 +115,10 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
                   active
                     ? 'bg-background shadow-xs'
                     : 'text-muted-foreground hover:text-foreground',
+                  active && overdue && 'text-destructive',
                   active && urgent && 'text-warning',
-                  active && !urgent && 'text-foreground',
+                  active && !urgent && !overdue && 'text-foreground',
+                  !active && overdue && 'text-destructive',
                   !active && urgent && 'text-warning',
                 )}
               >
@@ -116,11 +127,13 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
                 <span
                   className={cn(
                     'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
-                    urgent
-                      ? 'bg-warning/15 text-warning'
-                      : active
-                        ? 'bg-muted text-muted-foreground'
-                        : 'bg-background/80 text-muted-foreground',
+                    overdue
+                      ? 'bg-destructive/15 text-destructive'
+                      : urgent
+                        ? 'bg-warning/15 text-warning'
+                        : active
+                          ? 'bg-muted text-muted-foreground'
+                          : 'bg-background/80 text-muted-foreground',
                   )}
                 >
                   {tab.count.toLocaleString('th-TH')}

@@ -1,6 +1,7 @@
 import type {
   CancelReason,
   DispatchReadiness,
+  PlanningCancelReason,
   Driver,
   FailNextAction,
   FailReason,
@@ -10,6 +11,7 @@ import type {
   ProofOfDelivery,
   ShippingMethod,
 } from '@/data/mock';
+import type { PlanningRoute } from '@/lib/retailApi';
 
 export type RetailState = {
   orders: Order[];
@@ -55,6 +57,7 @@ export type ConfirmDeliveryInput = {
 
 export type PlanOrdersInput = {
   plannedDate: string;
+  plannedTime?: string;
   plannedDriverId?: string;
   dispatchReadiness?: DispatchReadiness;
   note?: string;
@@ -86,9 +89,24 @@ export type RetailStore = RetailState & {
   markReturning: (orderId: string, input: MarkReturningInput) => void;
   markReturned: (orderId: string, input?: MarkReturnedInput) => void;
   retryDelivery: (orderId: string) => void;
-  planOrders: (orderIds: string[], input: PlanOrdersInput) => void;
-  clearPlannedOrders: (orderIds: string[]) => void;
-  releasePlannedOrders: (orderIds: string[]) => void;
-  setDispatchReadiness: (orderId: string, readiness: DispatchReadiness, note?: string) => void;
+  planOrders: (orderIds: string[], input: PlanOrdersInput) => Promise<void>;
+  clearPlannedOrders: (
+    orderIds: string[],
+    input?: { reason?: PlanningCancelReason; note?: string },
+  ) => Promise<void>;
+  releasePlannedOrders: (orderIds: string[]) => Promise<PlanningRoute>;
+  cancelRoute: (
+    routeId: string,
+    input: { reason: PlanningCancelReason; note?: string },
+  ) => Promise<PlanningRoute>;
+  reassignRoute: (
+    routeId: string,
+    input: { driverCode: string; note?: string },
+  ) => Promise<PlanningRoute>;
+  setDispatchReadiness: (
+    orderId: string,
+    readiness: DispatchReadiness,
+    note?: string,
+  ) => Promise<void>;
   resetDemoData: () => void;
 };

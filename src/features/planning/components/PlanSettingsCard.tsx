@@ -1,19 +1,16 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
-import {
-  dispatchReadinessLabel,
-  type DispatchReadiness,
-  type Driver,
-  type Order,
-} from '@/data/mock';
-import { CalendarClock, CheckCircle2, Clock3, XCircle } from 'lucide-react';
+import { dispatchReadinessLabel, type DispatchReadiness, type Driver } from '@/data/mock';
+import { CalendarClock, XCircle } from 'lucide-react';
 
 type PlanSettingsCardProps = {
   drivers: Driver[];
   selectedCount: number;
   planDate: string;
   onPlanDate: (value: string) => void;
+  planTime: string;
+  onPlanTime: (value: string) => void;
   plannedDriverId: string;
   onPlannedDriverId: (value: string) => void;
   readiness: DispatchReadiness;
@@ -21,11 +18,8 @@ type PlanSettingsCardProps = {
   planNote: string;
   onPlanNote: (value: string) => void;
   onApply: () => void;
-  onClearPlans: () => void;
-  clearDisabled: boolean;
-  /** เมื่อเลือก order เดียว — เปิดปุ่มปรับความพร้อมสินค้าอย่างเร็ว */
-  singleSelectedOrder: Order | null;
-  onSetReadiness: (orderId: string, value: DispatchReadiness, note?: string) => void;
+  onCancelPlans: () => void;
+  cancelDisabled: boolean;
 };
 
 export function PlanSettingsCard({
@@ -33,6 +27,8 @@ export function PlanSettingsCard({
   selectedCount,
   planDate,
   onPlanDate,
+  planTime,
+  onPlanTime,
   plannedDriverId,
   onPlannedDriverId,
   readiness,
@@ -40,10 +36,8 @@ export function PlanSettingsCard({
   planNote,
   onPlanNote,
   onApply,
-  onClearPlans,
-  clearDisabled,
-  singleSelectedOrder,
-  onSetReadiness,
+  onCancelPlans,
+  cancelDisabled,
 }: PlanSettingsCardProps) {
   return (
     <Card>
@@ -56,9 +50,34 @@ export function PlanSettingsCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-2">
-          <label className="text-[11px] font-medium text-muted-foreground">วันจัดส่งตามแผน</label>
-          <DatePicker value={planDate} onChange={onPlanDate} className="w-full" />
+        <div className="grid grid-cols-2 gap-2">
+          <div className="grid gap-2">
+            <label className="text-[11px] font-medium text-muted-foreground">วันจัดส่งตามแผน</label>
+            <DatePicker value={planDate} onChange={onPlanDate} className="w-full" />
+          </div>
+          <div className="grid gap-2">
+            <label className="text-[11px] font-medium text-muted-foreground">เวลาจัดส่ง</label>
+            <div className="flex items-center gap-1">
+              <input
+                type="time"
+                value={planTime}
+                onChange={(event) => onPlanTime(event.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              />
+              {planTime && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-8 shrink-0 text-muted-foreground"
+                  onClick={() => onPlanTime('')}
+                  aria-label="ล้างเวลา"
+                >
+                  <XCircle className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="grid gap-2">
@@ -86,7 +105,14 @@ export function PlanSettingsCard({
           >
             <option value="ready">{dispatchReadinessLabel.ready}</option>
             <option value="awaiting_items">{dispatchReadinessLabel.awaiting_items}</option>
+            <option value="on_hold">{dispatchReadinessLabel.on_hold}</option>
           </select>
+          {readiness !== 'ready' && (
+            <p className="text-[11px] text-warning">
+              สถานะนี้จะถูกกันไว้ไม่ให้ Publish จนกว่าจะปรับกลับเป็น “{dispatchReadinessLabel.ready}
+              ”
+            </p>
+          )}
         </div>
 
         <div className="grid gap-2">
@@ -105,49 +131,16 @@ export function PlanSettingsCard({
             <CalendarClock className="h-4 w-4" />
             บันทึกแผน
           </Button>
-          <Button variant="outline" onClick={onClearPlans} disabled={clearDisabled}>
+          <Button
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/5"
+            onClick={onCancelPlans}
+            disabled={cancelDisabled}
+          >
             <XCircle className="h-4 w-4" />
-            ล้างแผนที่เลือก
+            ยกเลิกงานที่เลือก
           </Button>
         </div>
-
-        {singleSelectedOrder && (
-          <div className="rounded-xl border bg-muted/20 p-3">
-            <div className="mb-2 text-[11px] font-medium text-muted-foreground">
-              ปรับความพร้อมสินค้าอย่างเร็ว
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button
-                size="sm"
-                variant={
-                  (singleSelectedOrder.dispatchReadiness ?? 'ready') === 'ready'
-                    ? 'default'
-                    : 'outline'
-                }
-                onClick={() =>
-                  onSetReadiness(singleSelectedOrder.id, 'ready', planNote || undefined)
-                }
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                พร้อมปล่อยงาน
-              </Button>
-              <Button
-                size="sm"
-                variant={
-                  (singleSelectedOrder.dispatchReadiness ?? 'ready') === 'awaiting_items'
-                    ? 'default'
-                    : 'outline'
-                }
-                onClick={() =>
-                  onSetReadiness(singleSelectedOrder.id, 'awaiting_items', planNote || undefined)
-                }
-              >
-                <Clock3 className="h-4 w-4" />
-                รอสินค้ามาครบ
-              </Button>
-            </div>
-          </div>
-        )}
       </CardContent>
     </Card>
   );

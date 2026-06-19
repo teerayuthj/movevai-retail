@@ -29,12 +29,7 @@ import {
   markPostalHandedOverState,
   setPostalTrackingState,
 } from '@/state/retail/postal';
-import {
-  clearPlannedOrdersState,
-  planOrdersState,
-  releasePlannedOrdersState,
-  setDispatchReadinessState,
-} from '@/state/retail/planning';
+import { clearPlannedOrdersState, setDispatchReadinessState } from '@/state/retail/planning';
 import type {
   ConfirmDeliveryInput,
   RetailState,
@@ -42,12 +37,18 @@ import type {
   SubmitDeliveryInput,
 } from '@/state/retail/types';
 import {
+  cancelPlanningRoute,
+  clearPlanning as clearPlanningApi,
   confirmAppDelivery,
   fetchAppDrivers,
   fetchAppOrders,
   fetchRiderOrders,
+  publishPlanningRoute,
+  reassignPlanningRoute,
+  savePlanning,
   startRiderOrder,
   submitRiderOrder,
+  syncAppOrder,
   syncAndAssignOrder,
 } from '@/lib/retailApi';
 
@@ -121,9 +122,9 @@ export function RetailProvider({
           ),
           ...remote.orders,
         ],
-        drivers: current.drivers.map((driver) =>
-          driver.id === driverCode ? remote.driver : driver,
-        ),
+        drivers: current.drivers.some((driver) => driver.id === driverCode)
+          ? current.drivers.map((driver) => (driver.id === driverCode ? remote.driver : driver))
+          : [...current.drivers, remote.driver],
       }));
     },
     [commit],
@@ -338,24 +339,82 @@ export function RetailProvider({
   );
 
   const planOrders = useCallback(
-    (orderIds: string[], input: Parameters<RetailStore['planOrders']>[1]) => {
-      commit((current) => planOrdersState(current, orderIds, input));
+    async (orderIds: string[], input: Parameters<RetailStore['planOrders']>[1]) => {
+      const selected = state.orders.filter((order) => orderIds.includes(order.id));
+      const synced = await Promise.all(selected.map(syncAppOrder));
+      const canonical = await savePlanning({
+        orderIds: synced.map((order) => order.id),
+        plannedDate: input.plannedDate,
+        plannedTime: input.plannedTime,
+        driverCode: input.plannedDriverId,
+        dispatchReadiness: input.dispatchReadiness,
+        note: input.note,
+      });
+      commit((current) => ({
+        ...current,
+        orders: canonical.reduce(replaceOrder, current.orders),
+      }));
     },
-    [commit],
+    [commit, state.orders],
   );
 
   const clearPlannedOrders = useCallback(
-    (orderIds: string[]) => {
+    async (orderIds: string[], input?: Parameters<RetailStore['clearPlannedOrders']>[1]) => {
+      await clearPlanningApi(orderIds, input);
       commit((current) => clearPlannedOrdersState(current, orderIds));
     },
     [commit],
   );
 
-  const releasePlannedOrders = useCallback(
-    (orderIds: string[]) => {
-      commit((current) => releasePlannedOrdersState(current, orderIds));
+  const cancelRoute = useCallback(
+    async (routeId: string, input: Parameters<RetailStore['cancelRoute']>[1]) => {
+      const route = await cancelPlanningRoute(routeId, input);
+      // backend คืน order กลับเป็น ready + releaseState=planned แล้ว — sync ให้ web เห็นตรงกัน
+      await syncFromBackend();
+      return route;
     },
-    [commit],
+    [syncFromBackend],
+  );
+
+  const reassignRoute = useCallback(
+    async (routeId: string, input: Parameters<RetailStore['reassignRoute']>[1]) => {
+      const route = await reassignPlanningRoute(routeId, input);
+      await syncFromBackend();
+      return route;
+    },
+    [syncFromBackend],
+  );
+
+  const releasePlannedOrders = useCallback(
+    async (orderIds: string[]) => {
+      const selected = state.orders.filter((order) => orderIds.includes(order.id));
+      const first = selected[0];
+      const plannedDate = first?.deliveryPlan?.plannedDate;
+      const plannedTime = first?.deliveryPlan?.plannedTime;
+      const driverCode = first?.deliveryPlan?.plannedDriverId;
+      if (!plannedDate || !driverCode) {
+        throw new Error('กรุณาบันทึกวันส่งและ Rider ก่อน Publish');
+      }
+      if (
+        selected.some(
+          (order) =>
+            order.deliveryPlan?.plannedDate !== plannedDate ||
+            order.deliveryPlan?.plannedDriverId !== driverCode,
+        )
+      ) {
+        throw new Error('orders ใน Route ต้องเป็นวันส่งและ Rider เดียวกัน');
+      }
+      const route = await publishPlanningRoute({
+        orderIds,
+        plannedDate,
+        plannedTime,
+        driverCode,
+        note: first.deliveryPlan?.note,
+      });
+      await syncFromBackend();
+      return route;
+    },
+    [state.orders, syncFromBackend],
   );
 
   const setDispatchReadiness = useCallback(
@@ -364,9 +423,20 @@ export function RetailProvider({
       readiness: Parameters<RetailStore['setDispatchReadiness']>[1],
       note?: Parameters<RetailStore['setDispatchReadiness']>[2],
     ) => {
+      const order = state.orders.find((item) => item.id === orderId);
+      if (order?.deliveryPlan?.releaseState === 'planned') {
+        return planOrders([orderId], {
+          plannedDate: order.deliveryPlan.plannedDate,
+          plannedTime: order.deliveryPlan.plannedTime,
+          plannedDriverId: order.deliveryPlan.plannedDriverId,
+          dispatchReadiness: readiness,
+          note: note ?? order.deliveryPlan.note,
+        });
+      }
       commit((current) => setDispatchReadinessState(current, orderId, readiness, note));
+      return Promise.resolve();
     },
-    [commit],
+    [commit, planOrders, state.orders],
   );
 
   const resetDemoData = useCallback(() => {
@@ -404,6 +474,8 @@ export function RetailProvider({
       planOrders,
       clearPlannedOrders,
       releasePlannedOrders,
+      cancelRoute,
+      reassignRoute,
       setDispatchReadiness,
       resetDemoData,
     }),
@@ -436,6 +508,8 @@ export function RetailProvider({
       planOrders,
       clearPlannedOrders,
       releasePlannedOrders,
+      cancelRoute,
+      reassignRoute,
       setDispatchReadiness,
       resetDemoData,
     ],

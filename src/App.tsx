@@ -101,6 +101,7 @@ export default function App() {
             <QueuePage
               locationSearch={locationSearch}
               onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
+              onOpenPlanning={(search) => navigateToPage('planning', { search })}
             />
           )}
           {page === 'delivery_tracking' && (
@@ -109,7 +110,7 @@ export default function App() {
               onOpenQueue={(search) => navigateToPage('queue', { search })}
             />
           )}
-          {page === 'planning' && <PlanningPage />}
+          {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}
         </Suspense>

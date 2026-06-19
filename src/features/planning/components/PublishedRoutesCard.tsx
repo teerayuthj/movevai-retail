@@ -1,0 +1,134 @@
+import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { planningCancelReasonLabel } from '@/data/mock';
+import { formatOverdueDuration, formatPlanningDate } from '@/lib/deliveryPlanning';
+import type { PlanningRoute } from '@/lib/retailApi';
+import { cn } from '@/lib/utils';
+import { BellRing, Ban, Clock, RefreshCw, Route } from 'lucide-react';
+
+function formatScheduledPush(route: PlanningRoute) {
+  if (!route.plannedTime) return null;
+  if (route.reminderPushStatus === 'succeeded') return `เตือนเวลา ${route.plannedTime} น. แล้ว`;
+  if (route.reminderPushStatus === 'failed') return `เตือนเวลา ${route.plannedTime} น. ไม่สำเร็จ`;
+  return `รอเตือนเมื่อถึงเวลา ${route.plannedTime} น.`;
+}
+
+function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
+  if (route.status === 'cancelled' || route.status === 'completed' || !route.plannedTime)
+    return null;
+
+  const scheduledAt = route.scheduledFor
+    ? new Date(route.scheduledFor).getTime()
+    : new Date(`${route.plannedDate}T${route.plannedTime}:00+07:00`).getTime();
+  if (Number.isNaN(scheduledAt) || nowMs < scheduledAt) return null;
+  return Math.floor((nowMs - scheduledAt) / 60_000);
+}
+
+export function PublishedRoutesCard({
+  routes,
+  onRetry,
+}: {
+  routes: PlanningRoute[];
+  onRetry: (routeId: string) => void;
+}) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm">Routes ที่ Publish แล้ว</CardTitle>
+        <CardDescription>
+          ดูสถานะของวันที่เลือก — งานเลยกำหนดและการเปลี่ยนคนขับจัดการที่หน้าติดตามการจัดส่ง
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {routes.map((route) => {
+          const cancelled = route.status === 'cancelled';
+          const overdueMinutes = getRouteOverdueMinutes(route, nowMs);
+          return (
+            <div
+              key={route.id}
+              className={cn(
+                'rounded-xl border p-3 text-xs',
+                cancelled && 'border-dashed bg-muted/30 opacity-80',
+                overdueMinutes != null &&
+                  'border-destructive/50 border-l-4 border-l-destructive bg-destructive/5',
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-2 font-medium">
+                  <Route className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{route.code}</span>
+                </div>
+                {cancelled ? (
+                  <Badge variant="muted">
+                    <Ban className="h-3 w-3" /> ยกเลิกแล้ว
+                  </Badge>
+                ) : route.pushStatus !== 'succeeded' ? (
+                  <Badge variant={route.pushStatus === 'failed' ? 'warning' : 'secondary'}>
+                    <BellRing className="h-3 w-3" /> แจ้งงาน {route.pushStatus}
+                  </Badge>
+                ) : null}
+              </div>
+              <div className="mt-2 text-muted-foreground">
+                {route.driver.name} · {route.stops.length} จุดส่ง
+              </div>
+              <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                <Clock className="h-3 w-3 shrink-0" />
+                นัดส่ง {formatPlanningDate(route.plannedDate)} ·{' '}
+                {route.plannedTime ? `${route.plannedTime} น.` : 'ไม่ระบุเวลา'}
+              </div>
+              {overdueMinutes != null && (
+                <Badge variant="destructive" className="mt-2">
+                  <Clock className="h-3 w-3" />
+                  {formatOverdueDuration(overdueMinutes)}
+                </Badge>
+              )}
+              {cancelled ? (
+                <div className="mt-1 text-muted-foreground">
+                  เหตุผล:{' '}
+                  {route.cancelReason ? planningCancelReasonLabel[route.cancelReason] : 'ไม่ระบุ'}
+                  {route.cancelNote ? ` · ${route.cancelNote}` : ''}
+                </div>
+              ) : (
+                formatScheduledPush(route) && (
+                  <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                    <Clock className="h-3 w-3 shrink-0" />
+                    {formatScheduledPush(route)}
+                  </div>
+                )
+              )}
+              {!cancelled && route.pushError && (
+                <div className="mt-2 text-destructive">{route.pushError}</div>
+              )}
+              {!cancelled && route.reminderPushError && (
+                <div className="mt-2 text-destructive">{route.reminderPushError}</div>
+              )}
+              {!cancelled && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(route.pushStatus === 'failed' || route.reminderPushStatus === 'failed') && (
+                    <Button size="sm" variant="outline" onClick={() => onRetry(route.id)}>
+                      <RefreshCw className="h-3.5 w-3.5" /> Retry Push
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {routes.length === 0 && (
+          <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">
+            ยังไม่มี Route ที่ Publish ในวันนี้
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

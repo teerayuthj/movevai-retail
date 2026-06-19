@@ -91,7 +91,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
       (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
       !isUnreleasedPlannedOrder(o),
   ).length;
-  const planningCount = orders.filter((o) => canPlanOrder(o)).length;
+  const planningCount = orders.filter((o) => canPlanOrder(o) && isUnreleasedPlannedOrder(o)).length;
   const riderJobCount = orders.filter((o) =>
     ['assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
   ).length;
@@ -104,7 +104,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
     { key: 'chat', label: 'Chat Intake', icon: MessageCircle, badge: String(chatCount) },
     { key: 'script_transform', label: 'Script Transform', icon: FileSpreadsheet },
     { key: 'inbox', label: 'Order Inbox', icon: Inbox, badge: String(inboxCount) },
-    { key: 'queue', label: 'คิวคนขับ', icon: Truck, badge: String(queueCount) },
+    { key: 'queue', label: 'จ่ายงานวันนี้', icon: Truck, badge: String(queueCount) },
     {
       key: 'delivery_tracking',
       label: 'ติดตามการจัดส่ง',

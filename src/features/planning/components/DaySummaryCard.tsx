@@ -10,6 +10,7 @@ type DaySummaryCardProps = {
   assignedCount: number;
   unassignedCount: number;
   awaitingItemsCount: number;
+  onHoldCount: number;
   onReleaseSelected: () => void;
   releaseSelectedDisabled: boolean;
   onReleaseAll: () => void;
@@ -23,6 +24,7 @@ export function DaySummaryCard({
   assignedCount,
   unassignedCount,
   awaitingItemsCount,
+  onHoldCount,
   onReleaseSelected,
   releaseSelectedDisabled,
   onReleaseAll,
@@ -32,9 +34,7 @@ export function DaySummaryCard({
     <Card>
       <CardHeader className="pb-3">
         <CardTitle className="text-sm">สรุปของวันที่ {formatPlanningDate(selectedDate)}</CardTitle>
-        <CardDescription>
-          ดู load ของวันนั้นและปล่อยงานเข้าคิวจริงเมื่อถึงวันปฏิบัติงาน
-        </CardDescription>
+        <CardDescription>ตรวจความพร้อมแล้ว Publish Route ให้ Rider เห็นงานล่วงหน้า</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
@@ -50,33 +50,49 @@ export function DaySummaryCard({
             <div className="text-[11px] text-muted-foreground">ยังไม่เลือกคนขับ</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{unassignedCount}</div>
           </div>
-          <div className="rounded-xl border bg-muted/20 p-3">
+          <div
+            className={
+              awaitingItemsCount > 0
+                ? 'rounded-xl border border-warning/40 bg-warning/10 p-3'
+                : 'rounded-xl border bg-muted/20 p-3'
+            }
+          >
             <div className="text-[11px] text-muted-foreground">รอสินค้ามาครบ</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{awaitingItemsCount}</div>
           </div>
+          <div
+            className={
+              onHoldCount > 0
+                ? 'rounded-xl border border-warning/40 bg-warning/10 p-3'
+                : 'rounded-xl border bg-muted/20 p-3'
+            }
+          >
+            <div className="text-[11px] text-muted-foreground">พักงานไว้ก่อน</div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums">{onHoldCount}</div>
+          </div>
         </div>
 
-        {awaitingItemsCount > 0 && (
+        {awaitingItemsCount + onHoldCount > 0 && (
           <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-            งานที่รอสินค้ามาครบยังปล่อยเข้าคิวได้ แต่ควรตรวจของก่อนปล่อยงานจริง
+            งานที่รอสินค้ามาครบหรือพักไว้ ยัง Publish ไม่ได้ ต้องเปลี่ยนเป็น “พร้อมปล่อยงาน” ก่อน
           </div>
         )}
 
         <div className="flex flex-wrap gap-2">
           <Button onClick={onReleaseSelected} disabled={releaseSelectedDisabled}>
             <Route className="h-4 w-4" />
-            ปล่อยที่เลือกเข้าคิว
+            Publish Route ที่เลือก
           </Button>
           <Button variant="outline" onClick={onReleaseAll} disabled={releaseAllDisabled}>
             <Truck className="h-4 w-4" />
-            ปล่อยทั้งหมดของวันนี้
+            Publish ทุก Route ของวันที่เลือก
           </Button>
         </div>
 
         <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
           {isToday
-            ? 'วันนี้สามารถปล่อยแผนเข้าคิวจริงได้'
-            : `จะปล่อยเข้าคิวได้เมื่อถึงวันที่ ${formatPlanningDate(selectedDate)}`}
+            ? 'งานวันนี้จะเริ่มได้ทันทีหลัง Publish'
+            : `Rider จะเห็นงานวันที่ ${formatPlanningDate(selectedDate)} ล่วงหน้า แต่เริ่มงานก่อนวันไม่ได้`}
         </div>
       </CardContent>
     </Card>

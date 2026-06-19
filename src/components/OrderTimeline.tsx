@@ -61,7 +61,11 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   delivery_plan_updated: { Icon: Pencil, tone: 'neutral' },
   delivery_plan_cleared: { Icon: Ban, tone: 'warning' },
   delivery_plan_released: { Icon: CheckCircle2, tone: 'success' },
+  delivery_route_cancelled: { Icon: Ban, tone: 'danger' },
+  delivery_route_reassigned: { Icon: UserCog, tone: 'warning' },
 };
+
+const FALLBACK_ICON_CONFIG: IconConfig = { Icon: Clock, tone: 'muted' };
 
 const TONE_CLASSES: Record<IconConfig['tone'], string> = {
   neutral: 'bg-muted text-muted-foreground ring-border',
@@ -108,7 +112,8 @@ function ChangeRow({ change }: { change: OrderActivityChange }) {
 }
 
 function TimelineItem({ event, isLast }: { event: OrderActivityEvent; isLast: boolean }) {
-  const config = ICON_BY_TYPE[event.type];
+  // API อาจเพิ่ม activity type ใหม่ก่อน frontend deploy — timeline ต้องไม่ทำให้ทั้งหน้าล่ม
+  const config = ICON_BY_TYPE[event.type] ?? FALLBACK_ICON_CONFIG;
   const Icon = config.Icon;
   return (
     <li className="relative flex gap-3 pb-4 last:pb-0">

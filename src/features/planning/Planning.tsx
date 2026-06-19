@@ -6,11 +6,18 @@ import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { AlertTriangle, CalendarClock, Route, Search, Users } from 'lucide-react';
-import { type DispatchReadiness } from '@/data/mock';
+import {
+  planningCancelReasonLabel,
+  type DispatchReadiness,
+  type Order,
+  type PlanningCancelReason,
+} from '@/data/mock';
+import { ResolutionDialog } from '@/components/ResolutionDialog';
 import {
   canPlanOrder,
   canReleasePlannedOrder,
   formatPlanningDate,
+  getNextHourTime,
   getPlannedLoadCount,
   getTodayDateKey,
   getTomorrowDateKey,
@@ -22,34 +29,34 @@ import { DriverPlanningCard } from './components/DriverPlanningCard';
 import { PlanSettingsCard } from './components/PlanSettingsCard';
 import { DaySummaryCard } from './components/DaySummaryCard';
 import { getDefaultPlanningDate, matchesPlanningQuery } from './utils/planningHelpers';
+import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from '@/lib/retailApi';
+import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 
-export function PlanningPage() {
-  const {
-    orders,
-    drivers,
-    planOrders,
-    clearPlannedOrders,
-    releasePlannedOrders,
-    setDispatchReadiness,
-  } = useRetailStore();
-  const [selectedDate, setSelectedDate] = useState(() => getDefaultPlanningDate(orders));
+export function PlanningPage({ locationSearch }: { locationSearch: string }) {
+  const { orders, drivers, planOrders, clearPlannedOrders, releasePlannedOrders } =
+    useRetailStore();
+  // เปิดหน้าที่งานวันนี้ก่อนเสมอ เพื่อให้งาน active/เลยเวลาหาเจอและจัดการได้ทันที
+  const [selectedDate, setSelectedDate] = useState(() => getTodayDateKey());
   const [query, setQuery] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [planDate, setPlanDate] = useState(() => getDefaultPlanningDate(orders));
+  const [planTime, setPlanTime] = useState(() => getNextHourTime());
   const [plannedDriverId, setPlannedDriverId] = useState('');
   const [readiness, setReadiness] = useState<DispatchReadiness>('ready');
   const [planNote, setPlanNote] = useState('');
+  const [routes, setRoutes] = useState<PlanningRoute[]>([]);
+  const [operationState, setOperationState] = useState<'idle' | 'saving' | 'publishing'>('idle');
+  const [operationError, setOperationError] = useState('');
+  const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
 
   const todayDate = getTodayDateKey();
+  const focusedOrderId = new URLSearchParams(locationSearch).get('order');
   const planningEligibleOrders = orders.filter((order) => canPlanOrder(order));
   const plannedOrders = planningEligibleOrders.filter((order) => isUnreleasedPlannedOrder(order));
   const plannedForSelectedDate = plannedOrders
     .filter((order) => order.deliveryPlan?.plannedDate === selectedDate)
     .sort((a, b) => a.customer.name.localeCompare(b.customer.name, 'th'));
-  const unplannedOrders = planningEligibleOrders
-    .filter((order) => !isUnreleasedPlannedOrder(order))
-    .sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
-  const visibleOrders = [...plannedForSelectedDate, ...unplannedOrders].filter((order) =>
+  const visibleOrders = plannedForSelectedDate.filter((order) =>
     matchesPlanningQuery(order, drivers, query),
   );
   const selectedOrderSet = new Set(selectedOrderIds);
@@ -57,12 +64,12 @@ export function PlanningPage() {
   const selectedOrderSnapshot = selectedOrders
     .map(
       (order) =>
-        `${order.id}:${order.deliveryPlan?.plannedDate ?? ''}:${order.deliveryPlan?.plannedDriverId ?? ''}:${order.dispatchReadiness ?? 'ready'}:${order.deliveryPlan?.note ?? ''}`,
+        `${order.id}:${order.deliveryPlan?.plannedDate ?? ''}:${order.deliveryPlan?.plannedTime ?? ''}:${order.deliveryPlan?.plannedDriverId ?? ''}:${order.dispatchReadiness ?? 'ready'}:${order.deliveryPlan?.note ?? ''}`,
     )
     .join('|');
   const selectedPlannedOrders = selectedOrders.filter((order) => isUnreleasedPlannedOrder(order));
   const releasableSelectedOrders = selectedOrders.filter((order) =>
-    canReleasePlannedOrder(order, todayDate),
+    canReleasePlannedOrder(order, selectedDate),
   );
   const assignedPlannedOrders = plannedForSelectedDate.filter(
     (order) => order.deliveryPlan?.plannedDriverId,
@@ -73,24 +80,50 @@ export function PlanningPage() {
   const awaitingItemsOrders = plannedForSelectedDate.filter(
     (order) => (order.dispatchReadiness ?? 'ready') === 'awaiting_items',
   );
+  const onHoldOrders = plannedForSelectedDate.filter(
+    (order) => (order.dispatchReadiness ?? 'ready') === 'on_hold',
+  );
   const singleSelectedOrder = selectedOrders.length === 1 ? selectedOrders[0] : null;
 
   useEffect(() => {
-    setSelectedOrderIds((current) => {
-      const next = current.filter((id) => visibleOrders.some((order) => order.id === id));
-      if (next.length === current.length) return current;
-      return next;
-    });
-  }, [visibleOrders]);
+    if (!focusedOrderId) return;
+    const focusedOrder = orders.find(
+      (order) => order.id === focusedOrderId && isUnreleasedPlannedOrder(order),
+    );
+    if (!focusedOrder?.deliveryPlan) return;
+    setSelectedDate(focusedOrder.deliveryPlan.plannedDate);
+    setSelectedOrderIds([focusedOrder.id]);
+  }, [focusedOrderId, orders]);
 
   useEffect(() => {
-    if (selectedOrders.length === 0) {
-      setPlanDate(selectedDate);
-      setPlannedDriverId('');
-      setReadiness('ready');
-      setPlanNote('');
-      return;
-    }
+    let cancelled = false;
+    const refreshRoutes = () => {
+      void fetchPlanningRoutes(selectedDate)
+        .then((nextRoutes) => {
+          if (!cancelled) setRoutes(nextRoutes);
+        })
+        .catch((error) => {
+          if (!cancelled) {
+            setOperationError(error instanceof Error ? error.message : String(error));
+          }
+        });
+    };
+    refreshRoutes();
+    const intervalId = window.setInterval(refreshRoutes, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [selectedDate]);
+
+  useEffect(() => {
+    setPlanDate(selectedDate);
+  }, [selectedDate]);
+
+  useEffect(() => {
+    // เก็บ draft คนขับ/ความพร้อม/หมายเหตุไว้เมื่อสลับแท็บวันที่
+    // และ sync ฟอร์มใหม่เฉพาะเมื่อชุด order ที่เลือกหรือข้อมูล plan เปลี่ยนจริง
+    if (selectedOrders.length === 0) return;
 
     const firstOrder = selectedOrders[0];
     const sharedDate = selectedOrders.every(
@@ -98,6 +131,12 @@ export function PlanningPage() {
     )
       ? firstOrder.deliveryPlan?.plannedDate
       : undefined;
+    const sharedTime = selectedOrders.every(
+      (order) =>
+        (order.deliveryPlan?.plannedTime ?? '') === (firstOrder.deliveryPlan?.plannedTime ?? ''),
+    )
+      ? (firstOrder.deliveryPlan?.plannedTime ?? '')
+      : '';
     const sharedDriver = selectedOrders.every(
       (order) => order.deliveryPlan?.plannedDriverId === firstOrder.deliveryPlan?.plannedDriverId,
     )
@@ -115,10 +154,13 @@ export function PlanningPage() {
       : '';
 
     setPlanDate(sharedDate ?? selectedDate);
+    setPlanTime(sharedTime || getNextHourTime());
     setPlannedDriverId(sharedDriver ?? '');
     setReadiness(sharedReadiness);
     setPlanNote(sharedNote);
-  }, [selectedDate, selectedOrderSnapshot]);
+    // selectedOrderSnapshot intentionally captures the fields that drive this form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrderSnapshot]);
 
   const toggleOrderSelection = (orderId: string) => {
     setSelectedOrderIds((current) =>
@@ -132,37 +174,97 @@ export function PlanningPage() {
 
   const clearSelection = () => {
     setSelectedOrderIds([]);
+    setPlanDate(selectedDate);
+    setPlanTime(getNextHourTime());
+    setPlannedDriverId('');
+    setReadiness('ready');
+    setPlanNote('');
   };
 
-  const applyPlanning = () => {
+  const applyPlanning = async () => {
     if (selectedOrders.length === 0) return;
-    planOrders(
-      selectedOrders.map((order) => order.id),
-      {
-        plannedDate: planDate,
-        plannedDriverId: plannedDriverId || undefined,
-        dispatchReadiness: readiness,
-        note: planNote.trim() || undefined,
-      },
-    );
-    setSelectedDate(planDate);
+    setOperationState('saving');
+    setOperationError('');
+    try {
+      await planOrders(
+        selectedOrders.map((order) => order.id),
+        {
+          plannedDate: planDate,
+          plannedTime: planTime || undefined,
+          plannedDriverId: plannedDriverId || undefined,
+          dispatchReadiness: readiness,
+          note: planNote.trim() || undefined,
+        },
+      );
+      setSelectedDate(planDate);
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOperationState('idle');
+    }
   };
 
-  const clearSelectedPlans = () => {
+  const confirmCancelSelectedPlans = async (reason: PlanningCancelReason, note?: string) => {
     if (selectedPlannedOrders.length === 0) return;
-    clearPlannedOrders(selectedPlannedOrders.map((order) => order.id));
+    setOperationState('saving');
+    setOperationError('');
+    try {
+      await clearPlannedOrders(
+        selectedPlannedOrders.map((order) => order.id),
+        { reason, note },
+      );
+      setCancelPlansOpen(false);
+      clearSelection();
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOperationState('idle');
+    }
   };
 
-  const releaseSelected = () => {
+  const planningCancelReasons = (
+    Object.keys(planningCancelReasonLabel) as PlanningCancelReason[]
+  ).map((value) => ({ value, label: planningCancelReasonLabel[value] }));
+
+  const publishGroups = async (targetOrders: Order[]) => {
+    const groups = new Map<string, string[]>();
+    targetOrders.forEach((order) => {
+      const key = `${order.deliveryPlan?.plannedDate}:${order.deliveryPlan?.plannedDriverId}`;
+      groups.set(key, [...(groups.get(key) ?? []), order.id]);
+    });
+    for (const orderIds of groups.values()) await releasePlannedOrders(orderIds);
+    setRoutes(await fetchPlanningRoutes(selectedDate));
+  };
+
+  const releaseSelected = async () => {
     if (releasableSelectedOrders.length === 0) return;
-    releasePlannedOrders(releasableSelectedOrders.map((order) => order.id));
-    clearSelection();
+    setOperationState('publishing');
+    setOperationError('');
+    try {
+      await publishGroups(releasableSelectedOrders);
+      clearSelection();
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOperationState('idle');
+    }
   };
 
-  const releaseAllForSelectedDate = () => {
-    if (selectedDate !== todayDate || plannedForSelectedDate.length === 0) return;
-    releasePlannedOrders(plannedForSelectedDate.map((order) => order.id));
-    clearSelection();
+  const releaseAllForSelectedDate = async () => {
+    const releasable = plannedForSelectedDate.filter((order) =>
+      canReleasePlannedOrder(order, selectedDate),
+    );
+    if (releasable.length === 0) return;
+    setOperationState('publishing');
+    setOperationError('');
+    try {
+      await publishGroups(releasable);
+      clearSelection();
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOperationState('idle');
+    }
   };
 
   return (
@@ -171,7 +273,7 @@ export function PlanningPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Planning จัดส่งล่วงหน้า</h1>
           <p className="text-sm text-muted-foreground">
-            ใช้ order เดียวกับ Inbox และ Queue ในการวางแผนวันส่ง คนขับ และความพร้อมสินค้าล่วงหน้า
+            จัดการเฉพาะงานที่ส่งมาวางแผนล่วงหน้า กำหนดวันส่ง คนขับ และความพร้อมสินค้า
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -201,7 +303,7 @@ export function PlanningPage() {
                 <div>
                   <CardTitle className="text-sm">รายการสำหรับวางแผน</CardTitle>
                   <CardDescription>
-                    งานที่ยังไม่วางแผน + งานที่วางไว้วันที่ {formatPlanningDate(selectedDate)}
+                    งานที่วางไว้วันที่ {formatPlanningDate(selectedDate)}
                   </CardDescription>
                 </div>
                 <div className="flex items-center gap-2">
@@ -248,7 +350,7 @@ export function PlanningPage() {
             {visibleOrders.length === 0 && (
               <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
                 <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
-                ไม่มี order ที่พร้อมวางแผนในมุมมองนี้
+                ยังไม่มีงานในแผนวันนี้ — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”
               </div>
             )}
           </CardContent>
@@ -281,17 +383,17 @@ export function PlanningPage() {
             selectedCount={selectedOrders.length}
             planDate={planDate}
             onPlanDate={setPlanDate}
+            planTime={planTime}
+            onPlanTime={setPlanTime}
             plannedDriverId={plannedDriverId}
             onPlannedDriverId={setPlannedDriverId}
             readiness={readiness}
             onReadiness={setReadiness}
             planNote={planNote}
             onPlanNote={setPlanNote}
-            onApply={applyPlanning}
-            onClearPlans={clearSelectedPlans}
-            clearDisabled={selectedPlannedOrders.length === 0}
-            singleSelectedOrder={singleSelectedOrder}
-            onSetReadiness={setDispatchReadiness}
+            onApply={() => void applyPlanning()}
+            onCancelPlans={() => setCancelPlansOpen(true)}
+            cancelDisabled={selectedPlannedOrders.length === 0}
           />
 
           <DaySummaryCard
@@ -301,12 +403,37 @@ export function PlanningPage() {
             assignedCount={assignedPlannedOrders.length}
             unassignedCount={unassignedPlannedOrders.length}
             awaitingItemsCount={awaitingItemsOrders.length}
-            onReleaseSelected={releaseSelected}
+            onHoldCount={onHoldOrders.length}
+            onReleaseSelected={() => void releaseSelected()}
             releaseSelectedDisabled={
-              selectedDate !== todayDate || releasableSelectedOrders.length === 0
+              operationState !== 'idle' || releasableSelectedOrders.length === 0
             }
-            onReleaseAll={releaseAllForSelectedDate}
-            releaseAllDisabled={selectedDate !== todayDate || plannedForSelectedDate.length === 0}
+            onReleaseAll={() => void releaseAllForSelectedDate()}
+            releaseAllDisabled={
+              operationState !== 'idle' ||
+              !plannedForSelectedDate.some((order) => canReleasePlannedOrder(order, selectedDate))
+            }
+          />
+
+          {operationError && (
+            <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+              {operationError}
+            </div>
+          )}
+
+          <PublishedRoutesCard
+            routes={routes}
+            onRetry={(routeId) => {
+              void retryPlanningRoutePush(routeId)
+                .then((updated) =>
+                  setRoutes((current) =>
+                    current.map((route) => (route.id === updated.id ? updated : route)),
+                  ),
+                )
+                .catch((error) =>
+                  setOperationError(error instanceof Error ? error.message : String(error)),
+                );
+            }}
           />
 
           {singleSelectedOrder ? (
@@ -329,17 +456,34 @@ export function PlanningPage() {
                 <div className="flex items-center gap-2">
                   <Route className="h-4 w-4" />
                   ปล่อยเข้าคิวได้ตอนนี้{' '}
-                  {selectedDate === todayDate ? plannedForSelectedDate.length : 0} รายการ
+                  {
+                    plannedForSelectedDate.filter((order) =>
+                      canReleasePlannedOrder(order, selectedDate),
+                    ).length
+                  }{' '}
+                  รายการ
                 </div>
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
-                  รอสินค้ามาครบ {awaitingItemsOrders.length} รายการ
+                  รอสินค้า/พักไว้ {awaitingItemsOrders.length + onHoldOrders.length} รายการ
                 </div>
               </CardContent>
             </Card>
           )}
         </div>
       </div>
+
+      <ResolutionDialog
+        open={cancelPlansOpen}
+        title="ยกเลิกงานที่เลือก"
+        description={`คืน ${selectedPlannedOrders.length} งานออกจากแผน (ยังไม่ Publish)`}
+        reasons={planningCancelReasons}
+        notePlaceholder="เช่น ลูกค้าแจ้งเลื่อน / รอผลิต lot ใหม่"
+        confirmLabel="ยืนยันยกเลิก"
+        confirmVariant="destructive"
+        onCancel={() => setCancelPlansOpen(false)}
+        onConfirm={({ reason, note }) => void confirmCancelSelectedPlans(reason, note)}
+      />
     </div>
   );
 }

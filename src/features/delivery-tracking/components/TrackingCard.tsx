@@ -9,7 +9,8 @@ import {
   statusLabel,
 } from '@/data/mock';
 import { cn } from '@/lib/utils';
-import { ArrowUpRight, CheckCircle2, Coins, IdCard, MapPin, Phone } from 'lucide-react';
+import { formatOverdueDuration, formatPlanningDateTime } from '@/lib/deliveryPlanning';
+import { ArrowUpRight, CheckCircle2, Clock3, Coins, IdCard, MapPin, Phone } from 'lucide-react';
 
 type TrackingCardProps = {
   order: Order;
@@ -17,18 +18,28 @@ type TrackingCardProps = {
   onSelect: () => void;
   /** ปุ่ม action ตามสถานะ — render เฉพาะงานที่ยัง actionable */
   actions?: ReactNode;
+  overdueMinutes?: number | null;
 };
 
 /** การ์ดในรายการ: สรุป + หลักฐานย่อ + ปุ่ม action ในตัว */
-export function TrackingCard({ order, selected, onSelect, actions }: TrackingCardProps) {
+export function TrackingCard({
+  order,
+  selected,
+  onSelect,
+  actions,
+  overdueMinutes,
+}: TrackingCardProps) {
   const pod = order.proofOfDelivery;
   const tone =
-    order.status === 'in_transit'
-      ? 'border-l-info'
-      : order.status === 'pending_confirmation' || order.status === 'returning'
-        ? 'border-l-warning'
-        : 'border-l-muted-foreground/30';
+    overdueMinutes != null
+      ? 'border-l-destructive'
+      : order.status === 'in_transit'
+        ? 'border-l-info'
+        : order.status === 'pending_confirmation' || order.status === 'returning'
+          ? 'border-l-warning'
+          : 'border-l-muted-foreground/30';
   const isActionable =
+    overdueMinutes != null ||
     order.status === 'in_transit' ||
     order.status === 'pending_confirmation' ||
     order.status === 'returning';
@@ -38,6 +49,7 @@ export function TrackingCard({ order, selected, onSelect, actions }: TrackingCar
       className={cn(
         'rounded-lg border border-l-[3px] bg-card transition-colors',
         tone,
+        overdueMinutes != null && 'border-destructive/40 bg-destructive/5',
         selected && 'ring-1 ring-primary',
       )}
     >
@@ -71,11 +83,22 @@ export function TrackingCard({ order, selected, onSelect, actions }: TrackingCar
                 COD
               </Badge>
             )}
+            {overdueMinutes != null && (
+              <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                <Clock3 className="h-3 w-3" /> {formatOverdueDuration(overdueMinutes)}
+              </Badge>
+            )}
           </div>
           <ArrowUpRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         </div>
 
         <div className="mt-1.5 text-sm font-medium">{order.customer.name}</div>
+        {overdueMinutes != null && order.deliveryPlan && (
+          <div className="mt-1 text-[11px] font-medium text-destructive">
+            {order.deliveryRoute?.code ?? 'Route'} · นัดส่ง{' '}
+            {formatPlanningDateTime(order.deliveryPlan.plannedDate, order.deliveryPlan.plannedTime)}
+          </div>
+        )}
         <div className="mt-1 space-y-1 text-[11px] text-muted-foreground">
           <div className="flex items-start gap-1.5">
             <MapPin className="mt-0.5 h-3 w-3 shrink-0" />

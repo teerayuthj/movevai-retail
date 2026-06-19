@@ -46,14 +46,35 @@ export type PaymentMethod = 'cod' | 'prepaid' | 'transfer_on_delivery';
 
 export type ShippingMethod = 'internal_driver' | 'thai_post';
 
-export type DispatchReadiness = 'ready' | 'awaiting_items';
+export type DispatchReadiness = 'ready' | 'awaiting_items' | 'on_hold';
+
+/** เหตุผลยกเลิก/ดึงกลับงานในหน้า Planning จัดส่งล่วงหน้า (แยกจาก CancelReason ของการปิดออเดอร์) */
+export type PlanningCancelReason =
+  | 'items_incomplete'
+  | 'production_delay'
+  | 'customer_reschedule'
+  | 'duplicate'
+  | 'other';
 
 export type DeliveryPlan = {
   plannedDate: string; // local date key in YYYY-MM-DD
+  plannedTime?: string; // local time in HH:mm (24h)
   plannedDriverId?: string;
   releaseState: 'planned' | 'released';
   releasedAt?: string;
   note?: string;
+};
+
+export type DeliveryRoute = {
+  id: string;
+  code: string;
+  plannedDate: string;
+  status: 'published' | 'active' | 'completed';
+  sequence: number;
+  stopCount?: number;
+  driverCode?: string;
+  pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
+  pushError?: string;
 };
 
 /** บันทึกการเก็บเงินปลายทางตอนปิดงาน */
@@ -135,7 +156,9 @@ export type OrderActivityEventType =
   | 'delivery_planned'
   | 'delivery_plan_updated'
   | 'delivery_plan_cleared'
-  | 'delivery_plan_released';
+  | 'delivery_plan_released'
+  | 'delivery_route_cancelled'
+  | 'delivery_route_reassigned';
 
 export type OrderActivityActor =
   | { kind: 'system'; label: string }
@@ -152,6 +175,7 @@ export type OrderActivityChangeField =
   | 'status'
   | 'dispatchReadiness'
   | 'deliveryPlan.plannedDate'
+  | 'deliveryPlan.plannedTime'
   | 'deliveryPlan.plannedDriverId'
   | 'deliveryPlan.releaseState';
 
@@ -199,6 +223,7 @@ export type Order = {
   assignedDriverId?: string;
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
   deliveryPlan?: DeliveryPlan;
+  deliveryRoute?: DeliveryRoute;
   proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก rider
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ
@@ -828,6 +853,15 @@ export const paymentLabel: Record<PaymentMethod, string> = {
 export const dispatchReadinessLabel: Record<DispatchReadiness, string> = {
   ready: 'พร้อมปล่อยงาน',
   awaiting_items: 'รอสินค้ามาครบ',
+  on_hold: 'พักงานไว้ก่อน',
+};
+
+export const planningCancelReasonLabel: Record<PlanningCancelReason, string> = {
+  items_incomplete: 'สินค้าไม่ครบ',
+  production_delay: 'ผลิตไม่ทัน',
+  customer_reschedule: 'ลูกค้าเลื่อนนัด',
+  duplicate: 'งานซ้ำ',
+  other: 'อื่นๆ',
 };
 
 export const shippingMethodLabel: Record<ShippingMethod, string> = {

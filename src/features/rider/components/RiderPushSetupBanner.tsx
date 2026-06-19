@@ -10,13 +10,15 @@ export function RiderPushSetupBanner({
   riderCode: string;
 }) {
   const supported = isPushSupported();
+  const requiresInstallation =
+    typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent) && !installed;
   const [permission, setPermission] = useState<NotifPermission>(() => currentPermission());
   const [registered, setRegistered] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!installed || !supported || permission !== 'granted') return;
+    if (requiresInstallation || !supported || permission !== 'granted') return;
 
     let cancelled = false;
     void subscribeToPush(riderCode).then((result) => {
@@ -34,7 +36,7 @@ export function RiderPushSetupBanner({
     return () => {
       cancelled = true;
     };
-  }, [installed, permission, riderCode, supported]);
+  }, [permission, requiresInstallation, riderCode, supported]);
 
   const handleEnable = async () => {
     setBusy(true);
@@ -49,10 +51,10 @@ export function RiderPushSetupBanner({
 
       if (result.reason === 'denied') {
         setPermission('denied');
-        setError('แจ้งเตือนถูกปิดไว้ในเครื่อง ต้องเปิดจาก Settings ของ iPhone');
+        setError('แจ้งเตือนถูกปิดไว้ในเครื่อง ต้องเปิดจาก Settings ของระบบหรือ browser');
       } else if (result.reason === 'unsupported') {
         setPermission('unsupported');
-        setError('iPhone ต้องเปิดจากไอคอนบนหน้าจอโฮม ไม่ใช่ Safari tab');
+        setError('Browser นี้ไม่รองรับ Web Push หรือไม่ได้เปิดผ่าน HTTPS/localhost');
       } else if (result.reason === 'no-vapid-key') {
         setError('ยังไม่ได้ตั้งค่า Push key');
       } else if (result.reason === 'backend-registration-failed') {
@@ -67,15 +69,23 @@ export function RiderPushSetupBanner({
     }
   };
 
-  if (!installed || (permission === 'granted' && registered)) return null;
+  if (requiresInstallation) {
+    return (
+      <div className="border-b bg-warning/10 px-3 py-2.5 text-xs text-warning">
+        iPhone ต้องติดตั้ง PWA และเปิดจากไอคอนบนหน้าจอโฮมก่อน จึงจะเปิดแจ้งเตือนได้
+      </div>
+    );
+  }
 
   if (!supported) {
     return (
       <div className="border-b bg-warning/10 px-3 py-2.5 text-xs text-warning">
-        เปิดแจ้งเตือนได้หลังติดตั้ง PWA และเปิดจากไอคอนบนหน้าจอโฮม
+        Browser นี้ไม่รองรับ Web Push หรือต้องเปิดผ่าน HTTPS/localhost
       </div>
     );
   }
+
+  if (permission === 'granted' && registered) return null;
 
   return (
     <div className="border-b bg-success/10 px-3 py-2.5">
@@ -90,7 +100,7 @@ export function RiderPushSetupBanner({
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-success">เปิดแจ้งเตือนรับงาน</div>
           <div className="text-[11px] leading-snug text-success">
-            ต้องกดอนุญาตบนเครื่องนี้ก่อน ถึงจะรับงานใหม่ผ่าน Push ได้
+            อนุญาตเครื่องนี้ให้รับ Push ของ {riderCode} แม้ไม่ได้ติดตั้ง PWA
           </div>
           {error && <div className="mt-1 text-[11px] text-destructive">{error}</div>}
         </div>

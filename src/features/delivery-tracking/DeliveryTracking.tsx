@@ -5,13 +5,16 @@ import { Input } from '@/components/ui/input';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
 import {
+  planningCancelReasonLabel,
   type FailNextAction,
   type FailReason,
   type Order,
+  type PlanningCancelReason,
   failNextActionLabel,
   failReasonLabel,
 } from '@/data/mock';
 import { requiresDeliveryReview } from '@/lib/deliveryExecution';
+import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import {
   fetchAppOrder,
   fetchDeliveryTrackingCounts,
@@ -21,6 +24,7 @@ import {
 import { useRetailStore } from '@/state/retailStore';
 import {
   AlertCircle,
+  Ban,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -28,6 +32,7 @@ import {
   PackageCheck,
   Truck,
   Undo2,
+  UserCog,
   Search,
   XCircle,
 } from 'lucide-react';
@@ -38,6 +43,7 @@ import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './util
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
+  overdue: 0,
   in_transit: 0,
   pending: 0,
   returning: 0,
@@ -52,14 +58,26 @@ const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
   Object.keys(failNextActionLabel) as FailNextAction[]
 ).map((value) => ({ value, label: failNextActionLabel[value] }));
 
+const PLANNING_CANCEL_REASONS = (
+  Object.keys(planningCancelReasonLabel) as PlanningCancelReason[]
+).map((value) => ({ value, label: planningCancelReasonLabel[value] }));
+
 type DeliveryTrackingPageProps = {
   locationSearch: string;
   onOpenQueue: (search?: string) => void;
 };
 
 export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTrackingPageProps) {
-  const { orders, drivers, submitDelivery, confirmDelivery, failDelivery, markReturned } =
-    useRetailStore();
+  const {
+    orders,
+    drivers,
+    submitDelivery,
+    confirmDelivery,
+    failDelivery,
+    markReturned,
+    cancelRoute,
+    reassignRoute,
+  } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [riderCloseTargetId, setRiderCloseTargetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -73,11 +91,17 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [routeActionError, setRouteActionError] = useState('');
+  const [routeAction, setRouteAction] = useState<{
+    type: 'cancel' | 'reassign';
+    order: Order;
+  } | null>(null);
   const listRequestId = useRef(0);
   const detailRequestId = useRef(0);
   const parsedSearch = useMemo(() => parseTrackingSearch(locationSearch), [locationSearch]);
 
-  const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'needs_action');
+  const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'overdue');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(parsedSearch.orderId);
 
   const isPaginated = view !== 'needs_action';
@@ -108,6 +132,15 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     }, 350);
     return () => window.clearTimeout(timer);
   }, [query]);
+
+  useEffect(() => {
+    const minuteId = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    const refreshId = window.setInterval(() => setRefreshKey((current) => current + 1), 30_000);
+    return () => {
+      window.clearInterval(minuteId);
+      window.clearInterval(refreshId);
+    };
+  }, []);
 
   useEffect(() => {
     const requestId = ++listRequestId.current;
@@ -191,8 +224,55 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     setRefreshKey((current) => current + 1);
   }
 
+  async function confirmRouteAction(value: string, note?: string) {
+    const routeId = routeAction?.order.deliveryRoute?.id;
+    if (!routeAction || !routeId) return;
+    setRouteActionError('');
+    try {
+      if (routeAction.type === 'cancel') {
+        await cancelRoute(routeId, { reason: value as PlanningCancelReason, note });
+      } else {
+        await reassignRoute(routeId, { driverCode: value, note });
+      }
+      setRouteAction(null);
+      setSelectedOrderId(null);
+      refreshTracking();
+    } catch (error) {
+      setRouteActionError(error instanceof Error ? error.message : String(error));
+    }
+  }
+
   // ── ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งบนการ์ด inline และ footer ของ drawer ──
   function renderActions(order: Order) {
+    if (order.status === 'assigned' && order.deliveryRoute) {
+      return (
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => {
+              setRouteActionError('');
+              setRouteAction({ type: 'reassign', order });
+            }}
+          >
+            <UserCog className="h-4 w-4" />
+            เปลี่ยนคนขับ
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 border-destructive/40 text-destructive hover:bg-destructive/5"
+            onClick={() => {
+              setRouteActionError('');
+              setRouteAction({ type: 'cancel', order });
+            }}
+          >
+            <Ban className="h-4 w-4" />
+            ยกเลิก/ดึงกลับ
+          </Button>
+        </div>
+      );
+    }
+
     if (order.status === 'in_transit') {
       return (
         <div className="flex gap-2">
@@ -255,6 +335,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
 
   // แท็บเดียวคุมทั้งหมด — ตัวเลขเป็น badge ในแท็บ (ไม่แยกการ์ด KPI เพื่อเลี่ยงความกำกวมว่าคลิกได้ไหม)
   const tabs: TrackingTab[] = [
+    { view: 'overdue', label: 'เลยกำหนด', icon: AlertCircle, count: trackingCounts.overdue },
     { view: 'needs_action', label: 'ต้องทำ', icon: AlertCircle, count: needsActionCount },
     { view: 'in_transit', label: 'กำลังจัดส่ง', icon: Truck, count: trackingCounts.in_transit },
     { view: 'pending', label: 'รอยืนยัน', icon: CheckCircle2, count: trackingCounts.pending },
@@ -332,6 +413,37 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         }}
       />
 
+      {routeAction?.type === 'cancel' && routeAction.order.deliveryRoute && (
+        <ResolutionDialog
+          open
+          title={`ยกเลิก Route ${routeAction.order.deliveryRoute.code}`}
+          description={`ดึงทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับเข้า Planning และแจ้งคนขับ`}
+          error={routeActionError}
+          reasons={PLANNING_CANCEL_REASONS}
+          notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
+          confirmLabel="ยืนยันยกเลิก Route"
+          confirmVariant="destructive"
+          onCancel={() => setRouteAction(null)}
+          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+        />
+      )}
+
+      {routeAction?.type === 'reassign' && routeAction.order.deliveryRoute && (
+        <ResolutionDialog
+          open
+          title={`เปลี่ยนคนขับ Route ${routeAction.order.deliveryRoute.code}`}
+          description={`ย้ายงานที่ยังรอส่ง ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดไปคนขับใหม่`}
+          error={routeActionError}
+          reasons={drivers
+            .filter((driver) => driver.id !== routeAction.order.assignedDriverId)
+            .map((driver) => ({ value: driver.id, label: `${driver.name} · ${driver.zone}` }))}
+          notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
+          confirmLabel="ย้ายงาน"
+          onCancel={() => setRouteAction(null)}
+          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+        />
+      )}
+
       <TrackingViewTabs tabs={tabs} view={view} onChange={changeView} />
 
       <Card className="flex min-h-[calc(100vh-16rem)] flex-col overflow-hidden">
@@ -363,6 +475,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
               selected={selectedOrderId === order.id}
               onSelect={() => setSelectedOrderId(order.id)}
               actions={renderActions(order)}
+              overdueMinutes={getAssignedOrderOverdueMinutes(order, nowMs)}
             />
           ))}
 

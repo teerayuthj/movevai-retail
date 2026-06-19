@@ -4,6 +4,8 @@ import {
   canPlanOrder,
   canReleasePlannedOrder,
   formatPlanningDate,
+  formatPlanningDateTime,
+  formatPlanningTime,
   getTodayDateKey,
 } from '@/lib/deliveryPlanning';
 import { appendEvent, nowIso, operatorActor } from '@/state/retail/timeline';
@@ -16,12 +18,13 @@ function driverNameById(current: RetailState, driverId: string | undefined) {
 
 function buildPlanDetails(
   plannedDate: string,
+  plannedTime: string | undefined,
   plannedDriverName: string | undefined,
   readiness: DispatchReadiness,
   note?: string,
 ) {
   return [
-    `วันที่ส่ง: ${formatPlanningDate(plannedDate)}`,
+    `วันที่ส่ง: ${formatPlanningDateTime(plannedDate, plannedTime)}`,
     plannedDriverName ? `คนขับ: ${plannedDriverName}` : 'ยังไม่เลือกคนขับ',
     `ความพร้อมสินค้า: ${dispatchReadinessLabel[readiness]}`,
     note ? `หมายเหตุ: ${note}` : undefined,
@@ -47,6 +50,7 @@ export function planOrdersState(
       const previousPlan = order.deliveryPlan;
       const nextPlan = {
         plannedDate: input.plannedDate,
+        plannedTime: input.plannedTime,
         plannedDriverId: input.plannedDriverId,
         releaseState: 'planned' as const,
         note: input.note ?? previousPlan?.note,
@@ -61,6 +65,15 @@ export function planOrdersState(
             ? formatPlanningDate(previousPlan.plannedDate)
             : undefined,
           after: formatPlanningDate(nextPlan.plannedDate),
+        });
+      }
+
+      if ((previousPlan?.plannedTime ?? undefined) !== (nextPlan.plannedTime ?? undefined)) {
+        changes.push({
+          field: 'deliveryPlan.plannedTime',
+          label: 'เวลาจัดส่ง',
+          before: formatPlanningTime(previousPlan?.plannedTime),
+          after: formatPlanningTime(nextPlan.plannedTime) ?? 'ไม่ระบุเวลา',
         });
       }
 
@@ -110,6 +123,7 @@ export function planOrdersState(
             : 'วางแผนจัดส่งล่วงหน้า',
         details: buildPlanDetails(
           nextPlan.plannedDate,
+          nextPlan.plannedTime,
           driverNameById(current, nextPlan.plannedDriverId),
           nextReadiness,
           nextPlan.note,
@@ -255,7 +269,7 @@ export function releasePlannedOrdersState(current: RetailState, orderIds: string
         actor: operatorActor(order.handledBy),
         summary: plannedDriverId ? 'ปล่อยแผนเข้าคิวและมอบหมายคนขับ' : 'ปล่อยแผนเข้าคิวจัดส่ง',
         details: [
-          `วันที่ส่ง: ${formatPlanningDate(today)}`,
+          `วันที่ส่ง: ${formatPlanningDateTime(today, order.deliveryPlan?.plannedTime)}`,
           plannedDriverId
             ? `คนขับ: ${driverNameById(current, plannedDriverId)}`
             : 'ยังไม่มอบหมายคนขับ',
