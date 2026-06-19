@@ -156,7 +156,9 @@ export type OrderActivityEventType =
   | 'delivery_planned'
   | 'delivery_plan_updated'
   | 'delivery_plan_cleared'
-  | 'delivery_plan_released';
+  | 'delivery_plan_released'
+  | 'delivery_route_cancelled'
+  | 'delivery_route_reassigned';
 
 export type OrderActivityActor =
   | { kind: 'system'; label: string }
