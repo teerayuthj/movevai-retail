@@ -33,8 +33,15 @@ import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from 
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 
 export function PlanningPage({ locationSearch }: { locationSearch: string }) {
-  const { orders, drivers, planOrders, clearPlannedOrders, releasePlannedOrders } =
-    useRetailStore();
+  const {
+    orders,
+    drivers,
+    planOrders,
+    clearPlannedOrders,
+    releasePlannedOrders,
+    cancelRoute,
+    reassignRoute,
+  } = useRetailStore();
   // เปิดหน้าที่งานวันนี้ก่อนเสมอ เพื่อให้งาน active/เลยเวลาหาเจอและจัดการได้ทันที
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateKey());
   const [query, setQuery] = useState('');
@@ -48,6 +55,11 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const [operationState, setOperationState] = useState<'idle' | 'saving' | 'publishing'>('idle');
   const [operationError, setOperationError] = useState('');
   const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
+  const [routeAction, setRouteAction] = useState<{
+    type: 'cancel' | 'reassign';
+    route: PlanningRoute;
+  } | null>(null);
+  const [routeActionError, setRouteActionError] = useState('');
 
   const todayDate = getTodayDateKey();
   const focusedOrderId = new URLSearchParams(locationSearch).get('order');
@@ -219,6 +231,22 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
       setOperationError(error instanceof Error ? error.message : String(error));
     } finally {
       setOperationState('idle');
+    }
+  };
+
+  const confirmRouteAction = async (value: string, note?: string) => {
+    if (!routeAction) return;
+    setRouteActionError('');
+    try {
+      if (routeAction.type === 'cancel') {
+        await cancelRoute(routeAction.route.id, { reason: value as PlanningCancelReason, note });
+      } else {
+        await reassignRoute(routeAction.route.id, { driverCode: value, note });
+      }
+      setRouteAction(null);
+      setRoutes(await fetchPlanningRoutes(selectedDate));
+    } catch (error) {
+      setRouteActionError(error instanceof Error ? error.message : String(error));
     }
   };
 
@@ -423,6 +451,14 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
 
           <PublishedRoutesCard
             routes={routes}
+            onCancel={(route) => {
+              setRouteActionError('');
+              setRouteAction({ type: 'cancel', route });
+            }}
+            onReassign={(route) => {
+              setRouteActionError('');
+              setRouteAction({ type: 'reassign', route });
+            }}
             onRetry={(routeId) => {
               void retryPlanningRoutePush(routeId)
                 .then((updated) =>
@@ -484,6 +520,37 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
         onCancel={() => setCancelPlansOpen(false)}
         onConfirm={({ reason, note }) => void confirmCancelSelectedPlans(reason, note)}
       />
+
+      {routeAction?.type === 'cancel' && (
+        <ResolutionDialog
+          open
+          title={`ยกเลิก Route ${routeAction.route.code}`}
+          description={`ดึงทั้ง Route ${routeAction.route.stops.length} จุดกลับเข้า Planning และแจ้งคนขับ`}
+          error={routeActionError}
+          reasons={planningCancelReasons}
+          notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
+          confirmLabel="ยืนยันยกเลิก Route"
+          confirmVariant="destructive"
+          onCancel={() => setRouteAction(null)}
+          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+        />
+      )}
+
+      {routeAction?.type === 'reassign' && (
+        <ResolutionDialog
+          open
+          title={`เปลี่ยนคนขับ Route ${routeAction.route.code}`}
+          description={`ย้ายงานที่ยังรอส่ง ${routeAction.route.stops.length} จุดไปคนขับใหม่`}
+          error={routeActionError}
+          reasons={drivers
+            .filter((driver) => driver.id !== routeAction.route.driver.id)
+            .map((driver) => ({ value: driver.id, label: `${driver.name} · ${driver.zone}` }))}
+          notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
+          confirmLabel="ย้ายงาน"
+          onCancel={() => setRouteAction(null)}
+          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+        />
+      )}
     </div>
   );
 }
