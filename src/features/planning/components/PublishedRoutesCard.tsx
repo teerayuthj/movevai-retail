@@ -6,7 +6,7 @@ import { planningCancelReasonLabel } from '@/data/mock';
 import { formatOverdueDuration, formatPlanningDate } from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
-import { BellRing, Ban, Clock, RefreshCw, Route } from 'lucide-react';
+import { BellRing, Ban, Clock, RefreshCw, Route, UserCog } from 'lucide-react';
 
 function formatScheduledPush(route: PlanningRoute) {
   if (!route.plannedTime) return null;
@@ -29,9 +29,13 @@ function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
 export function PublishedRoutesCard({
   routes,
   onRetry,
+  onCancel,
+  onReassign,
 }: {
   routes: PlanningRoute[];
   onRetry: (routeId: string) => void;
+  onCancel: (route: PlanningRoute) => void;
+  onReassign: (route: PlanningRoute) => void;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -45,7 +49,8 @@ export function PublishedRoutesCard({
       <CardHeader className="pb-3">
         <CardTitle className="text-sm">Routes ที่ Publish แล้ว</CardTitle>
         <CardDescription>
-          ดูสถานะของวันที่เลือก — งานเลยกำหนดและการเปลี่ยนคนขับจัดการที่หน้าติดตามการจัดส่ง
+          ดูสถานะของวันที่เลือก ยกเลิก/ดึงกลับ หรือเปลี่ยนคนขับของรอบที่ปล่อยแล้ว —
+          งานที่เลยกำหนดแล้วจัดการที่หน้าติดตามการจัดส่ง
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
@@ -71,9 +76,9 @@ export function PublishedRoutesCard({
                   <Badge variant="muted">
                     <Ban className="h-3 w-3" /> ยกเลิกแล้ว
                   </Badge>
-                ) : route.pushStatus !== 'succeeded' ? (
-                  <Badge variant={route.pushStatus === 'failed' ? 'warning' : 'secondary'}>
-                    <BellRing className="h-3 w-3" /> แจ้งงาน {route.pushStatus}
+                ) : route.pushStatus === 'failed' ? (
+                  <Badge variant="warning">
+                    <BellRing className="h-3 w-3" /> แจ้งงานไม่สำเร็จ
                   </Badge>
                 ) : null}
               </div>
@@ -111,13 +116,24 @@ export function PublishedRoutesCard({
               {!cancelled && route.reminderPushError && (
                 <div className="mt-2 text-destructive">{route.reminderPushError}</div>
               )}
-              {!cancelled && (
+              {route.status !== 'cancelled' && route.status !== 'completed' && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {(route.pushStatus === 'failed' || route.reminderPushStatus === 'failed') && (
                     <Button size="sm" variant="outline" onClick={() => onRetry(route.id)}>
                       <RefreshCw className="h-3.5 w-3.5" /> Retry Push
                     </Button>
                   )}
+                  <Button size="sm" variant="outline" onClick={() => onReassign(route)}>
+                    <UserCog className="h-3.5 w-3.5" /> เปลี่ยนคนขับ
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-destructive/40 text-destructive hover:bg-destructive/5"
+                    onClick={() => onCancel(route)}
+                  >
+                    <Ban className="h-3.5 w-3.5" /> ยกเลิก/ดึงกลับ
+                  </Button>
                 </div>
               )}
             </div>
