@@ -1,7 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { planningCancelReasonLabel } from '@/data/mock';
+import { formatOverdueDuration, formatPlanningDate } from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
 import { BellRing, Ban, Clock, RefreshCw, Route, UserCog } from 'lucide-react';
 
@@ -10,6 +12,17 @@ function formatScheduledPush(route: PlanningRoute) {
   if (route.reminderPushStatus === 'succeeded') return `เตือนเวลา ${route.plannedTime} น. แล้ว`;
   if (route.reminderPushStatus === 'failed') return `เตือนเวลา ${route.plannedTime} น. ไม่สำเร็จ`;
   return `รอเตือนเมื่อถึงเวลา ${route.plannedTime} น.`;
+}
+
+function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
+  if (route.status === 'cancelled' || route.status === 'completed' || !route.plannedTime)
+    return null;
+
+  const scheduledAt = route.scheduledFor
+    ? new Date(route.scheduledFor).getTime()
+    : new Date(`${route.plannedDate}T${route.plannedTime}:00+07:00`).getTime();
+  if (Number.isNaN(scheduledAt) || nowMs < scheduledAt) return null;
+  return Math.floor((nowMs - scheduledAt) / 60_000);
 }
 
 function canCancelRoute(route: PlanningRoute) {
@@ -40,6 +53,13 @@ export function PublishedRoutesCard({
   onCancel: (route: PlanningRoute) => void;
   onReassign: (route: PlanningRoute) => void;
 }) {
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -49,6 +69,7 @@ export function PublishedRoutesCard({
       <CardContent className="space-y-2">
         {routes.map((route) => {
           const cancelled = route.status === 'cancelled';
+          const overdueMinutes = getRouteOverdueMinutes(route, nowMs);
           return (
             <div
               key={route.id}
@@ -76,6 +97,20 @@ export function PublishedRoutesCard({
               <div className="mt-2 text-muted-foreground">
                 {route.driver.name} · {route.stops.length} จุดส่ง
               </div>
+              <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                <Clock className="h-3 w-3 shrink-0" />
+                นัดส่ง {formatPlanningDate(route.plannedDate)} ·{' '}
+                {route.plannedTime ? `${route.plannedTime} น.` : 'ไม่ระบุเวลา'}
+              </div>
+              {overdueMinutes != null && (
+                <Badge
+                  variant="outline"
+                  className="mt-2 border-destructive/30 bg-destructive/10 text-destructive"
+                >
+                  <Clock className="h-3 w-3" />
+                  {formatOverdueDuration(overdueMinutes)}
+                </Badge>
+              )}
               {cancelled ? (
                 <div className="mt-1 text-muted-foreground">
                   เหตุผล:{' '}

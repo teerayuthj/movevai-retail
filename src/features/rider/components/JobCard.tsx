@@ -16,24 +16,9 @@ import {
   ShieldCheck,
   PenLine,
 } from 'lucide-react';
-import { formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
+import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { getRiderJobOverdueMinutes } from '../riderSchedule';
-
-function formatOverdueDuration(minutes: number) {
-  if (minutes < 1) return 'ถึงเวลานัดส่งแล้ว';
-  if (minutes < 60) return `เลยเวลานัดส่ง ${minutes} นาที`;
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  if (hours < 24) {
-    return `เลยเวลานัดส่ง ${hours} ชม.${remainingMinutes ? ` ${remainingMinutes} นาที` : ''}`;
-  }
-
-  const days = Math.floor(hours / 24);
-  const remainingHours = hours % 24;
-  return `เลยเวลานัดส่ง ${days} วัน${remainingHours ? ` ${remainingHours} ชม.` : ''}`;
-}
 
 export function JobCard({
   order,
