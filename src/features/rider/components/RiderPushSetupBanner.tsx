@@ -85,19 +85,7 @@ export function RiderPushSetupBanner({
     );
   }
 
-  if (permission === 'granted' && registered) {
-    return (
-      <div className="flex items-center gap-2.5 border-b bg-success/10 px-3 py-2.5 text-success">
-        <BellRing className="h-4 w-4 shrink-0" />
-        <div>
-          <div className="text-sm font-medium">เครื่องนี้รับแจ้งเตือนแล้ว</div>
-          <div className="text-[11px]">
-            รับ Push ของ {riderCode} ได้โดยไม่ต้องเปิดหน้านี้ค้างไว้
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (permission === 'granted' && registered) return null;
 
   return (
     <div className="border-b bg-success/10 px-3 py-2.5">
