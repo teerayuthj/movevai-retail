@@ -67,19 +67,11 @@ export function PublishedRoutesCard({
                   <Badge variant="muted">
                     <Ban className="h-3 w-3" /> ยกเลิกแล้ว
                   </Badge>
-                ) : (
-                  <Badge
-                    variant={
-                      route.pushStatus === 'succeeded'
-                        ? 'success'
-                        : route.pushStatus === 'failed'
-                          ? 'warning'
-                          : 'secondary'
-                    }
-                  >
+                ) : route.pushStatus !== 'succeeded' ? (
+                  <Badge variant={route.pushStatus === 'failed' ? 'warning' : 'secondary'}>
                     <BellRing className="h-3 w-3" /> แจ้งงาน {route.pushStatus}
                   </Badge>
-                )}
+                ) : null}
               </div>
               <div className="mt-2 text-muted-foreground">
                 {route.driver.name} · {route.stops.length} จุดส่ง
