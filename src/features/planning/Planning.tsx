@@ -6,7 +6,13 @@ import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { AlertTriangle, CalendarClock, Route, Search, Users } from 'lucide-react';
-import { type DispatchReadiness, type Order } from '@/data/mock';
+import {
+  planningCancelReasonLabel,
+  type DispatchReadiness,
+  type Order,
+  type PlanningCancelReason,
+} from '@/data/mock';
+import { ResolutionDialog } from '@/components/ResolutionDialog';
 import {
   canPlanOrder,
   canReleasePlannedOrder,
@@ -27,8 +33,15 @@ import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from 
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 
 export function PlanningPage() {
-  const { orders, drivers, planOrders, clearPlannedOrders, releasePlannedOrders } =
-    useRetailStore();
+  const {
+    orders,
+    drivers,
+    planOrders,
+    clearPlannedOrders,
+    releasePlannedOrders,
+    cancelRoute,
+    reassignRoute,
+  } = useRetailStore();
   const [selectedDate, setSelectedDate] = useState(() => getDefaultPlanningDate(orders));
   const [query, setQuery] = useState('');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -40,6 +53,11 @@ export function PlanningPage() {
   const [routes, setRoutes] = useState<PlanningRoute[]>([]);
   const [operationState, setOperationState] = useState<'idle' | 'saving' | 'publishing'>('idle');
   const [operationError, setOperationError] = useState('');
+  const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
+  const [routeAction, setRouteAction] = useState<{
+    type: 'cancel' | 'reassign';
+    route: PlanningRoute;
+  } | null>(null);
 
   const todayDate = getTodayDateKey();
   const planningEligibleOrders = orders.filter((order) => canPlanOrder(order));
@@ -73,6 +91,9 @@ export function PlanningPage() {
   );
   const awaitingItemsOrders = plannedForSelectedDate.filter(
     (order) => (order.dispatchReadiness ?? 'ready') === 'awaiting_items',
+  );
+  const onHoldOrders = plannedForSelectedDate.filter(
+    (order) => (order.dispatchReadiness ?? 'ready') === 'on_hold',
   );
   const singleSelectedOrder = selectedOrders.length === 1 ? selectedOrders[0] : null;
 
@@ -185,12 +206,50 @@ export function PlanningPage() {
     }
   };
 
-  const clearSelectedPlans = async () => {
+  const confirmCancelSelectedPlans = async (reason: PlanningCancelReason, note?: string) => {
     if (selectedPlannedOrders.length === 0) return;
     setOperationState('saving');
     setOperationError('');
     try {
-      await clearPlannedOrders(selectedPlannedOrders.map((order) => order.id));
+      await clearPlannedOrders(
+        selectedPlannedOrders.map((order) => order.id),
+        { reason, note },
+      );
+      setCancelPlansOpen(false);
+      clearSelection();
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setOperationState('idle');
+    }
+  };
+
+  const planningCancelReasons = (
+    Object.keys(planningCancelReasonLabel) as PlanningCancelReason[]
+  ).map((value) => ({ value, label: planningCancelReasonLabel[value] }));
+
+  const reassignDriverOptions =
+    routeAction?.type === 'reassign'
+      ? drivers
+          .filter((driver) => driver.id !== routeAction.route.driver.id)
+          .map((driver) => ({ value: driver.id, label: `${driver.name} · ${driver.zone}` }))
+      : [];
+
+  const confirmRouteAction = async (value: string, note?: string) => {
+    if (!routeAction) return;
+    setOperationState('saving');
+    setOperationError('');
+    try {
+      if (routeAction.type === 'cancel') {
+        await cancelRoute(routeAction.route.id, {
+          reason: value as PlanningCancelReason,
+          note,
+        });
+      } else {
+        await reassignRoute(routeAction.route.id, { driverCode: value, note });
+      }
+      setRouteAction(null);
+      setRoutes(await fetchPlanningRoutes(selectedDate));
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -364,8 +423,8 @@ export function PlanningPage() {
             planNote={planNote}
             onPlanNote={setPlanNote}
             onApply={() => void applyPlanning()}
-            onClearPlans={() => void clearSelectedPlans()}
-            clearDisabled={selectedPlannedOrders.length === 0}
+            onCancelPlans={() => setCancelPlansOpen(true)}
+            cancelDisabled={selectedPlannedOrders.length === 0}
           />
 
           <DaySummaryCard
@@ -375,6 +434,7 @@ export function PlanningPage() {
             assignedCount={assignedPlannedOrders.length}
             unassignedCount={unassignedPlannedOrders.length}
             awaitingItemsCount={awaitingItemsOrders.length}
+            onHoldCount={onHoldOrders.length}
             onReleaseSelected={() => void releaseSelected()}
             releaseSelectedDisabled={
               operationState !== 'idle' || releasableSelectedOrders.length === 0
@@ -405,6 +465,8 @@ export function PlanningPage() {
                   setOperationError(error instanceof Error ? error.message : String(error)),
                 );
             }}
+            onCancel={(route) => setRouteAction({ type: 'cancel', route })}
+            onReassign={(route) => setRouteAction({ type: 'reassign', route })}
           />
 
           {singleSelectedOrder ? (
@@ -436,13 +498,53 @@ export function PlanningPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="h-4 w-4" />
-                  รอสินค้ามาครบ {awaitingItemsOrders.length} รายการ
+                  รอสินค้า/พักไว้ {awaitingItemsOrders.length + onHoldOrders.length} รายการ
                 </div>
               </CardContent>
             </Card>
           )}
         </div>
       </div>
+
+      <ResolutionDialog
+        open={cancelPlansOpen}
+        title="ยกเลิกงานที่เลือก"
+        description={`คืน ${selectedPlannedOrders.length} งานออกจากแผน (ยังไม่ Publish)`}
+        reasons={planningCancelReasons}
+        notePlaceholder="เช่น ลูกค้าแจ้งเลื่อน / รอผลิต lot ใหม่"
+        confirmLabel="ยืนยันยกเลิก"
+        confirmVariant="destructive"
+        onCancel={() => setCancelPlansOpen(false)}
+        onConfirm={({ reason, note }) => void confirmCancelSelectedPlans(reason, note)}
+      />
+
+      {routeAction?.type === 'cancel' && (
+        <ResolutionDialog
+          open
+          title={`ยกเลิก Route ${routeAction.route.code}`}
+          description={`ดึง ${routeAction.route.stops.length} งานกลับเข้า Planning และแจ้งคนขับ ${routeAction.route.driver.name}`}
+          reasons={planningCancelReasons}
+          notePlaceholder="เช่น สินค้าไม่ครบ ต้องเลื่อนรอบส่ง"
+          confirmLabel="ยืนยันยกเลิก Route"
+          confirmVariant="destructive"
+          onCancel={() => setRouteAction(null)}
+          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+        />
+      )}
+
+      {routeAction?.type === 'reassign' && (
+        <ResolutionDialog
+          open
+          title={`เปลี่ยนคนขับ Route ${routeAction.route.code}`}
+          description={`คนขับปัจจุบัน: ${routeAction.route.driver.name} · เลือกคนขับใหม่`}
+          reasons={reassignDriverOptions}
+          noteLabel="หมายเหตุ (ไม่บังคับ)"
+          notePlaceholder="เช่น คนขับเดิมรถเสียระหว่างทาง"
+          confirmLabel="ย้ายงาน"
+          onCancel={() => setRouteAction(null)}
+          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+        />
+      )}
     </div>
   );
 }

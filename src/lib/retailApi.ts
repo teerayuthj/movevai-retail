@@ -1,4 +1,4 @@
-import type { Driver, Order } from '@/data/mock';
+import type { Driver, Order, PlanningCancelReason } from '@/data/mock';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 
@@ -82,9 +82,12 @@ export type PlanningRoute = {
   plannedDate: string;
   plannedTime?: string;
   scheduledFor?: string;
-  status: 'published' | 'active' | 'completed';
+  status: 'published' | 'active' | 'completed' | 'cancelled';
   note?: string;
   publishedAt: string;
+  cancelledAt?: string;
+  cancelReason?: PlanningCancelReason;
+  cancelNote?: string;
   driver: ApiDriver;
   pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
   pushError?: string;
@@ -178,10 +181,13 @@ export async function savePlanning(input: {
   return result.items.map(normalizeOrder);
 }
 
-export async function clearPlanning(orderIds: string[]) {
+export async function clearPlanning(
+  orderIds: string[],
+  input?: { reason?: PlanningCancelReason; note?: string },
+) {
   return request<{ cleared: number }>(`${APP_API_BASE}/planning/plans/clear`, {
     method: 'POST',
-    body: JSON.stringify({ orderIds }),
+    body: JSON.stringify({ orderIds, reason: input?.reason, note: input?.note }),
   });
 }
 
@@ -209,6 +215,28 @@ export async function retryPlanningRoutePush(routeId: string) {
   const route = await request<PlanningRoute>(
     `${APP_API_BASE}/planning/routes/${encodeURIComponent(routeId)}/push/retry`,
     { method: 'POST' },
+  );
+  return normalizeRoute(route);
+}
+
+export async function cancelPlanningRoute(
+  routeId: string,
+  input: { reason: PlanningCancelReason; note?: string },
+) {
+  const route = await request<PlanningRoute>(
+    `${APP_API_BASE}/planning/routes/${encodeURIComponent(routeId)}/cancel`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return normalizeRoute(route);
+}
+
+export async function reassignPlanningRoute(
+  routeId: string,
+  input: { driverCode: string; note?: string },
+) {
+  const route = await request<PlanningRoute>(
+    `${APP_API_BASE}/planning/routes/${encodeURIComponent(routeId)}/reassign`,
+    { method: 'POST', body: JSON.stringify(input) },
   );
   return normalizeRoute(route);
 }

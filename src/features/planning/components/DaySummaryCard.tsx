@@ -10,6 +10,7 @@ type DaySummaryCardProps = {
   assignedCount: number;
   unassignedCount: number;
   awaitingItemsCount: number;
+  onHoldCount: number;
   onReleaseSelected: () => void;
   releaseSelectedDisabled: boolean;
   onReleaseAll: () => void;
@@ -23,6 +24,7 @@ export function DaySummaryCard({
   assignedCount,
   unassignedCount,
   awaitingItemsCount,
+  onHoldCount,
   onReleaseSelected,
   releaseSelectedDisabled,
   onReleaseAll,
@@ -48,15 +50,31 @@ export function DaySummaryCard({
             <div className="text-[11px] text-muted-foreground">ยังไม่เลือกคนขับ</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{unassignedCount}</div>
           </div>
-          <div className="rounded-xl border bg-muted/20 p-3">
+          <div
+            className={
+              awaitingItemsCount > 0
+                ? 'rounded-xl border border-warning/40 bg-warning/10 p-3'
+                : 'rounded-xl border bg-muted/20 p-3'
+            }
+          >
             <div className="text-[11px] text-muted-foreground">รอสินค้ามาครบ</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{awaitingItemsCount}</div>
           </div>
+          <div
+            className={
+              onHoldCount > 0
+                ? 'rounded-xl border border-warning/40 bg-warning/10 p-3'
+                : 'rounded-xl border bg-muted/20 p-3'
+            }
+          >
+            <div className="text-[11px] text-muted-foreground">พักงานไว้ก่อน</div>
+            <div className="mt-1 text-2xl font-semibold tabular-nums">{onHoldCount}</div>
+          </div>
         </div>
 
-        {awaitingItemsCount > 0 && (
+        {awaitingItemsCount + onHoldCount > 0 && (
           <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-            งานที่รอสินค้ามาครบยัง Publish ไม่ได้ ต้องเปลี่ยนเป็นพร้อมส่งก่อน
+            งานที่รอสินค้ามาครบหรือพักไว้ ยัง Publish ไม่ได้ ต้องเปลี่ยนเป็น “พร้อมปล่อยงาน” ก่อน
           </div>
         )}
 

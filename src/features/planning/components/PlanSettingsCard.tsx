@@ -18,8 +18,8 @@ type PlanSettingsCardProps = {
   planNote: string;
   onPlanNote: (value: string) => void;
   onApply: () => void;
-  onClearPlans: () => void;
-  clearDisabled: boolean;
+  onCancelPlans: () => void;
+  cancelDisabled: boolean;
 };
 
 export function PlanSettingsCard({
@@ -36,8 +36,8 @@ export function PlanSettingsCard({
   planNote,
   onPlanNote,
   onApply,
-  onClearPlans,
-  clearDisabled,
+  onCancelPlans,
+  cancelDisabled,
 }: PlanSettingsCardProps) {
   return (
     <Card>
@@ -105,7 +105,14 @@ export function PlanSettingsCard({
           >
             <option value="ready">{dispatchReadinessLabel.ready}</option>
             <option value="awaiting_items">{dispatchReadinessLabel.awaiting_items}</option>
+            <option value="on_hold">{dispatchReadinessLabel.on_hold}</option>
           </select>
+          {readiness !== 'ready' && (
+            <p className="text-[11px] text-warning">
+              สถานะนี้จะถูกกันไว้ไม่ให้ Publish จนกว่าจะปรับกลับเป็น “{dispatchReadinessLabel.ready}
+              ”
+            </p>
+          )}
         </div>
 
         <div className="grid gap-2">
@@ -124,9 +131,14 @@ export function PlanSettingsCard({
             <CalendarClock className="h-4 w-4" />
             บันทึกแผน
           </Button>
-          <Button variant="outline" onClick={onClearPlans} disabled={clearDisabled}>
+          <Button
+            variant="outline"
+            className="border-destructive/40 text-destructive hover:bg-destructive/5"
+            onClick={onCancelPlans}
+            disabled={cancelDisabled}
+          >
             <XCircle className="h-4 w-4" />
-            ล้างแผนที่เลือก
+            ยกเลิกงานที่เลือก
           </Button>
         </div>
       </CardContent>

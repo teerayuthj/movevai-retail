@@ -1,6 +1,7 @@
 import type {
   CancelReason,
   DispatchReadiness,
+  PlanningCancelReason,
   Driver,
   FailNextAction,
   FailReason,
@@ -89,8 +90,19 @@ export type RetailStore = RetailState & {
   markReturned: (orderId: string, input?: MarkReturnedInput) => void;
   retryDelivery: (orderId: string) => void;
   planOrders: (orderIds: string[], input: PlanOrdersInput) => Promise<void>;
-  clearPlannedOrders: (orderIds: string[]) => Promise<void>;
+  clearPlannedOrders: (
+    orderIds: string[],
+    input?: { reason?: PlanningCancelReason; note?: string },
+  ) => Promise<void>;
   releasePlannedOrders: (orderIds: string[]) => Promise<PlanningRoute>;
+  cancelRoute: (
+    routeId: string,
+    input: { reason: PlanningCancelReason; note?: string },
+  ) => Promise<PlanningRoute>;
+  reassignRoute: (
+    routeId: string,
+    input: { driverCode: string; note?: string },
+  ) => Promise<PlanningRoute>;
   setDispatchReadiness: (
     orderId: string,
     readiness: DispatchReadiness,

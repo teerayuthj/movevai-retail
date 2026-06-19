@@ -15,6 +15,8 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
   const plannedDriverName = order.deliveryPlan?.plannedDriverId
     ? drivers.find((driver) => driver.id === order.deliveryPlan?.plannedDriverId)?.name
     : undefined;
+  const readiness = order.dispatchReadiness ?? 'ready';
+  const needsAttention = readiness !== 'ready';
   const totalQuantity = order.items.reduce((total, item) => total + item.qty, 0);
   const itemSummary = order.items
     .map((item) => `${item.name} ${item.weight} × ${item.qty}`)
@@ -27,6 +29,7 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
       className={cn(
         'w-full rounded-xl border bg-card p-4 text-left transition-all',
         selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary/40',
+        !selected && needsAttention && 'border-l-4 border-l-warning bg-warning/5',
       )}
     >
       <div className="flex items-start justify-between gap-3">
@@ -45,12 +48,11 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
                 ยังไม่วางแผน
               </Badge>
             )}
-            <Badge
-              variant={order.dispatchReadiness === 'awaiting_items' ? 'warning' : 'success'}
-              className="h-5 px-1.5 text-[10px]"
-            >
-              {dispatchReadinessLabel[order.dispatchReadiness ?? 'ready']}
-            </Badge>
+            {needsAttention && (
+              <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
+                {dispatchReadinessLabel[readiness]}
+              </Badge>
+            )}
           </div>
           <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
         </div>

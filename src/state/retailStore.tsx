@@ -37,12 +37,14 @@ import type {
   SubmitDeliveryInput,
 } from '@/state/retail/types';
 import {
+  cancelPlanningRoute,
   clearPlanning as clearPlanningApi,
   confirmAppDelivery,
   fetchAppDrivers,
   fetchAppOrders,
   fetchRiderOrders,
   publishPlanningRoute,
+  reassignPlanningRoute,
   savePlanning,
   startRiderOrder,
   submitRiderOrder,
@@ -357,11 +359,30 @@ export function RetailProvider({
   );
 
   const clearPlannedOrders = useCallback(
-    async (orderIds: string[]) => {
-      await clearPlanningApi(orderIds);
+    async (orderIds: string[], input?: Parameters<RetailStore['clearPlannedOrders']>[1]) => {
+      await clearPlanningApi(orderIds, input);
       commit((current) => clearPlannedOrdersState(current, orderIds));
     },
     [commit],
+  );
+
+  const cancelRoute = useCallback(
+    async (routeId: string, input: Parameters<RetailStore['cancelRoute']>[1]) => {
+      const route = await cancelPlanningRoute(routeId, input);
+      // backend คืน order กลับเป็น ready + releaseState=planned แล้ว — sync ให้ web เห็นตรงกัน
+      await syncFromBackend();
+      return route;
+    },
+    [syncFromBackend],
+  );
+
+  const reassignRoute = useCallback(
+    async (routeId: string, input: Parameters<RetailStore['reassignRoute']>[1]) => {
+      const route = await reassignPlanningRoute(routeId, input);
+      await syncFromBackend();
+      return route;
+    },
+    [syncFromBackend],
   );
 
   const releasePlannedOrders = useCallback(
@@ -453,6 +474,8 @@ export function RetailProvider({
       planOrders,
       clearPlannedOrders,
       releasePlannedOrders,
+      cancelRoute,
+      reassignRoute,
       setDispatchReadiness,
       resetDemoData,
     }),
@@ -485,6 +508,8 @@ export function RetailProvider({
       planOrders,
       clearPlannedOrders,
       releasePlannedOrders,
+      cancelRoute,
+      reassignRoute,
       setDispatchReadiness,
       resetDemoData,
     ],

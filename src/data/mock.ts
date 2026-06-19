@@ -46,7 +46,15 @@ export type PaymentMethod = 'cod' | 'prepaid' | 'transfer_on_delivery';
 
 export type ShippingMethod = 'internal_driver' | 'thai_post';
 
-export type DispatchReadiness = 'ready' | 'awaiting_items';
+export type DispatchReadiness = 'ready' | 'awaiting_items' | 'on_hold';
+
+/** เหตุผลยกเลิก/ดึงกลับงานในหน้า Planning จัดส่งล่วงหน้า (แยกจาก CancelReason ของการปิดออเดอร์) */
+export type PlanningCancelReason =
+  | 'items_incomplete'
+  | 'production_delay'
+  | 'customer_reschedule'
+  | 'duplicate'
+  | 'other';
 
 export type DeliveryPlan = {
   plannedDate: string; // local date key in YYYY-MM-DD
@@ -843,6 +851,15 @@ export const paymentLabel: Record<PaymentMethod, string> = {
 export const dispatchReadinessLabel: Record<DispatchReadiness, string> = {
   ready: 'พร้อมปล่อยงาน',
   awaiting_items: 'รอสินค้ามาครบ',
+  on_hold: 'พักงานไว้ก่อน',
+};
+
+export const planningCancelReasonLabel: Record<PlanningCancelReason, string> = {
+  items_incomplete: 'สินค้าไม่ครบ',
+  production_delay: 'ผลิตไม่ทัน',
+  customer_reschedule: 'ลูกค้าเลื่อนนัด',
+  duplicate: 'งานซ้ำ',
+  other: 'อื่นๆ',
 };
 
 export const shippingMethodLabel: Record<ShippingMethod, string> = {
