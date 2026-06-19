@@ -17,28 +17,63 @@ import {
   PenLine,
 } from 'lucide-react';
 import { formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
+import { cn } from '@/lib/utils';
+import { getRiderJobOverdueMinutes } from '../riderSchedule';
+
+function formatOverdueDuration(minutes: number) {
+  if (minutes < 1) return 'ถึงเวลานัดส่งแล้ว';
+  if (minutes < 60) return `เลยเวลานัดส่ง ${minutes} นาที`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) {
+    return `เลยเวลานัดส่ง ${hours} ชม.${remainingMinutes ? ` ${remainingMinutes} นาที` : ''}`;
+  }
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return `เลยเวลานัดส่ง ${days} วัน${remainingHours ? ` ${remainingHours} ชม.` : ''}`;
+}
 
 export function JobCard({
   order,
+  nowMs = Date.now(),
   onStart,
   onClose,
 }: {
   order: Order;
+  nowMs?: number;
   onStart: () => void;
   onClose: () => void;
 }) {
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
   const isFutureJob =
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
+  const overdueMinutes = getRiderJobOverdueMinutes(order, nowMs);
+  const isOverdue = overdueMinutes != null;
 
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div
+      className={cn(
+        'rounded-xl border bg-card p-4',
+        isOverdue && 'border-destructive/50 border-l-4 border-l-destructive bg-destructive/5',
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs font-medium">{order.code}</span>
         <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
           <Package className="h-3 w-3" /> พัสดุ
         </Badge>
       </div>
+      {isOverdue && (
+        <Badge
+          variant="outline"
+          className="mt-2 border-destructive/30 bg-destructive/10 text-destructive"
+        >
+          <Clock3 className="h-3 w-3" />
+          {formatOverdueDuration(overdueMinutes)}
+        </Badge>
+      )}
       <div className="mt-1 text-sm font-semibold">{order.customer.name}</div>
 
       {order.deliveryRoute && (
@@ -47,8 +82,14 @@ export function JobCard({
             {order.deliveryRoute.code} · จุดที่ {order.deliveryRoute.sequence}
           </Badge>
           {order.deliveryPlan?.plannedDate && (
-            <Badge variant={isFutureJob ? 'warning' : 'success'} className="h-5 px-1.5 text-[10px]">
-              {formatPlanningDate(order.deliveryPlan.plannedDate)}
+            <Badge
+              variant={isOverdue ? 'destructive' : isFutureJob ? 'warning' : 'success'}
+              className="h-5 px-1.5 text-[10px]"
+            >
+              {formatPlanningDate(order.deliveryPlan.plannedDate)} ·{' '}
+              {order.deliveryPlan.plannedTime
+                ? `${order.deliveryPlan.plannedTime} น.`
+                : 'ไม่ระบุเวลา'}
             </Badge>
           )}
         </div>
@@ -139,9 +180,14 @@ export function JobCard({
 
       <div className="mt-3 flex items-center justify-end border-t pt-3">
         {order.status === 'assigned' && (
-          <Button size="sm" onClick={onStart} disabled={isFutureJob}>
+          <Button
+            size="sm"
+            variant={isOverdue ? 'destructive' : 'default'}
+            onClick={onStart}
+            disabled={isFutureJob}
+          >
             <Navigation className="h-4 w-4" />
-            {isFutureJob ? 'ยังไม่ถึงวันส่ง' : 'รับงาน'}
+            {isFutureJob ? 'ยังไม่ถึงวันส่ง' : isOverdue ? 'รับงานด่วน' : 'รับงาน'}
           </Button>
         )}
         {order.status === 'in_transit' && (

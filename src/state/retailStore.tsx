@@ -120,9 +120,9 @@ export function RetailProvider({
           ),
           ...remote.orders,
         ],
-        drivers: current.drivers.map((driver) =>
-          driver.id === driverCode ? remote.driver : driver,
-        ),
+        drivers: current.drivers.some((driver) => driver.id === driverCode)
+          ? current.drivers.map((driver) => (driver.id === driverCode ? remote.driver : driver))
+          : [...current.drivers, remote.driver],
       }));
     },
     [commit],
