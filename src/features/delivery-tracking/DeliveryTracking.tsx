@@ -19,6 +19,7 @@ import {
   fetchAppOrder,
   fetchDeliveryTrackingCounts,
   fetchDeliveryTrackingOrders,
+  retryPlanningRoutePush,
   type DeliveryTrackingCounts,
 } from '@/lib/retailApi';
 import { useRetailStore } from '@/state/retailStore';
@@ -30,6 +31,7 @@ import {
   ChevronRight,
   Loader2,
   PackageCheck,
+  RefreshCw,
   Truck,
   Undo2,
   UserCog,
@@ -43,6 +45,7 @@ import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './util
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
+  awaiting_acceptance: 0,
   overdue: 0,
   in_transit: 0,
   pending: 0,
@@ -246,7 +249,19 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   function renderActions(order: Order) {
     if (order.status === 'assigned' && order.deliveryRoute) {
       return (
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {order.deliveryRoute.pushStatus === 'failed' && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={async () => {
+                await retryPlanningRoutePush(order.deliveryRoute!.id);
+                refreshTracking();
+              }}
+            >
+              <RefreshCw className="h-4 w-4" /> Retry Push
+            </Button>
+          )}
           <Button
             variant="outline"
             className="flex-1"
@@ -336,6 +351,12 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   // แท็บเดียวคุมทั้งหมด — ตัวเลขเป็น badge ในแท็บ (ไม่แยกการ์ด KPI เพื่อเลี่ยงความกำกวมว่าคลิกได้ไหม)
   const tabs: TrackingTab[] = [
     { view: 'overdue', label: 'เลยกำหนด', icon: AlertCircle, count: trackingCounts.overdue },
+    {
+      view: 'awaiting_acceptance',
+      label: 'รอคนขับรับ',
+      icon: Truck,
+      count: trackingCounts.awaiting_acceptance,
+    },
     { view: 'needs_action', label: 'ต้องทำ', icon: AlertCircle, count: needsActionCount },
     { view: 'in_transit', label: 'กำลังจัดส่ง', icon: Truck, count: trackingCounts.in_transit },
     { view: 'pending', label: 'รอยืนยัน', icon: CheckCircle2, count: trackingCounts.pending },

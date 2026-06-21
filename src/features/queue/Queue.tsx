@@ -19,6 +19,7 @@ import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/mock';
 import { getTomorrowDateKey, isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
   compareOrderPriority,
+  canDriverTakeOrder,
   driverQueueTabLabels,
   getDriverQueueTab,
   planAutoAssignments,
@@ -26,8 +27,9 @@ import {
   type DriverQueueTab,
 } from '@/lib/deliveryExecution';
 import { useRetailStore } from '@/state/retailStore';
-import { Ban, CalendarClock, CheckCircle2, Route, Search, Sparkles } from 'lucide-react';
+import { Ban, BellRing, CalendarClock, Route, Search, Sparkles } from 'lucide-react';
 import { AssignmentPanel } from './components/AssignmentPanel';
+import { UrgentDispatchDialog } from './components/UrgentDispatchDialog';
 import { buildTrackingSearch, parseQueueSearch } from './utils/queueSearch';
 
 const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
@@ -44,17 +46,23 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   const {
     orders,
     drivers,
-    assignOrder,
     autoAssignReadyOrders,
     startDelivery,
     cancelOrder,
     planOrders,
+    publishUrgentRoute,
   } = useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
   const [planningTargetId, setPlanningTargetId] = useState<string | null>(null);
   const [operationError, setOperationError] = useState('');
+  const [urgentTarget, setUrgentTarget] = useState<{
+    orderId: string;
+    driverId: string;
+  } | null>(null);
+  const [urgentLoading, setUrgentLoading] = useState(false);
+  const [urgentError, setUrgentError] = useState('');
 
   const workflowOrders = orders.filter(
     (order) => getDriverQueueTab(order) && isVisibleInExecutionQueue(order),
@@ -138,8 +146,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   const canAssign =
     selectedOrder?.status === 'ready' &&
     selectedDriver &&
-    selectedDriver.status !== 'off_duty' &&
-    selectedDriver.activeOrders < selectedDriver.capacity;
+    canDriverTakeOrder(selectedOrder, selectedDriver);
 
   const tabCounts: Record<DriverQueueTab, number> = {
     ready: readyOrders.length,
@@ -169,6 +176,25 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     }
   };
 
+  const confirmUrgentDispatch = async (note?: string) => {
+    if (!urgentTarget) return;
+    setUrgentLoading(true);
+    setUrgentError('');
+    try {
+      await publishUrgentRoute(urgentTarget.orderId, {
+        driverCode: urgentTarget.driverId,
+        note,
+      });
+      const orderId = urgentTarget.orderId;
+      setUrgentTarget(null);
+      onOpenTracking(`?tab=awaiting_acceptance&order=${encodeURIComponent(orderId)}`);
+    } catch (error) {
+      setUrgentError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setUrgentLoading(false);
+    }
+  };
+
   const routeTargetOrders =
     activeTab === 'assigned' && selectedOrder?.status === 'assigned'
       ? [selectedOrder]
@@ -184,13 +210,12 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
               disabled={!canAssign}
               onClick={() => {
                 if (!selectedOrder || !selectedDriverId) return;
-                void assignOrder(selectedOrder.id, selectedDriverId);
-                setActiveTab('assigned');
-                setSelectedOrderId(selectedOrder.id);
+                setUrgentError('');
+                setUrgentTarget({ orderId: selectedOrder.id, driverId: selectedDriverId });
               }}
             >
-              <CheckCircle2 className="h-4 w-4" />
-              ส่งวันนี้
+              <BellRing className="h-4 w-4" />
+              ส่งด่วนทันที
             </Button>
             <Button
               variant="outline"
@@ -273,6 +298,18 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
           setAutoPreviewOpen(false);
           setActiveTab('assigned');
         }}
+      />
+
+      <UrgentDispatchDialog
+        open={!!urgentTarget}
+        order={orders.find((order) => order.id === urgentTarget?.orderId) ?? null}
+        driver={drivers.find((driver) => driver.id === urgentTarget?.driverId) ?? null}
+        loading={urgentLoading}
+        error={urgentError}
+        onCancel={() => {
+          if (!urgentLoading) setUrgentTarget(null);
+        }}
+        onConfirm={(note) => void confirmUrgentDispatch(note)}
       />
 
       <ResolutionDialog

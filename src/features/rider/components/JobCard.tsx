@@ -32,6 +32,7 @@ export function JobCard({
   onClose: () => void;
 }) {
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
+  const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
   const isFutureJob =
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
   const overdueMinutes = getRiderJobOverdueMinutes(order, nowMs);
@@ -50,6 +51,11 @@ export function JobCard({
           <Package className="h-3 w-3" /> พัสดุ
         </Badge>
       </div>
+      {isUrgent && (
+        <Badge variant="destructive" className="mt-2">
+          งานด่วน · กรุณารับภายใน 5 นาที
+        </Badge>
+      )}
       {isOverdue && (
         <Badge
           variant="outline"
@@ -167,12 +173,12 @@ export function JobCard({
         {order.status === 'assigned' && (
           <Button
             size="sm"
-            variant={isOverdue ? 'destructive' : 'default'}
+            variant={isUrgent || isOverdue ? 'destructive' : 'default'}
             onClick={onStart}
             disabled={isFutureJob}
           >
             <Navigation className="h-4 w-4" />
-            {isFutureJob ? 'ยังไม่ถึงวันส่ง' : isOverdue ? 'รับงานด่วน' : 'รับงาน'}
+            {isFutureJob ? 'ยังไม่ถึงวันส่ง' : isUrgent || isOverdue ? 'รับงานด่วน' : 'รับงาน'}
           </Button>
         )}
         {order.status === 'in_transit' && (

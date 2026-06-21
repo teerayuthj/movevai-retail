@@ -44,6 +44,7 @@ import {
   fetchAppOrders,
   fetchRiderOrders,
   publishPlanningRoute,
+  publishUrgentPlanningRoute,
   reassignPlanningRoute,
   savePlanning,
   startRiderOrder,
@@ -417,6 +418,18 @@ export function RetailProvider({
     [state.orders, syncFromBackend],
   );
 
+  const publishUrgentRoute = useCallback(
+    async (orderId: string, input: Parameters<RetailStore['publishUrgentRoute']>[1]) => {
+      const order = state.orders.find((item) => item.id === orderId);
+      if (!order) throw new Error('ไม่พบออเดอร์ที่เลือก');
+      await syncAppOrder(order);
+      const route = await publishUrgentPlanningRoute({ orderId, ...input });
+      await syncFromBackend();
+      return route;
+    },
+    [state.orders, syncFromBackend],
+  );
+
   const setDispatchReadiness = useCallback(
     (
       orderId: string,
@@ -474,6 +487,7 @@ export function RetailProvider({
       planOrders,
       clearPlannedOrders,
       releasePlannedOrders,
+      publishUrgentRoute,
       cancelRoute,
       reassignRoute,
       setDispatchReadiness,
@@ -508,6 +522,7 @@ export function RetailProvider({
       planOrders,
       clearPlannedOrders,
       releasePlannedOrders,
+      publishUrgentRoute,
       cancelRoute,
       reassignRoute,
       setDispatchReadiness,

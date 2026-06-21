@@ -60,7 +60,15 @@ export function formatOverdueDuration(minutes: number) {
 
 export function getAssignedOrderOverdueMinutes(order: Order, nowMs = Date.now()) {
   const plan = order.deliveryPlan;
-  if (order.status !== 'assigned' || !plan?.plannedDate || !plan.plannedTime) return null;
+  if (order.status !== 'assigned') return null;
+
+  if (order.deliveryRoute?.dispatchMode === 'urgent' && order.deliveryRoute.acceptBy) {
+    const acceptBy = new Date(order.deliveryRoute.acceptBy).getTime();
+    if (Number.isNaN(acceptBy) || nowMs < acceptBy) return null;
+    return Math.floor((nowMs - acceptBy) / 60_000);
+  }
+
+  if (!plan?.plannedDate || !plan.plannedTime) return null;
 
   const scheduledAt = new Date(`${plan.plannedDate}T${plan.plannedTime}:00+07:00`).getTime();
   if (Number.isNaN(scheduledAt) || nowMs < scheduledAt) return null;
@@ -91,7 +99,12 @@ export function canPlanOrder(order: Order) {
 }
 
 export function isVisibleInExecutionQueue(order: Order) {
-  return isInternalDriverOrder(order) && !isUnreleasedPlannedOrder(order);
+  return (
+    isInternalDriverOrder(order) &&
+    !isUnreleasedPlannedOrder(order) &&
+    order.deliveryPlan?.releaseState !== 'released' &&
+    !order.deliveryRoute
+  );
 }
 
 export function canReleasePlannedOrder(order: Order, dateKey = getTodayDateKey()) {

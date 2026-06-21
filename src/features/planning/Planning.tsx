@@ -32,6 +32,10 @@ import { getDefaultPlanningDate, matchesPlanningQuery } from './utils/planningHe
 import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from '@/lib/retailApi';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 
+function scheduledRoutesOnly(routes: PlanningRoute[]) {
+  return routes.filter((route) => route.dispatchMode !== 'urgent');
+}
+
 export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const {
     orders,
@@ -112,7 +116,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     const refreshRoutes = () => {
       void fetchPlanningRoutes(selectedDate)
         .then((nextRoutes) => {
-          if (!cancelled) setRoutes(nextRoutes);
+          if (!cancelled) setRoutes(scheduledRoutesOnly(nextRoutes));
         })
         .catch((error) => {
           if (!cancelled) {
@@ -244,7 +248,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
         await reassignRoute(routeAction.route.id, { driverCode: value, note });
       }
       setRouteAction(null);
-      setRoutes(await fetchPlanningRoutes(selectedDate));
+      setRoutes(scheduledRoutesOnly(await fetchPlanningRoutes(selectedDate)));
     } catch (error) {
       setRouteActionError(error instanceof Error ? error.message : String(error));
     }
@@ -261,7 +265,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
       groups.set(key, [...(groups.get(key) ?? []), order.id]);
     });
     for (const orderIds of groups.values()) await releasePlannedOrders(orderIds);
-    setRoutes(await fetchPlanningRoutes(selectedDate));
+    setRoutes(scheduledRoutesOnly(await fetchPlanningRoutes(selectedDate)));
   };
 
   const releaseSelected = async () => {

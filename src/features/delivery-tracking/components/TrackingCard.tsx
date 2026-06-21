@@ -30,6 +30,7 @@ export function TrackingCard({
   overdueMinutes,
 }: TrackingCardProps) {
   const pod = order.proofOfDelivery;
+  const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
   const tone =
     overdueMinutes != null
       ? 'border-l-destructive'
@@ -40,6 +41,7 @@ export function TrackingCard({
           : 'border-l-muted-foreground/30';
   const isActionable =
     overdueMinutes != null ||
+    (order.status === 'assigned' && !!order.deliveryRoute) ||
     order.status === 'in_transit' ||
     order.status === 'pending_confirmation' ||
     order.status === 'returning';
@@ -81,6 +83,11 @@ export function TrackingCard({
             {order.payment === 'cod' && (
               <Badge variant="info" className="h-5 px-1.5 text-[10px]">
                 COD
+              </Badge>
+            )}
+            {isUrgent && (
+              <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
+                งานด่วน
               </Badge>
             )}
             {overdueMinutes != null && (
