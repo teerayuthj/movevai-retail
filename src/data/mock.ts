@@ -213,6 +213,7 @@ export type Order = {
     name: string;
     phone: string;
     address: string;
+    geo?: { lat: number; lng: number }; // พิกัดปลายทาง (geocode จาก address) — ใช้วาดหมุดบนแผนที่ rider
     idCard?: string; // masked
   };
   items: OrderItem[];

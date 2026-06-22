@@ -19,6 +19,7 @@ import {
 import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { getRiderJobOverdueMinutes, getRiderJobTiming } from '../riderSchedule';
+import { navigationUrl } from '../geocode';
 
 export function JobCard({
   order,
@@ -101,10 +102,21 @@ export function JobCard({
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{order.customer.address}</span>
         </div>
-        <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-info">
-          <Phone className="h-3.5 w-3.5" />
-          <span>{order.customer.phone}</span>
-        </a>
+        <div className="flex items-center gap-3">
+          <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-info">
+            <Phone className="h-3.5 w-3.5" />
+            <span>{order.customer.phone}</span>
+          </a>
+          <a
+            href={navigationUrl(order.customer.address, order.customer.geo)}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 font-medium text-info"
+          >
+            <Navigation className="h-3.5 w-3.5" />
+            นำทาง
+          </a>
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1">
