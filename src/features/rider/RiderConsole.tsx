@@ -497,6 +497,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                   stops={routeStops}
                   nowMs={nowMs}
                   locationSource={showTrackingMap ? liveLocationSource : undefined}
+                  showRemainingDistance={showTrackingMap}
                 />
               )}
             </div>

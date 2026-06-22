@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
-import { AlertTriangle, CalendarClock, MapPin, Route, Search, Users } from 'lucide-react';
+import { AlertTriangle, CalendarClock, List, MapPin, Route, Search, Users } from 'lucide-react';
 import {
   planningCancelReasonLabel,
   type DispatchReadiness,
@@ -33,6 +33,7 @@ import { getDefaultPlanningDate, matchesPlanningQuery } from './utils/planningHe
 import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
+import { SuccessToast } from '@/components/ui/SuccessToast';
 
 function scheduledRoutesOnly(routes: PlanningRoute[]) {
   return routes.filter((route) => route.dispatchMode !== 'urgent');
@@ -51,6 +52,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   // เปิดหน้าที่งานวันนี้ก่อนเสมอ เพื่อให้งาน active/เลยเวลาหาเจอและจัดการได้ทันที
   const [selectedDate, setSelectedDate] = useState(() => getTodayDateKey());
   const [query, setQuery] = useState('');
+  const [paneView, setPaneView] = useState<'list' | 'map'>('list');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [planDate, setPlanDate] = useState(() => getDefaultPlanningDate(orders));
   const [planTime, setPlanTime] = useState(() => getNextHourTime());
@@ -66,6 +68,14 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     route: PlanningRoute;
   } | null>(null);
   const [routeActionError, setRouteActionError] = useState('');
+  const [operationSuccess, setOperationSuccess] = useState('');
+
+  // ข้อความแจ้งสำเร็จเป็นแบบชั่วคราว — ล้างเองหลัง 5 วินาที
+  useEffect(() => {
+    if (!operationSuccess) return;
+    const timeoutId = window.setTimeout(() => setOperationSuccess(''), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [operationSuccess]);
 
   const todayDate = getTodayDateKey();
   const focusedOrderId = new URLSearchParams(locationSearch).get('order');
@@ -104,6 +114,9 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     .join('|');
   const selectedPlannedOrders = selectedOrders.filter((order) => isUnreleasedPlannedOrder(order));
   const releasableSelectedOrders = selectedOrders.filter((order) =>
+    canReleasePlannedOrder(order, selectedDate),
+  );
+  const releasableForSelectedDate = plannedForSelectedDate.filter((order) =>
     canReleasePlannedOrder(order, selectedDate),
   );
   const assignedPlannedOrders = plannedForSelectedDate.filter(
@@ -203,6 +216,11 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     );
   };
 
+  const viewOrderOnMap = (orderId: string) => {
+    setSelectedOrderIds((current) => (current.includes(orderId) ? current : [...current, orderId]));
+    setPaneView('map');
+  };
+
   const selectAllVisible = () => {
     setSelectedOrderIds(visibleOrders.map((order) => order.id));
   };
@@ -262,10 +280,26 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setRouteActionError('');
     try {
       if (routeAction.type === 'cancel') {
-        await cancelRoute(routeAction.route.id, { reason: value as PlanningCancelReason, note });
+        await cancelRoute(
+          routeAction.route.id,
+          { reason: value as PlanningCancelReason, note },
+          {
+            orderIds: routeAction.route.stops.map((stop) => stop.order.id),
+            plannedDate: routeAction.route.plannedDate,
+            plannedTime: routeAction.route.plannedTime,
+            driverCode: routeAction.route.driver.code,
+            note: routeAction.route.note,
+          },
+        );
       } else {
         await reassignRoute(routeAction.route.id, { driverCode: value, note });
       }
+      const stopCount = routeAction.route.stops.length;
+      setOperationSuccess(
+        routeAction.type === 'cancel'
+          ? `ดึง Route ${routeAction.route.code} (${stopCount} จุด) กลับเข้า Planning แล้ว — แจ้งคนขับเรียบร้อย`
+          : `เปลี่ยนคนขับ Route ${routeAction.route.code} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
+      );
       setRouteAction(null);
       setRoutes(scheduledRoutesOnly(await fetchPlanningRoutes(selectedDate)));
     } catch (error) {
@@ -302,14 +336,11 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   };
 
   const releaseAllForSelectedDate = async () => {
-    const releasable = plannedForSelectedDate.filter((order) =>
-      canReleasePlannedOrder(order, selectedDate),
-    );
-    if (releasable.length === 0) return;
+    if (releasableForSelectedDate.length === 0) return;
     setOperationState('publishing');
     setOperationError('');
     try {
-      await publishGroups(releasable);
+      await publishGroups(releasableForSelectedDate);
       clearSelection();
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : String(error));
@@ -386,6 +417,44 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                   className="h-10 rounded-xl pl-9"
                 />
               </div>
+              <div className="flex rounded-xl border bg-muted/40 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPaneView('list')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition',
+                    paneView === 'list'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  aria-pressed={paneView === 'list'}
+                >
+                  <List className="h-3.5 w-3.5" />
+                  รายการ
+                  <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums">
+                    {visibleOrders.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPaneView('map')}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition',
+                    paneView === 'map'
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  aria-pressed={paneView === 'map'}
+                >
+                  <MapPin className="h-3.5 w-3.5" />
+                  แผนที่
+                  {selectedOrders.length > 0 && (
+                    <span className="rounded-full bg-info/15 px-1.5 text-[10px] tabular-nums text-info">
+                      {selectedOrders.length}
+                    </span>
+                  )}
+                </button>
+              </div>
               {otherPlanDates.length > 0 && (
                 <div
                   className={cn(
@@ -431,61 +500,67 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               )}
             </div>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 xl:h-[calc(100%-7.25rem)]">
-            <section className="shrink-0" aria-labelledby="planning-map-title">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div>
-                  <div
-                    id="planning-map-title"
-                    className="flex items-center gap-1.5 text-xs font-medium"
-                  >
-                    <MapPin className="h-3.5 w-3.5 text-info" />
-                    ตรวจสอบจุดส่งบนแผนที่
+          <CardContent className="flex flex-col gap-3 xl:h-[calc(100%-10.5rem)]">
+            {paneView === 'map' ? (
+              <section
+                className="flex min-h-0 flex-1 flex-col"
+                aria-labelledby="planning-map-title"
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <div
+                      id="planning-map-title"
+                      className="flex items-center gap-1.5 text-xs font-medium"
+                    >
+                      <MapPin className="h-3.5 w-3.5 text-info" />
+                      ตรวจสอบจุดส่งบนแผนที่
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {singleSelectedOrder
+                        ? `${singleSelectedOrder.code} · ${singleSelectedOrder.customer.address}`
+                        : selectedOrders.length > 1
+                          ? `แสดงเฉพาะ ${selectedOrders.length} งานที่เลือกอยู่`
+                          : 'เลือก order จากแท็บรายการเพื่อดูปลายทาง'}
+                    </p>
                   </div>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
-                    {singleSelectedOrder
-                      ? `${singleSelectedOrder.code} · ${singleSelectedOrder.customer.address}`
-                      : selectedOrders.length > 1
-                        ? `แสดงเฉพาะ ${selectedOrders.length} งานที่เลือกอยู่`
-                        : 'เลือก order จากรายการด้านล่างเพื่อดูปลายทาง'}
-                  </p>
+                  {selectedOrders.length > 0 && (
+                    <Badge variant="info" className="shrink-0">
+                      แสดง {selectedOrders.length} จุด
+                    </Badge>
+                  )}
                 </div>
-                {selectedOrders.length > 0 && (
-                  <Badge variant="info" className="shrink-0">
-                    แสดง {selectedOrders.length} จุด
-                  </Badge>
+                <div className="min-h-[260px] flex-1">
+                  <PlanningMap
+                    orders={selectedOrders}
+                    selectedIds={selectedOrderSet}
+                    onToggle={toggleOrderSelection}
+                  />
+                </div>
+              </section>
+            ) : (
+              <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
+                {visibleOrders.map((order) => (
+                  <PlanningOrderCard
+                    key={order.id}
+                    order={order}
+                    drivers={drivers}
+                    selected={selectedOrderSet.has(order.id)}
+                    onToggle={() => toggleOrderSelection(order.id)}
+                    onViewMap={() => viewOrderOnMap(order.id)}
+                  />
+                ))}
+                {visibleOrders.length === 0 && (
+                  <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
+                    <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
+                    {plannedForSelectedDate.length > 0
+                      ? 'ไม่พบงานที่ตรงกับคำค้นหา'
+                      : otherPlanDates.length > 0
+                        ? 'ไม่มีงานในวันที่เลือก — เลือกวันที่มีงานจากแถบด้านบน'
+                        : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”`}
+                  </div>
                 )}
               </div>
-              <div className="h-[260px]">
-                <PlanningMap
-                  orders={selectedOrders}
-                  selectedIds={selectedOrderSet}
-                  onToggle={toggleOrderSelection}
-                />
-              </div>
-            </section>
-
-            <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
-              {visibleOrders.map((order) => (
-                <PlanningOrderCard
-                  key={order.id}
-                  order={order}
-                  drivers={drivers}
-                  selected={selectedOrderSet.has(order.id)}
-                  onToggle={() => toggleOrderSelection(order.id)}
-                />
-              ))}
-              {visibleOrders.length === 0 && (
-                <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
-                  <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
-                  {plannedForSelectedDate.length > 0
-                    ? 'ไม่พบงานที่ตรงกับคำค้นหา'
-                    : otherPlanDates.length > 0
-                      ? 'ไม่มีงานในวันที่เลือก — เลือกวันที่มีงานจากแถบด้านบน'
-                      : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”`}
-                </div>
-              )}
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -537,15 +612,15 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
             unassignedCount={unassignedPlannedOrders.length}
             awaitingItemsCount={awaitingItemsOrders.length}
             onHoldCount={onHoldOrders.length}
+            selectedCount={selectedOrders.length}
+            releasableSelectedCount={releasableSelectedOrders.length}
+            releasableAllCount={releasableForSelectedDate.length}
             onReleaseSelected={() => void releaseSelected()}
             releaseSelectedDisabled={
               operationState !== 'idle' || releasableSelectedOrders.length === 0
             }
             onReleaseAll={() => void releaseAllForSelectedDate()}
-            releaseAllDisabled={
-              operationState !== 'idle' ||
-              !plannedForSelectedDate.some((order) => canReleasePlannedOrder(order, selectedDate))
-            }
+            releaseAllDisabled={operationState !== 'idle' || releasableForSelectedDate.length === 0}
           />
 
           {operationError && (
@@ -553,6 +628,8 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               {operationError}
             </div>
           )}
+
+          <SuccessToast message={operationSuccess} onClose={() => setOperationSuccess('')} />
 
           <PublishedRoutesCard
             routes={routes}

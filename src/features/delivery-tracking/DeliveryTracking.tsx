@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { SuccessToast } from '@/components/ui/SuccessToast';
 import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
 import {
   planningCancelReasonLabel,
@@ -97,6 +98,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   const [refreshKey, setRefreshKey] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [routeActionError, setRouteActionError] = useState('');
+  const [routeActionSuccess, setRouteActionSuccess] = useState('');
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     order: Order;
@@ -199,6 +201,13 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       .catch(() => undefined);
   }, [refreshKey]);
 
+  // ข้อความแจ้งสำเร็จเป็นแบบชั่วคราว — ล้างเองหลัง 5 วินาที
+  useEffect(() => {
+    if (!routeActionSuccess) return;
+    const timeoutId = window.setTimeout(() => setRouteActionSuccess(''), 5000);
+    return () => window.clearTimeout(timeoutId);
+  }, [routeActionSuccess]);
+
   useEffect(() => {
     if (!selectedOrderId) {
       setSelectedOrderDetail(null);
@@ -233,11 +242,17 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     if (!routeAction || !routeId) return;
     setRouteActionError('');
     try {
+      const routeCode = routeAction.order.deliveryRoute?.code ?? routeId;
       if (routeAction.type === 'cancel') {
         await cancelRoute(routeId, { reason: value as PlanningCancelReason, note });
       } else {
         await reassignRoute(routeId, { driverCode: value, note });
       }
+      setRouteActionSuccess(
+        routeAction.type === 'cancel'
+          ? `ดึง Route ${routeCode} กลับเข้า Planning แล้ว — แจ้งคนขับเรียบร้อย`
+          : `เปลี่ยนคนขับ Route ${routeCode} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
+      );
       setRouteAction(null);
       setSelectedOrderId(null);
       refreshTracking();
@@ -467,6 +482,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
         />
       )}
+
+      <SuccessToast message={routeActionSuccess} onClose={() => setRouteActionSuccess('')} />
 
       <TrackingViewTabs tabs={tabs} view={view} onChange={changeView} />
 

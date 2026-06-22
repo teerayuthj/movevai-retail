@@ -20,6 +20,30 @@ export type RiderLocationSource = {
   remote?: boolean;
 };
 
+const EARTH_RADIUS_METERS = 6_371_000;
+
+function distanceBetweenMeters(
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+) {
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+  const latitudeDelta = toRadians(to.lat - from.lat);
+  const longitudeDelta = toRadians(to.lng - from.lng);
+  const fromLatitude = toRadians(from.lat);
+  const toLatitude = toRadians(to.lat);
+  const haversine =
+    Math.sin(latitudeDelta / 2) ** 2 +
+    Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(longitudeDelta / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_METERS * Math.asin(Math.sqrt(haversine));
+}
+
+function formatRemainingDistance(distanceMeters: number) {
+  if (distanceMeters >= 1_000) return `${(distanceMeters / 1_000).toFixed(1)} กม.`;
+  if (distanceMeters < 10) return '<10 ม.';
+  return `${Math.round(distanceMeters / 10) * 10} ม.`;
+}
+
 function numberedIcon(label: number, overdue: boolean) {
   const color = overdue ? 'hsl(var(--destructive))' : 'hsl(var(--info))';
   return L.divIcon({
@@ -80,11 +104,13 @@ export function RiderRouteMap({
   nowMs,
   onFocusOrder,
   locationSource,
+  showRemainingDistance = false,
 }: {
   stops: RouteStop[];
   nowMs: number;
   onFocusOrder?: (order: Order) => void;
   locationSource?: RiderLocationSource;
+  showRemainingDistance?: boolean;
 }) {
   // หน้าเตรียม Route อ่าน GPS เอง ส่วนหน้ากำลังส่งใช้ stream เดียวกับ tracking
   // เพื่อไม่เปิด watchPosition ซ้ำและให้หมุดตรงกับข้อมูลที่ส่ง backend จริง
@@ -109,6 +135,19 @@ export function RiderRouteMap({
     [points, riderPoint],
   );
   const pendingCount = stops.filter((stop) => stop.pending).length;
+  const destination = located[0] ?? null;
+  const remainingDistance =
+    showRemainingDistance && location && destination?.coords
+      ? distanceBetweenMeters(location, destination.coords)
+      : null;
+  const arrivalStatus =
+    remainingDistance == null
+      ? null
+      : remainingDistance <= 200 && location && location.accuracy <= 100
+        ? 'ถึงบริเวณปลายทางแล้ว'
+        : remainingDistance <= 1_000
+          ? 'ใกล้ถึงปลายทาง'
+          : 'ระยะถึงปลายทาง';
 
   return (
     <div className="relative isolate h-full w-full">
@@ -217,6 +256,26 @@ export function RiderRouteMap({
           </div>
         )}
       </div>
+
+      {remainingDistance != null && destination && (
+        <div className="absolute bottom-2 right-2 z-[1000] max-w-[70%] rounded-lg border bg-background/95 px-3 py-2 text-right shadow-sm backdrop-blur">
+          <div
+            className={
+              remainingDistance <= 1_000
+                ? 'text-xs font-semibold text-success'
+                : 'text-xs font-medium'
+            }
+          >
+            {arrivalStatus}
+          </div>
+          <div className="text-xl font-semibold tabular-nums">
+            {formatRemainingDistance(remainingDistance)}
+          </div>
+          <div className="truncate text-[10px] text-muted-foreground">
+            ถึง {destination.order.customer.name} · ระยะเส้นตรงโดยประมาณ
+          </div>
+        </div>
+      )}
 
       {pendingCount > 0 && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 z-[1000] -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow-xs">

@@ -12,6 +12,18 @@ import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { BellRing, Ban, Clock, RefreshCw, Route, UserCog } from 'lucide-react';
 
+function formatPulledBackAt(value?: string) {
+  if (!value) return null;
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return null;
+  return new Intl.DateTimeFormat('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(at);
+}
+
 function formatScheduledPush(route: PlanningRoute) {
   if (!route.plannedTime) return null;
   if (route.reminderPushStatus === 'succeeded') return `เตือนเวลา ${route.plannedTime} น. แล้ว`;
@@ -79,7 +91,7 @@ export function PublishedRoutesCard({
                 </div>
                 {cancelled ? (
                   <Badge variant="muted">
-                    <Ban className="h-3 w-3" /> ยกเลิกแล้ว
+                    <Ban className="h-3 w-3" /> ดึงกลับแล้ว
                   </Badge>
                 ) : route.pushStatus === 'failed' ? (
                   <Badge variant="warning">
@@ -88,7 +100,8 @@ export function PublishedRoutesCard({
                 ) : null}
               </div>
               <div className="mt-2 text-muted-foreground">
-                {route.driver.name} · {route.stops.length} จุดส่ง
+                {route.driver.name}
+                {!cancelled && ` · ${route.stops.length} จุดส่ง`}
               </div>
               <div className="mt-1 flex items-center gap-1 text-muted-foreground">
                 <Clock className="h-3 w-3 shrink-0" />
@@ -102,11 +115,19 @@ export function PublishedRoutesCard({
                 </Badge>
               )}
               {cancelled ? (
-                <div className="mt-1 text-muted-foreground">
-                  เหตุผล:{' '}
-                  {route.cancelReason ? planningCancelReasonLabel[route.cancelReason] : 'ไม่ระบุ'}
-                  {route.cancelNote ? ` · ${route.cancelNote}` : ''}
-                </div>
+                <>
+                  {formatPulledBackAt(route.cancelledAt) && (
+                    <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      ดึงกลับเข้า Planning เมื่อ {formatPulledBackAt(route.cancelledAt)}
+                    </div>
+                  )}
+                  <div className="mt-1 text-muted-foreground">
+                    เหตุผล:{' '}
+                    {route.cancelReason ? planningCancelReasonLabel[route.cancelReason] : 'ไม่ระบุ'}
+                    {route.cancelNote ? ` · ${route.cancelNote}` : ''}
+                  </div>
+                </>
               ) : (
                 formatScheduledPush(route) && (
                   <div className="mt-1 flex items-center gap-1 text-muted-foreground">

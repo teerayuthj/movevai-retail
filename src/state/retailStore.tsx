@@ -368,28 +368,37 @@ export function RetailProvider({
   );
 
   const cancelRoute = useCallback(
-    async (routeId: string, input: Parameters<RetailStore['cancelRoute']>[1]) => {
+    async (
+      routeId: string,
+      input: Parameters<RetailStore['cancelRoute']>[1],
+      restore?: Parameters<RetailStore['cancelRoute']>[2],
+    ) => {
       const route = await cancelPlanningRoute(routeId, input);
 
-      // การดึง Route กลับไม่ใช่การยกเลิกแผน: บันทึก stops กลับเป็น Planning
-      // อย่างชัดเจนเพื่อไม่ให้ backend ที่คืนเพียง status=ready ทำให้งานหลุดไปหน้า
-      // "จ่ายงานวันนี้" ระหว่าง refresh รอบถัดไป
-      const orderIds = route.stops.map((stop) => stop.order.id);
-      if (orderIds.length === 0) {
-        throw new Error('Route นี้ไม่มีงานสำหรับดึงกลับเข้า Planning');
+      // backend ลบ stops ทิ้งตอน cancel (เพื่อปล่อย unique orderId) แล้ว restore order
+      // กลับเป็น releaseState='planned' พร้อม plannedDate/Time เดิมให้เรียบร้อย ดังนั้น
+      // response.stops จึง "ว่างเสมอ" — ไม่ใช่สัญญาณว่าดึงกลับไม่สำเร็จ จึงห้าม throw
+      // ที่ backend ไม่ได้คงไว้คือ plannedDriverId (Rider) เลย savePlanning ซ้ำด้วย
+      // ข้อมูล route เดิมจาก frontend (restore) เพื่อคง Rider ตามแผนเดิมไว้
+      const plan =
+        restore && restore.orderIds.length > 0
+          ? restore
+          : route.stops.length > 0
+            ? {
+                orderIds: route.stops.map((stop) => stop.order.id),
+                plannedDate: route.plannedDate,
+                plannedTime: route.plannedTime,
+                driverCode: route.driver.code,
+                note: route.note,
+              }
+            : null;
+      if (plan) {
+        const canonical = await savePlanning(plan);
+        commit((current) => ({
+          ...current,
+          orders: canonical.reduce(replaceOrder, current.orders),
+        }));
       }
-
-      const canonical = await savePlanning({
-        orderIds,
-        plannedDate: route.plannedDate,
-        plannedTime: route.plannedTime,
-        driverCode: route.driver.code,
-        note: route.note,
-      });
-      commit((current) => ({
-        ...current,
-        orders: canonical.reduce(replaceOrder, current.orders),
-      }));
       return route;
     },
     [commit],
