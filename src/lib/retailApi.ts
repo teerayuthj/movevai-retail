@@ -147,6 +147,21 @@ export function fetchDeliveryTrackingCounts() {
   return request<DeliveryTrackingCounts>(`${APP_API_BASE}/tracking/counts`);
 }
 
+// ปลายทางของ route ที่กำลังส่ง — มาจาก backend (geocode ฝั่ง server) เพื่อให้ทั้ง rider
+// และ admin อ้างพิกัดชุดเดียวกัน ไม่ต้องต่างคน geocode เอง
+export type RiderDestination = {
+  orderId?: string;
+  /** ชื่อลูกค้า/ป้ายกำกับสั้นๆ */
+  label?: string | null;
+  address?: string | null;
+  lat: number | string;
+  lng: number | string;
+  /** สถานะ stop เช่น delivered — ใช้แยกสีหมุดที่ส่งแล้ว (optional) */
+  status?: string | null;
+  /** ลำดับ stop ในรอบส่ง (optional) */
+  sequence?: number;
+};
+
 export type LiveRiderTracking = {
   id: string;
   routeId: string | null;
@@ -163,6 +178,8 @@ export type LiveRiderTracking = {
     recordedAt: string;
     offRoute: boolean;
   };
+  /** หมุดปลายทางของรอบนี้ — backend ส่งมาเมื่อพร้อม (ยังไม่มีก็ไม่วาด) */
+  destinations?: RiderDestination[];
 };
 
 export type RiderTrackingHistory = LiveRiderTracking & {
@@ -439,10 +456,32 @@ export async function logoutRider() {
 
 export type RiderTrackingSession = {
   id: string;
-  routeId: string;
+  routeId?: string | null;
+  sessionType?: 'delivery' | 'test';
+  label?: string | null;
   startedAt: string;
   status: string;
+  isOwner?: boolean;
 };
+
+export type ActiveRiderTrackingSession = RiderTrackingSession & {
+  route: { code: string } | null;
+  isOwner: boolean;
+  latest: null | {
+    lat: number | string;
+    lng: number | string;
+    accuracy: number;
+    speed?: number | null;
+    heading?: number | null;
+    recordedAt: string;
+  };
+};
+
+export function fetchActiveRiderTracking(deviceId: string) {
+  return request<ActiveRiderTrackingSession | null>(
+    `${RIDER_API_BASE}/tracking/active?deviceId=${encodeURIComponent(deviceId)}`,
+  );
+}
 export function startRiderRoute(routeId: string, deviceId: string) {
   return request<RiderTrackingSession>(
     `${RIDER_API_BASE}/routes/${encodeURIComponent(routeId)}/start`,
@@ -453,10 +492,14 @@ export function startRiderRoute(routeId: string, deviceId: string) {
   );
 }
 
-export function sendRiderLocations(sessionId: string, points: RiderLocationPayload[]) {
+export function sendRiderLocations(
+  sessionId: string,
+  deviceId: string,
+  points: RiderLocationPayload[],
+) {
   return request<{ accepted: number; received: number }>(`${RIDER_API_BASE}/tracking/locations`, {
     method: 'POST',
-    body: JSON.stringify({ sessionId, points }),
+    body: JSON.stringify({ sessionId, deviceId, points }),
   });
 }
 

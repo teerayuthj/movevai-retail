@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   endRiderRoute,
   endRiderTestSession,
+  fetchActiveRiderTracking,
   sendRiderLocations,
   startRiderRoute,
   startRiderTestRoute,
@@ -13,7 +14,13 @@ const QUEUE_KEY = 'movevai:rider-location-queue';
 const SESSION_KEY = 'movevai:rider-tracking-session';
 const DEVICE_KEY = 'movevai:rider-device-id';
 // type ว่าง = session เก่าก่อนมี Test Route → ถือเป็น delivery
-type StoredSession = { id: string; type: 'delivery' | 'test'; routeId?: string; label?: string };
+type StoredSession = {
+  id: string;
+  type: 'delivery' | 'test';
+  routeId?: string;
+  label?: string;
+  isOwner: boolean;
+};
 
 function deviceId() {
   let id = localStorage.getItem(DEVICE_KEY);
@@ -41,21 +48,25 @@ export function useRiderTracking(enabled = true) {
       const stored = JSON.parse(
         localStorage.getItem(SESSION_KEY) ?? 'null',
       ) as StoredSession | null;
-      return stored ? { ...stored, type: stored.type ?? 'delivery' } : null;
+      // Backend ต้องยืนยัน ownership ใหม่ทุกครั้งก่อนเปิด GPS watcher
+      return stored ? { ...stored, type: stored.type ?? 'delivery', isOwner: false } : null;
     } catch {
       return null;
     }
   });
-  const { location, status, error, retry } = useRiderLocation(enabled && Boolean(session));
+  const ownLocation = useRiderLocation(enabled && Boolean(session?.isOwner));
+  const [remoteLocation, setRemoteLocation] =
+    useState<ReturnType<typeof useRiderLocation>['location']>(null);
+  const [syncError, setSyncError] = useState('');
   const lastQueued = useRef<{ at: number; lat: number; lng: number } | null>(null);
   const flushing = useRef(false);
   const flush = useCallback(async () => {
-    if (!enabled || !session || flushing.current || !navigator.onLine) return;
+    if (!enabled || !session?.isOwner || flushing.current || !navigator.onLine) return;
     const queue = readQueue();
     if (!queue.length) return;
     flushing.current = true;
     try {
-      await sendRiderLocations(session.id, queue.slice(0, 50));
+      await sendRiderLocations(session.id, deviceId(), queue.slice(0, 50));
       saveQueue(queue.slice(50));
     } finally {
       flushing.current = false;
@@ -63,7 +74,8 @@ export function useRiderTracking(enabled = true) {
   }, [enabled, session]);
 
   useEffect(() => {
-    if (!session || !location) return;
+    if (!session?.isOwner || !ownLocation.location) return;
+    const location = ownLocation.location;
     const last = lastQueued.current;
     const elapsed = last ? location.timestamp - last.at : Infinity;
     const moved = last
@@ -82,7 +94,7 @@ export function useRiderTracking(enabled = true) {
     saveQueue([...readQueue(), point]);
     lastQueued.current = { at: location.timestamp, lat: location.lat, lng: location.lng };
     void flush();
-  }, [flush, location, session]);
+  }, [flush, ownLocation.location, session]);
   useEffect(() => {
     const id = window.setInterval(() => void flush(), 10_000);
     window.addEventListener('online', flush);
@@ -92,22 +104,98 @@ export function useRiderTracking(enabled = true) {
     };
   }, [flush]);
 
+  // ทุก Web/PWA restore session จาก backend และตามตำแหน่งล่าสุดของเครื่องเจ้าของ
+  const syncActiveSession = useCallback(async () => {
+    if (!enabled) return;
+    try {
+      const active = await fetchActiveRiderTracking(deviceId());
+      setSyncError('');
+      if (!active) {
+        localStorage.removeItem(SESSION_KEY);
+        setSession(null);
+        setRemoteLocation(null);
+        return;
+      }
+      const value: StoredSession = {
+        id: active.id,
+        type: active.sessionType === 'test' ? 'test' : 'delivery',
+        routeId: active.routeId ?? undefined,
+        label: active.label ?? undefined,
+        isOwner: active.isOwner,
+      };
+      localStorage.setItem(SESSION_KEY, JSON.stringify(value));
+      setSession(value);
+      setRemoteLocation(
+        active.latest
+          ? {
+              lat: Number(active.latest.lat),
+              lng: Number(active.latest.lng),
+              accuracy: active.latest.accuracy,
+              speed: active.latest.speed ?? null,
+              heading: active.latest.heading ?? null,
+              timestamp: new Date(active.latest.recordedAt).getTime(),
+            }
+          : null,
+      );
+    } catch (reason) {
+      setSyncError(reason instanceof Error ? reason.message : 'ซิงก์ Tracking ไม่สำเร็จ');
+    }
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    void syncActiveSession();
+    const id = window.setInterval(() => void syncActiveSession(), 5_000);
+    const onFocus = () => void syncActiveSession();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void syncActiveSession();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [enabled, syncActiveSession]);
+
+  const location = session?.isOwner ? ownLocation.location : remoteLocation;
+  const status = session?.isOwner
+    ? ownLocation.status
+    : remoteLocation
+      ? 'tracking'
+      : session
+        ? 'requesting'
+        : 'idle';
+  const error = session?.isOwner ? ownLocation.error : syncError;
+
   return {
     session,
     location,
     status,
     error,
-    retry,
+    retry: session?.isOwner ? ownLocation.retry : syncActiveSession,
+    isOwner: session?.isOwner ?? false,
     start: async (routeId: string) => {
       const started = await startRiderRoute(routeId, deviceId());
-      const value: StoredSession = { id: started.id, type: 'delivery', routeId };
+      const value: StoredSession = {
+        id: started.id,
+        type: 'delivery',
+        routeId,
+        isOwner: started.isOwner ?? true,
+      };
       localStorage.setItem(SESSION_KEY, JSON.stringify(value));
       setSession(value);
     },
     // Test Route: เริ่มบันทึกเส้นทางโดยไม่ผูกกับงานลูกค้า (ทดสอบ GPS ตอนไปกินข้าว ฯลฯ)
     startTest: async (label?: string) => {
       const started = await startRiderTestRoute(deviceId(), label);
-      const value: StoredSession = { id: started.id, type: 'test', label };
+      const value: StoredSession = {
+        id: started.id,
+        type: 'test',
+        label: started.label ?? label,
+        isOwner: started.isOwner ?? true,
+      };
       localStorage.setItem(SESSION_KEY, JSON.stringify(value));
       setSession(value);
     },

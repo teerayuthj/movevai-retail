@@ -6,7 +6,19 @@ import type { Order } from '@/data/mock';
 import { getRiderJobOverdueMinutes } from '../riderSchedule';
 import { BANGKOK_CENTER, navigationUrl } from '../geocode';
 import type { RouteStop } from '../hooks/useRouteStops';
-import { useRiderLocation } from '../hooks/useRiderLocation';
+import {
+  useRiderLocation,
+  type RiderLocation,
+  type RiderLocationStatus,
+} from '../hooks/useRiderLocation';
+
+export type RiderLocationSource = {
+  location: RiderLocation | null;
+  status: RiderLocationStatus;
+  error: string;
+  retry: () => void;
+  remote?: boolean;
+};
 
 function numberedIcon(label: number, overdue: boolean) {
   const color = overdue ? 'hsl(var(--destructive))' : 'hsl(var(--info))';
@@ -45,12 +57,22 @@ export function RiderRouteMap({
   stops,
   nowMs,
   onFocusOrder,
+  locationSource,
 }: {
   stops: RouteStop[];
   nowMs: number;
   onFocusOrder?: (order: Order) => void;
+  locationSource?: RiderLocationSource;
 }) {
-  const { location, status: locationStatus, error: locationError, retry } = useRiderLocation(true);
+  // หน้าเตรียม Route อ่าน GPS เอง ส่วนหน้ากำลังส่งใช้ stream เดียวกับ tracking
+  // เพื่อไม่เปิด watchPosition ซ้ำและให้หมุดตรงกับข้อมูลที่ส่ง backend จริง
+  const ownLocation = useRiderLocation(!locationSource);
+  const {
+    location,
+    status: locationStatus,
+    error: locationError,
+    retry,
+  } = locationSource ?? ownLocation;
   const located = useMemo(() => stops.filter((stop) => stop.coords), [stops]);
   const points = useMemo<[number, number][]>(
     () => located.map((stop) => [stop.coords!.lat, stop.coords!.lng]),
@@ -146,15 +168,18 @@ export function RiderRouteMap({
         {locationStatus === 'tracking' && location ? (
           <div className="space-y-0.5">
             <div className="flex items-center gap-1.5 font-medium text-info">
-              <Radio className="h-3.5 w-3.5" /> GPS realtime ทำงาน
+              <Radio className="h-3.5 w-3.5" />
+              {locationSource?.remote ? 'ตำแหน่งจากเครื่องที่เริ่ม Route' : 'GPS realtime ทำงาน'}
             </div>
             <div className="text-muted-foreground">
-              ความแม่นยำ ±{Math.round(location.accuracy)} ม. · ทำงานขณะเปิดหน้านี้
+              ความแม่นยำ ±{Math.round(location.accuracy)} ม. ·{' '}
+              {locationSource?.remote ? 'อัปเดตจาก backend ทุก 5 วินาที' : 'ทำงานขณะเปิดหน้านี้'}
             </div>
           </div>
         ) : locationStatus === 'requesting' ? (
           <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> กำลังขอ GPS…
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            {locationSource?.remote ? 'กำลังรอ GPS จากเครื่องที่เริ่ม Route…' : 'กำลังขอ GPS…'}
           </div>
         ) : (
           <div className="space-y-1.5">

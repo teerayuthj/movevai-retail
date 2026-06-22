@@ -19,10 +19,10 @@ const points = Array.from({ length: 24 }, (_, index) => {
 });
 if (scenario === 'offline') {
   await new Promise((resolve) => setTimeout(resolve, 5_000));
-  await api('/tracking/locations', { method: 'POST', body: JSON.stringify({ sessionId: session.id, points }) }, login.token);
+  await api('/tracking/locations', { method: 'POST', body: JSON.stringify({ sessionId: session.id, deviceId: `mock-${scenario}-device`, points }) }, login.token);
 } else {
   for (const point of points) {
-    await api('/tracking/locations', { method: 'POST', body: JSON.stringify({ sessionId: session.id, points: [point] }) }, login.token);
+    await api('/tracking/locations', { method: 'POST', body: JSON.stringify({ sessionId: session.id, deviceId: `mock-${scenario}-device`, points: [point] }) }, login.token);
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
 }

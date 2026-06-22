@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
 import { Button } from '@/components/ui/button';
 import { useRetailStore } from '@/state/retailStore';
@@ -35,6 +35,7 @@ import { cn } from '@/lib/utils';
 import type { Order } from '@/data/mock';
 import { hasRiderSession, logoutRider, type RiderSession } from '@/lib/retailApi';
 import { RiderLogin } from './components/RiderLogin';
+import { TestRouteDialog } from './components/TestRouteDialog';
 import { useRiderTracking } from './hooks/useRiderTracking';
 
 const RIDER_STORAGE_KEY = 'movevai:rider-code';
@@ -52,6 +53,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const [authenticated, setAuthenticated] = useState(hasRiderSession);
   const { orders, drivers, startDelivery, submitDelivery, refreshRiderJobs } = useRetailStore();
   const [closeTargetId, setCloseTargetId] = useState<string | null>(null);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [assignedView, setAssignedView] = useState<'list' | 'map'>('list');
   const [jobsLoading, setJobsLoading] = useState(true);
@@ -61,6 +63,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const { activeTab, setTab } = useRiderTab();
   const [riderCode, setRiderCode] = useState(resolveRiderCode);
   const tracking = useRiderTracking(authenticated);
+  const autoOpenedSessionId = useRef<string | null>(null);
 
   const rider = drivers.find((driver) => driver.id === riderCode) ?? null;
 
@@ -75,7 +78,10 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
 
   const counts: Record<RiderTab, number> = {
     assigned: myJobs.filter((o) => o.status === 'assigned').length,
-    in_transit: myJobs.filter((o) => o.status === 'in_transit').length,
+    // Test Route ไม่มี Order แต่ถือเป็นกิจกรรมที่กำลังส่งหนึ่งรายการใน UI
+    in_transit:
+      myJobs.filter((o) => o.status === 'in_transit').length +
+      (tracking.session?.type === 'test' ? 1 : 0),
     pending_confirmation: myJobs.filter((o) => o.status === 'pending_confirmation').length,
     delivered: myJobs.filter((o) => o.status === 'delivered').length,
   };
@@ -101,6 +107,14 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     void clearRiderAppBadge();
   }, [activeTab]);
 
+  // เมื่อพบ active session จาก backend (รวม session ที่เริ่มจาก Web/PWA อีกตัว)
+  // เปิดหน้ากำลังส่งหนึ่งครั้ง แล้วปล่อยให้ rider เปลี่ยนแท็บเองได้ตามปกติ
+  useEffect(() => {
+    if (!tracking.session || autoOpenedSessionId.current === tracking.session.id) return;
+    autoOpenedSessionId.current = tracking.session.id;
+    setTab('in_transit', { replace: true });
+  }, [setTab, tracking.session]);
+
   // คง subscription ของเครื่องนี้ให้สดเมื่อเคยอนุญาต Push แล้ว
   // ใช้ได้ทั้ง PWA และ Desktop Web ที่เปิดผ่าน HTTPS/localhost
   useEffect(() => {
@@ -124,8 +138,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
           /* ปล่อยให้ rider ส่งงานต่อได้ แม้บันทึกเส้นทางไม่เริ่ม */
         }
       }
+      setTab('in_transit');
     },
-    [startDelivery, tracking],
+    [setTab, startDelivery, tracking],
   );
 
   const refreshJobs = useCallback(
@@ -199,8 +214,19 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         })
     : [];
 
-  const showMap = activeTab === 'assigned' && assignedView === 'map';
-  const assignedStops = useRouteStops(activeTab === 'assigned' ? tabJobs : []);
+  const showAssignedMap = activeTab === 'assigned' && assignedView === 'map';
+  const showTrackingMap = activeTab === 'in_transit' && Boolean(tracking.session);
+  // หน้ากำลังส่งต้องแสดงเฉพาะจุดหมายของงานที่ rider กำลังนำส่งอยู่ ไม่รวมงาน assigned
+  // ที่ยังรอรับใน route เดียวกัน มิฉะนั้นผู้ใช้จะเห็นหลายจุดและไม่รู้ว่าต้องไปจุดไหนก่อน
+  const activeDeliveryJob = myJobs
+    .filter((order) => order.status === 'in_transit')
+    .sort((a, b) => (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0))[0];
+  const routeMapJobs = showAssignedMap
+    ? tabJobs
+    : showTrackingMap && tracking.session?.type === 'delivery' && activeDeliveryJob
+      ? [activeDeliveryJob]
+      : [];
+  const routeStops = useRouteStops(routeMapJobs);
   const activeRouteId = myJobs.find((order) => order.deliveryRoute)?.deliveryRoute?.id;
 
   if (!authenticated) {
@@ -218,7 +244,19 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     <div className="flex min-h-dvh w-full justify-center bg-muted/40">
       {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
       <div className="relative flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
-        <RiderHeader rider={rider} onOpenProfile={() => setProfileOpen(true)} />
+        <RiderHeader
+          rider={rider}
+          // สถานะ badge ต้องตามกิจกรรมจริง: กำลังบันทึก GPS หรือมีงานที่กำลังส่ง = "กำลังส่ง"
+          // ไม่ใช่ค่า static ใน driver record (ที่ค้างเป็น available)
+          effectiveStatus={
+            rider?.status === 'off_duty'
+              ? 'off_duty'
+              : tracking.session || counts.in_transit > 0
+                ? 'on_delivery'
+                : rider?.status
+          }
+          onOpenProfile={() => setProfileOpen(true)}
+        />
         {(activeRouteId || tracking.session) && (
           <div className="flex items-center gap-2 border-b bg-background px-3 py-2 text-xs">
             <span
@@ -231,13 +269,15 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
               {tracking.session
                 ? `${tracking.session.type === 'test' ? `Test${tracking.session.label ? ` · ${tracking.session.label}` : ''} · ` : ''}${
                     tracking.status === 'tracking'
-                      ? `กำลังส่ง GPS · ±${Math.round(tracking.location?.accuracy ?? 0)} ม.`
+                      ? tracking.isOwner
+                        ? `กำลังส่ง GPS · ±${Math.round(tracking.location?.accuracy ?? 0)} ม.`
+                        : `ติดตามจากอีกอุปกรณ์ · ±${Math.round(tracking.location?.accuracy ?? 0)} ม.`
                       : tracking.error || 'กำลังเปิด GPS…'
                   }`
                 : 'ระบบจะเริ่มบันทึกเส้นทางเมื่อกดรับงาน'}
             </span>
             {/* บันทึกเริ่มอัตโนมัติตอนกดรับงาน — เหลือแค่ปุ่ม "จบ Route" ระหว่างบันทึก */}
-            {tracking.session && (
+            {tracking.session && tracking.isOwner && (
               <Button
                 size="sm"
                 variant="outline"
@@ -269,11 +309,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
               size="sm"
               variant="outline"
               className="w-full border-dashed text-muted-foreground"
-              onClick={() => {
-                const label = window.prompt('ตั้งชื่อรอบทดสอบ (เช่น Lunch GPS Test)')?.trim();
-                if (label === undefined) return; // กดยกเลิก
-                void tracking.startTest(label || undefined);
-              }}
+              onClick={() => setTestDialogOpen(true)}
             >
               <MapIcon className="h-3.5 w-3.5" />
               เริ่ม Test Route (ทดสอบ GPS)
@@ -309,9 +345,23 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
           </div>
         )}
 
-        {showMap ? (
+        {showAssignedMap || showTrackingMap ? (
           <div className="relative flex-1">
-            <RiderRouteMap stops={assignedStops} nowMs={nowMs} />
+            <RiderRouteMap
+              stops={routeStops}
+              nowMs={nowMs}
+              locationSource={
+                showTrackingMap
+                  ? {
+                      location: tracking.location,
+                      status: tracking.status,
+                      error: tracking.error,
+                      retry: tracking.retry,
+                      remote: !tracking.isOwner,
+                    }
+                  : undefined
+              }
+            />
           </div>
         ) : (
           /* job list */
@@ -405,6 +455,15 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         )}
 
         <RiderTabBar activeTab={activeTab} counts={counts} onSelect={(tab) => setTab(tab)} />
+
+        <TestRouteDialog
+          open={testDialogOpen}
+          onCancel={() => setTestDialogOpen(false)}
+          onConfirm={(label) => {
+            setTestDialogOpen(false);
+            void tracking.startTest(label).then(() => setTab('in_transit'));
+          }}
+        />
 
         {rider && profileOpen && (
           <RiderProfileSheet

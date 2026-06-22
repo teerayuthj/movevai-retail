@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
+  fetchDeliveryTrackingOrders,
   fetchLiveRiders,
   fetchRiderTrackingHistory,
   type LiveRiderTracking,
   type RiderTrackingHistory,
 } from '@/lib/retailApi';
 import { BANGKOK_CENTER } from '@/features/rider/geocode';
+import { useRouteStops } from '@/features/rider/hooks/useRouteStops';
+import type { Order } from '@/data/mock';
 
 const icon = L.divIcon({
   className: '',
@@ -15,27 +18,59 @@ const icon = L.divIcon({
   iconAnchor: [12, 12],
   html: '<div style="width:24px;height:24px;border-radius:50%;background:#16a34a;border:4px solid white;box-shadow:0 1px 6px #0006"></div>',
 });
-function Focus({ point }: { point?: [number, number] }) {
+
+// หมุดปลายทาง — รูปหยดน้ำสีแดง แยกชัดจากหมุด rider (วงกลมเขียว); จางลงเมื่อ stop ส่งแล้ว
+const destinationIcon = (delivered: boolean) =>
+  L.divIcon({
+    className: '',
+    iconSize: [26, 26],
+    iconAnchor: [13, 26],
+    html: `<svg width="26" height="26" viewBox="0 0 24 24" fill="${
+      delivered ? '#94a3b8' : '#dc2626'
+    }" stroke="white" stroke-width="2" style="filter:drop-shadow(0 1px 3px #0006)"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3" fill="white" stroke="none"/></svg>`,
+  });
+function FitPoints({ points }: { points: [number, number][] }) {
   const map = useMap();
   useEffect(() => {
-    if (point) map.setView(point, 15);
-  }, [map, point]);
+    if (points.length === 0) return;
+    if (points.length === 1) {
+      map.setView(points[0], 15);
+      return;
+    }
+    map.fitBounds(L.latLngBounds(points), { padding: [36, 36], maxZoom: 15 });
+  }, [map, points]);
   return null;
+}
+
+function currentDestination<T extends { status?: string | null; sequence?: number }>(items: T[]) {
+  return items
+    .filter((item) => item.status !== 'delivered')
+    .sort(
+      (a, b) => (a.sequence ?? Number.MAX_SAFE_INTEGER) - (b.sequence ?? Number.MAX_SAFE_INTEGER),
+    )[0];
 }
 
 export function LiveRiderMap() {
   const [riders, setRiders] = useState<LiveRiderTracking[]>([]);
+  const [activeOrders, setActiveOrders] = useState<Order[]>([]);
   const [selected, setSelected] = useState<RiderTrackingHistory | null>(null);
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     let active = true;
-    const load = () =>
+    const load = () => {
+      // แยก request เพื่อให้ GPS realtime ยังอัปเดตได้ แม้ endpoint รายการงานล้มเหลวชั่วคราว
       void fetchLiveRiders()
         .then((rows) => {
           if (active) setRiders(rows);
         })
         .catch(() => undefined);
+      void fetchDeliveryTrackingOrders({ tab: 'in_transit', take: 100, skip: 0 })
+        .then((result) => {
+          if (active) setActiveOrders(result.orders);
+        })
+        .catch(() => undefined);
+    };
     load();
     const id = window.setInterval(load, 5_000);
     return () => {
@@ -43,6 +78,7 @@ export function LiveRiderMap() {
       clearInterval(id);
     };
   }, []);
+  const activeOrderStops = useRouteStops(activeOrders);
   useEffect(() => {
     setPlaybackIndex(selected ? Math.max(0, selected.points.length - 1) : 0);
     setPlaying(false);
@@ -71,14 +107,49 @@ export function LiveRiderMap() {
     () => selected?.plannedGeometryJson?.map((p) => [p.lat, p.lng]) ?? [],
     [selected],
   );
-  const focus =
-    path[path.length - 1] ??
-    (riders.find((r) => r.latest)?.latest
-      ? ([
-          Number(riders.find((r) => r.latest)!.latest!.lat),
-          Number(riders.find((r) => r.latest)!.latest!.lng),
-        ] as [number, number])
-      : undefined);
+  const currentDestinations = useMemo(
+    () =>
+      riders.flatMap((rider) => {
+        const fromLiveFeed = currentDestination(rider.destinations ?? []);
+        if (fromLiveFeed) return [{ riderId: rider.id, destination: fromLiveFeed }];
+
+        const fromOrder = currentDestination(
+          activeOrderStops
+            .filter((stop) => stop.order.assignedDriverId === rider.driver.code && stop.coords)
+            .map((stop) => ({
+              orderId: stop.order.id,
+              label: stop.order.customer.name,
+              address: stop.order.customer.address,
+              lat: stop.coords!.lat,
+              lng: stop.coords!.lng,
+              status: stop.order.status,
+              sequence: stop.order.deliveryRoute?.sequence,
+            })),
+        );
+        return fromOrder ? [{ riderId: rider.id, destination: fromOrder }] : [];
+      }),
+    [activeOrderStops, riders],
+  );
+  const viewportPoints = useMemo<[number, number][]>(() => {
+    if (path.length > 0) {
+      const selectedDestination = currentDestinations.find(
+        (item) => item.riderId === selected?.id,
+      )?.destination;
+      return selectedDestination
+        ? [...path, [Number(selectedDestination.lat), Number(selectedDestination.lng)]]
+        : path;
+    }
+    return [
+      ...riders.flatMap((rider) =>
+        rider.latest
+          ? [[Number(rider.latest.lat), Number(rider.latest.lng)] as [number, number]]
+          : [],
+      ),
+      ...currentDestinations.map(
+        ({ destination }) => [Number(destination.lat), Number(destination.lng)] as [number, number],
+      ),
+    ];
+  }, [currentDestinations, path, riders, selected?.id]);
   return (
     <section className="overflow-hidden rounded-xl border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-3">
@@ -155,6 +226,33 @@ export function LiveRiderMap() {
               []
             ),
           )}
+          {currentDestinations.map(({ riderId, destination: dest }) => {
+            const delivered = dest.status === 'delivered';
+            return (
+              <Marker
+                key={`${riderId}-dest-${dest.orderId ?? 'current'}`}
+                icon={destinationIcon(delivered)}
+                position={[Number(dest.lat), Number(dest.lng)]}
+              >
+                <Popup>
+                  <b>📍 ปลายทาง{dest.sequence ? ` #${dest.sequence}` : ''}</b>
+                  <br />
+                  {dest.label ?? 'จุดส่งปัจจุบัน'}
+                  {dest.address && (
+                    <>
+                      <br />
+                      <span style={{ color: '#64748b' }}>{dest.address}</span>
+                    </>
+                  )}
+                  {delivered && (
+                    <>
+                      <br />✓ ส่งแล้ว
+                    </>
+                  )}
+                </Popup>
+              </Marker>
+            );
+          })}
           {planned.length > 1 && (
             <Polyline
               positions={planned}
@@ -164,7 +262,7 @@ export function LiveRiderMap() {
           {path.length > 1 && (
             <Polyline positions={path} pathOptions={{ color: '#2563eb', weight: 4 }} />
           )}
-          <Focus point={focus} />
+          <FitPoints points={viewportPoints} />
         </MapContainer>
       </div>
       {selected && (

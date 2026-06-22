@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { MapContainer, Marker, Polyline, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { Pause, Play } from 'lucide-react';
 import type { RiderTrackingHistory } from '@/lib/retailApi';
 import { BANGKOK_CENTER } from '@/features/rider/geocode';
 
@@ -96,7 +97,7 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
       <MapContainer
         center={[BANGKOK_CENTER.lat, BANGKOK_CENTER.lng]}
         zoom={12}
-        className="h-72 w-full"
+        className="h-80 w-full sm:h-[400px]"
       >
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
@@ -117,13 +118,20 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
       <div className="flex items-center gap-3 border-t bg-card px-3 py-2 text-xs text-muted-foreground">
         <button
           type="button"
-          className="font-medium text-foreground"
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-primary px-3 font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+          disabled={session.points.length < 2}
+          aria-label={playing ? 'หยุดเล่นเส้นทางย้อนหลัง' : 'เล่นเส้นทางย้อนหลัง'}
           onClick={() => {
             if (index >= session.points.length - 1) setIndex(0);
             setPlaying((value) => !value);
           }}
         >
-          {playing ? 'หยุด' : 'เล่นเส้นทาง'}
+          {playing ? (
+            <Pause className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+          ) : (
+            <Play className="h-3.5 w-3.5 fill-current" aria-hidden="true" />
+          )}
+          {playing ? 'หยุด' : 'เล่นย้อนหลัง'}
         </button>
         <input
           className="min-w-0 flex-1"
@@ -131,6 +139,8 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
           min={0}
           max={Math.max(0, session.points.length - 1)}
           value={index}
+          disabled={session.points.length < 2}
+          aria-label="ตำแหน่งการเล่นเส้นทางย้อนหลัง"
           onChange={(event) => {
             setPlaying(false);
             setIndex(Number(event.target.value));
