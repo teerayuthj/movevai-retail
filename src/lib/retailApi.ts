@@ -82,6 +82,8 @@ export type PlanningRoute = {
   plannedDate: string;
   plannedTime?: string;
   scheduledFor?: string;
+  dispatchMode: 'scheduled' | 'urgent';
+  acceptBy?: string;
   status: 'published' | 'active' | 'completed' | 'cancelled';
   note?: string;
   publishedAt: string;
@@ -199,6 +201,18 @@ export async function publishPlanningRoute(input: {
   note?: string;
 }) {
   const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/publish`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return normalizeRoute(route);
+}
+
+export async function publishUrgentPlanningRoute(input: {
+  orderId: string;
+  driverCode: string;
+  note?: string;
+}) {
+  const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/urgent`, {
     method: 'POST',
     body: JSON.stringify(input),
   });

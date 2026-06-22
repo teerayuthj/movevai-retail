@@ -95,6 +95,10 @@ export type RetailStore = RetailState & {
     input?: { reason?: PlanningCancelReason; note?: string },
   ) => Promise<void>;
   releasePlannedOrders: (orderIds: string[]) => Promise<PlanningRoute>;
+  publishUrgentRoute: (
+    orderId: string,
+    input: { driverCode: string; note?: string },
+  ) => Promise<PlanningRoute>;
   cancelRoute: (
     routeId: string,
     input: { reason: PlanningCancelReason; note?: string },

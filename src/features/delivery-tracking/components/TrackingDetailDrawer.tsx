@@ -56,8 +56,12 @@ export function TrackingDetailDrawer({
             >
               {statusLabel[order.status]}
             </Badge>
-            {order.deliveryPlan?.releaseState === 'released' && (
-              <Badge variant="info">จาก Planning</Badge>
+            {order.deliveryPlan?.releaseState === 'released' &&
+              order.deliveryRoute?.dispatchMode !== 'urgent' && (
+                <Badge variant="info">จาก Planning</Badge>
+              )}
+            {order.deliveryRoute?.dispatchMode === 'urgent' && (
+              <Badge variant="destructive">งานด่วน</Badge>
             )}
             {driver && <Badge variant="muted">คนขับ: {driver.name}</Badge>}
             {isDetailLoading && (

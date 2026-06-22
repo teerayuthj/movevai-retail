@@ -18,7 +18,8 @@ import {
 } from 'lucide-react';
 import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
-import { getRiderJobOverdueMinutes } from '../riderSchedule';
+import { getRiderJobOverdueMinutes, getRiderJobTiming } from '../riderSchedule';
+import { navigationUrl } from '../geocode';
 
 export function JobCard({
   order,
@@ -32,15 +33,18 @@ export function JobCard({
   onClose: () => void;
 }) {
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
+  const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
   const isFutureJob =
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
   const overdueMinutes = getRiderJobOverdueMinutes(order, nowMs);
   const isOverdue = overdueMinutes != null;
+  const timing = getRiderJobTiming(order, nowMs);
 
   return (
     <div
       className={cn(
         'rounded-xl border bg-card p-4',
+        timing && !isOverdue && 'border-warning/50 border-l-4 border-l-warning bg-warning/5',
         isOverdue && 'border-destructive/50 border-l-4 border-l-destructive bg-destructive/5',
       )}
     >
@@ -50,6 +54,11 @@ export function JobCard({
           <Package className="h-3 w-3" /> พัสดุ
         </Badge>
       </div>
+      {isUrgent && (
+        <Badge variant="destructive" className="mt-2">
+          งานด่วน · กรุณารับภายใน 5 นาที
+        </Badge>
+      )}
       {isOverdue && (
         <Badge
           variant="outline"
@@ -57,6 +66,14 @@ export function JobCard({
         >
           <Clock3 className="h-3 w-3" />
           {formatOverdueDuration(overdueMinutes)}
+        </Badge>
+      )}
+      {timing && (
+        <Badge variant="outline" className="mt-2 border-warning/30 bg-warning/10 text-warning">
+          <Clock3 className="h-3 w-3" />
+          {timing.phase === 'upcoming'
+            ? `อีก ${timing.minutes} นาทีถึงเวลานัดส่ง`
+            : 'ถึงเวลานัดส่งแล้ว · กรุณารับงานทันที'}
         </Badge>
       )}
       <div className="mt-1 text-sm font-semibold">{order.customer.name}</div>
@@ -68,7 +85,7 @@ export function JobCard({
           </Badge>
           {order.deliveryPlan?.plannedDate && (
             <Badge
-              variant={isOverdue ? 'destructive' : isFutureJob ? 'warning' : 'success'}
+              variant={isOverdue ? 'destructive' : isFutureJob || timing ? 'warning' : 'success'}
               className="h-5 px-1.5 text-[10px]"
             >
               {formatPlanningDate(order.deliveryPlan.plannedDate)} ·{' '}
@@ -85,10 +102,21 @@ export function JobCard({
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{order.customer.address}</span>
         </div>
-        <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-info">
-          <Phone className="h-3.5 w-3.5" />
-          <span>{order.customer.phone}</span>
-        </a>
+        <div className="flex items-center gap-3">
+          <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-info">
+            <Phone className="h-3.5 w-3.5" />
+            <span>{order.customer.phone}</span>
+          </a>
+          <a
+            href={navigationUrl(order.customer.address, order.customer.geo)}
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center gap-1.5 font-medium text-info"
+          >
+            <Navigation className="h-3.5 w-3.5" />
+            นำทาง
+          </a>
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1">
@@ -167,12 +195,12 @@ export function JobCard({
         {order.status === 'assigned' && (
           <Button
             size="sm"
-            variant={isOverdue ? 'destructive' : 'default'}
+            variant={isUrgent || isOverdue ? 'destructive' : 'default'}
             onClick={onStart}
             disabled={isFutureJob}
           >
             <Navigation className="h-4 w-4" />
-            {isFutureJob ? 'ยังไม่ถึงวันส่ง' : isOverdue ? 'รับงานด่วน' : 'รับงาน'}
+            {isFutureJob ? 'ยังไม่ถึงวันส่ง' : isUrgent || isOverdue ? 'รับงานด่วน' : 'รับงาน'}
           </Button>
         )}
         {order.status === 'in_transit' && (

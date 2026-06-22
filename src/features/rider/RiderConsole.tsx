@@ -3,7 +3,15 @@ import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
 import { Button } from '@/components/ui/button';
 import { useRetailStore } from '@/state/retailStore';
 import { statusLabel } from '@/data/mock';
-import { AlertCircle, CheckCircle2, ClipboardList, Loader2, RefreshCw } from 'lucide-react';
+import {
+  AlertCircle,
+  CheckCircle2,
+  ClipboardList,
+  List,
+  Loader2,
+  Map as MapIcon,
+  RefreshCw,
+} from 'lucide-react';
 import { RIDER_JOB_STATUSES, RIDER_TABS, type RiderTab } from './riderTabs';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { useRiderTab } from './hooks/useRiderTab';
@@ -21,6 +29,9 @@ import { RiderTabBar } from './components/RiderTabBar';
 import { RiderCompletedList } from './components/RiderCompletedList';
 import { RiderProfileSheet } from './components/RiderProfileSheet';
 import { RiderPushSetupBanner } from './components/RiderPushSetupBanner';
+import { RiderRouteMap } from './components/RiderRouteMap';
+import { useRouteStops } from './hooks/useRouteStops';
+import { cn } from '@/lib/utils';
 
 const RIDER_STORAGE_KEY = 'movevai:rider-code';
 
@@ -37,6 +48,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const { orders, drivers, startDelivery, submitDelivery, refreshRiderJobs } = useRetailStore();
   const [closeTargetId, setCloseTargetId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [assignedView, setAssignedView] = useState<'list' | 'map'>('list');
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
@@ -159,6 +171,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         })
     : [];
 
+  const showMap = activeTab === 'assigned' && assignedView === 'map';
+  const assignedStops = useRouteStops(activeTab === 'assigned' ? tabJobs : []);
+
   return (
     <div className="flex min-h-dvh w-full justify-center bg-muted/40">
       {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
@@ -166,94 +181,127 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         <RiderHeader rider={rider} onOpenProfile={() => setProfileOpen(true)} />
         {rider && <RiderPushSetupBanner installed={install.installed} riderCode={rider.id} />}
 
-        {/* job list */}
-        <div className="flex-1 space-y-2.5 overflow-auto p-3 pb-safe">
-          {jobsLoading && myJobs.length === 0 && (
-            <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              กำลังโหลดงานจาก Route…
-            </div>
-          )}
-          {jobsError && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>โหลดข้อมูลงานไม่ได้ — {jobsError}</span>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-3 w-full"
-                disabled={jobsLoading}
-                onClick={() => void refreshJobs()}
+        {/* toggle รายการ/แผนที่ — เฉพาะ tab งานใหม่ ที่ rider ดูเส้นทางก่อนออกงาน */}
+        {activeTab === 'assigned' && tabJobs.length > 0 && (
+          <div className="flex gap-1.5 border-b bg-background p-2">
+            {(
+              [
+                { key: 'list', label: 'รายการ', icon: List },
+                { key: 'map', label: 'แผนที่', icon: MapIcon },
+              ] as const
+            ).map(({ key, label, icon: Icon }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setAssignedView(key)}
+                className={cn(
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors',
+                  assignedView === key
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50',
+                )}
               >
-                <RefreshCw className={jobsLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-                ลองโหลดใหม่
-              </Button>
-            </div>
-          )}
-          {activeTab === 'assigned' && overdueCount > 0 && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                มี {overdueCount} งานเลยเวลานัดส่ง กรุณารับงานทันที
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {showMap ? (
+          <div className="relative flex-1">
+            <RiderRouteMap stops={assignedStops} nowMs={nowMs} />
+          </div>
+        ) : (
+          /* job list */
+          <div className="flex-1 space-y-2.5 overflow-auto p-3 pb-safe">
+            {jobsLoading && myJobs.length === 0 && (
+              <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                กำลังโหลดงานจาก Route…
               </div>
-            </div>
-          )}
-          {activeTab === 'in_transit' && counts.assigned > 0 && (
-            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
-              <div className="flex items-center gap-2 text-sm font-medium text-warning">
-                <ClipboardList className="h-4 w-4" />
-                มีงานใหม่รอรับ {counts.assigned} งาน
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2 w-full border-warning/30 bg-white text-warning hover:bg-warning/15"
-                onClick={() => setTab('assigned')}
-              >
-                ไปกดรับงาน
-              </Button>
-            </div>
-          )}
-          {!jobsLoading && activeTab === 'delivered' && rider ? (
-            // tab สำเร็จ: ดึงรายการที่ส่งสำเร็จจาก backend โดยตรง (privacy-minimal, ไม่มี PII ลูกค้า)
-            <RiderCompletedList riderCode={rider.id} />
-          ) : (
-            <>
-              {tabJobs.map((order, index) => {
-                const showDate =
-                  activeTab === 'assigned' &&
-                  order.deliveryPlan?.plannedDate !== tabJobs[index - 1]?.deliveryPlan?.plannedDate;
-                return (
-                  <div key={order.id}>
-                    {showDate && order.deliveryPlan?.plannedDate && (
-                      <div className="mb-2 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">
-                        งานวันที่{' '}
-                        {new Date(`${order.deliveryPlan.plannedDate}T00:00:00`).toLocaleDateString(
-                          'th-TH',
-                          { dateStyle: 'full' },
-                        )}
-                      </div>
-                    )}
-                    <JobCard
-                      order={order}
-                      nowMs={nowMs}
-                      onStart={() => void startDelivery(order.id)}
-                      onClose={() => setCloseTargetId(order.id)}
-                    />
-                  </div>
-                );
-              })}
-              {!jobsLoading && !jobsError && activeTab && tabJobs.length === 0 && (
-                <div className="py-12 text-center text-sm text-muted-foreground">
-                  <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
-                  ไม่มีงานในสถานะ “{statusLabel[activeTab]}”
+            )}
+            {jobsError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>โหลดข้อมูลงานไม่ได้ — {jobsError}</span>
                 </div>
-              )}
-            </>
-          )}
-        </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3 w-full"
+                  disabled={jobsLoading}
+                  onClick={() => void refreshJobs()}
+                >
+                  <RefreshCw className={jobsLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                  ลองโหลดใหม่
+                </Button>
+              </div>
+            )}
+            {activeTab === 'assigned' && overdueCount > 0 && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  มี {overdueCount} งานเลยเวลานัดส่ง กรุณารับงานทันที
+                </div>
+              </div>
+            )}
+            {activeTab === 'in_transit' && counts.assigned > 0 && (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+                <div className="flex items-center gap-2 text-sm font-medium text-warning">
+                  <ClipboardList className="h-4 w-4" />
+                  มีงานใหม่รอรับ {counts.assigned} งาน
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-2 w-full border-warning/30 bg-white text-warning hover:bg-warning/15"
+                  onClick={() => setTab('assigned')}
+                >
+                  ไปกดรับงาน
+                </Button>
+              </div>
+            )}
+            {!jobsLoading && activeTab === 'delivered' && rider ? (
+              // tab สำเร็จ: ดึงรายการที่ส่งสำเร็จจาก backend โดยตรง (privacy-minimal, ไม่มี PII ลูกค้า)
+              <RiderCompletedList riderCode={rider.id} />
+            ) : (
+              <>
+                {tabJobs.map((order, index) => {
+                  const showDate =
+                    activeTab === 'assigned' &&
+                    order.deliveryPlan?.plannedDate !==
+                      tabJobs[index - 1]?.deliveryPlan?.plannedDate;
+                  return (
+                    <div key={order.id}>
+                      {showDate && order.deliveryPlan?.plannedDate && (
+                        <div className="mb-2 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">
+                          งานวันที่{' '}
+                          {new Date(
+                            `${order.deliveryPlan.plannedDate}T00:00:00`,
+                          ).toLocaleDateString('th-TH', { dateStyle: 'full' })}
+                        </div>
+                      )}
+                      <JobCard
+                        order={order}
+                        nowMs={nowMs}
+                        onStart={() => void startDelivery(order.id)}
+                        onClose={() => setCloseTargetId(order.id)}
+                      />
+                    </div>
+                  );
+                })}
+                {!jobsLoading && !jobsError && activeTab && tabJobs.length === 0 && (
+                  <div className="py-12 text-center text-sm text-muted-foreground">
+                    <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
+                    ไม่มีงานในสถานะ “{statusLabel[activeTab]}”
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         <RiderTabBar activeTab={activeTab} counts={counts} onSelect={(tab) => setTab(tab)} />
 

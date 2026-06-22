@@ -13,6 +13,7 @@ export function parseTrackingSearch(locationSearch: string): {
   const orderId = params.get('order');
 
   const view: TrackingView | null =
+    tab === 'awaiting_acceptance' ||
     tab === 'overdue' ||
     tab === 'in_transit' ||
     tab === 'pending' ||

@@ -69,6 +69,9 @@ export type DeliveryRoute = {
   id: string;
   code: string;
   plannedDate: string;
+  plannedTime?: string;
+  dispatchMode?: 'scheduled' | 'urgent';
+  acceptBy?: string;
   status: 'published' | 'active' | 'completed';
   sequence: number;
   stopCount?: number;
@@ -158,7 +161,8 @@ export type OrderActivityEventType =
   | 'delivery_plan_cleared'
   | 'delivery_plan_released'
   | 'delivery_route_cancelled'
-  | 'delivery_route_reassigned';
+  | 'delivery_route_reassigned'
+  | 'delivery_urgent_route_published';
 
 export type OrderActivityActor =
   | { kind: 'system'; label: string }
@@ -209,6 +213,7 @@ export type Order = {
     name: string;
     phone: string;
     address: string;
+    geo?: { lat: number; lng: number }; // พิกัดปลายทาง (geocode จาก address) — ใช้วาดหมุดบนแผนที่ rider
     idCard?: string; // masked
   };
   items: OrderItem[];
