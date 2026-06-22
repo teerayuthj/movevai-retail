@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
-import { getRiderJobOverdueMinutes } from '../riderSchedule';
+import { getRiderJobOverdueMinutes, getRiderJobTiming } from '../riderSchedule';
 
 export function JobCard({
   order,
@@ -37,11 +37,13 @@ export function JobCard({
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
   const overdueMinutes = getRiderJobOverdueMinutes(order, nowMs);
   const isOverdue = overdueMinutes != null;
+  const timing = getRiderJobTiming(order, nowMs);
 
   return (
     <div
       className={cn(
         'rounded-xl border bg-card p-4',
+        timing && !isOverdue && 'border-warning/50 border-l-4 border-l-warning bg-warning/5',
         isOverdue && 'border-destructive/50 border-l-4 border-l-destructive bg-destructive/5',
       )}
     >
@@ -65,6 +67,14 @@ export function JobCard({
           {formatOverdueDuration(overdueMinutes)}
         </Badge>
       )}
+      {timing && (
+        <Badge variant="outline" className="mt-2 border-warning/30 bg-warning/10 text-warning">
+          <Clock3 className="h-3 w-3" />
+          {timing.phase === 'upcoming'
+            ? `อีก ${timing.minutes} นาทีถึงเวลานัดส่ง`
+            : 'ถึงเวลานัดส่งแล้ว · กรุณารับงานทันที'}
+        </Badge>
+      )}
       <div className="mt-1 text-sm font-semibold">{order.customer.name}</div>
 
       {order.deliveryRoute && (
@@ -74,7 +84,7 @@ export function JobCard({
           </Badge>
           {order.deliveryPlan?.plannedDate && (
             <Badge
-              variant={isOverdue ? 'destructive' : isFutureJob ? 'warning' : 'success'}
+              variant={isOverdue ? 'destructive' : isFutureJob || timing ? 'warning' : 'success'}
               className="h-5 px-1.5 text-[10px]"
             >
               {formatPlanningDate(order.deliveryPlan.plannedDate)} ·{' '}

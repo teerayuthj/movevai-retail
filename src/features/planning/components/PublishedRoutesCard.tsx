@@ -3,7 +3,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { planningCancelReasonLabel } from '@/data/mock';
-import { formatOverdueDuration, formatPlanningDate } from '@/lib/deliveryPlanning';
+import {
+  formatOverdueDuration,
+  formatPlanningDate,
+  SCHEDULED_DELIVERY_GRACE_MINUTES,
+} from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { BellRing, Ban, Clock, RefreshCw, Route, UserCog } from 'lucide-react';
@@ -22,7 +26,8 @@ function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
   const scheduledAt = route.scheduledFor
     ? new Date(route.scheduledFor).getTime()
     : new Date(`${route.plannedDate}T${route.plannedTime}:00+07:00`).getTime();
-  if (Number.isNaN(scheduledAt) || nowMs < scheduledAt) return null;
+  const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
+  if (Number.isNaN(scheduledAt) || nowMs < overdueAt) return null;
   return Math.floor((nowMs - scheduledAt) / 60_000);
 }
 
@@ -132,7 +137,7 @@ export function PublishedRoutesCard({
                     className="border-destructive/40 text-destructive hover:bg-destructive/5"
                     onClick={() => onCancel(route)}
                   >
-                    <Ban className="h-3.5 w-3.5" /> ยกเลิก/ดึงกลับ
+                    <Ban className="h-3.5 w-3.5" /> ดึงกลับเข้า Planning
                   </Button>
                 </div>
               )}

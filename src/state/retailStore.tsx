@@ -370,11 +370,29 @@ export function RetailProvider({
   const cancelRoute = useCallback(
     async (routeId: string, input: Parameters<RetailStore['cancelRoute']>[1]) => {
       const route = await cancelPlanningRoute(routeId, input);
-      // backend คืน order กลับเป็น ready + releaseState=planned แล้ว — sync ให้ web เห็นตรงกัน
-      await syncFromBackend();
+
+      // การดึง Route กลับไม่ใช่การยกเลิกแผน: บันทึก stops กลับเป็น Planning
+      // อย่างชัดเจนเพื่อไม่ให้ backend ที่คืนเพียง status=ready ทำให้งานหลุดไปหน้า
+      // "จ่ายงานวันนี้" ระหว่าง refresh รอบถัดไป
+      const orderIds = route.stops.map((stop) => stop.order.id);
+      if (orderIds.length === 0) {
+        throw new Error('Route นี้ไม่มีงานสำหรับดึงกลับเข้า Planning');
+      }
+
+      const canonical = await savePlanning({
+        orderIds,
+        plannedDate: route.plannedDate,
+        plannedTime: route.plannedTime,
+        driverCode: route.driver.code,
+        note: route.note,
+      });
+      commit((current) => ({
+        ...current,
+        orders: canonical.reduce(replaceOrder, current.orders),
+      }));
       return route;
     },
-    [syncFromBackend],
+    [commit],
   );
 
   const reassignRoute = useCallback(

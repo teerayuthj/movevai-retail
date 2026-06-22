@@ -30,6 +30,7 @@ import { PlanSettingsCard } from './components/PlanSettingsCard';
 import { DaySummaryCard } from './components/DaySummaryCard';
 import { getDefaultPlanningDate, matchesPlanningQuery } from './utils/planningHelpers';
 import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from '@/lib/retailApi';
+import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 
 function scheduledRoutesOnly(routes: PlanningRoute[]) {
@@ -69,9 +70,26 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const focusedOrderId = new URLSearchParams(locationSearch).get('order');
   const planningEligibleOrders = orders.filter((order) => canPlanOrder(order));
   const plannedOrders = planningEligibleOrders.filter((order) => isUnreleasedPlannedOrder(order));
+  const otherPlanDates = Array.from(
+    plannedOrders.reduce((counts, order) => {
+      const date = order.deliveryPlan?.plannedDate;
+      if (date && date !== selectedDate) counts.set(date, (counts.get(date) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>()),
+  )
+    .map(([date, count]) => ({ date, count, overdue: date < todayDate }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const hiddenOverdueCount = otherPlanDates
+    .filter((item) => item.overdue)
+    .reduce((total, item) => total + item.count, 0);
   const plannedForSelectedDate = plannedOrders
     .filter((order) => order.deliveryPlan?.plannedDate === selectedDate)
-    .sort((a, b) => a.customer.name.localeCompare(b.customer.name, 'th'));
+    .sort((a, b) => {
+      const timeCompare = (a.deliveryPlan?.plannedTime ?? '99:99').localeCompare(
+        b.deliveryPlan?.plannedTime ?? '99:99',
+      );
+      return timeCompare || a.customer.name.localeCompare(b.customer.name, 'th');
+    });
   const visibleOrders = plannedForSelectedDate.filter((order) =>
     matchesPlanningQuery(order, drivers, query),
   );
@@ -367,6 +385,49 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                   className="h-10 rounded-xl pl-9"
                 />
               </div>
+              {otherPlanDates.length > 0 && (
+                <div
+                  className={cn(
+                    'rounded-xl border px-3 py-2.5',
+                    hiddenOverdueCount > 0
+                      ? 'border-destructive/30 bg-destructive/5'
+                      : 'border-info/25 bg-info/5',
+                  )}
+                >
+                  <div className="flex items-center gap-2 text-xs font-medium">
+                    {hiddenOverdueCount > 0 ? (
+                      <AlertTriangle className="h-4 w-4 text-destructive" />
+                    ) : (
+                      <CalendarClock className="h-4 w-4 text-info" />
+                    )}
+                    <span>
+                      {hiddenOverdueCount > 0
+                        ? `มี ${hiddenOverdueCount} งานเลยกำหนดที่ถูกกรองไว้`
+                        : 'มีงาน Planning ในวันอื่น'}
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {otherPlanDates.map((item) => (
+                      <Button
+                        key={item.date}
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className={cn(
+                          'h-7 bg-background px-2 text-[11px]',
+                          item.overdue && 'border-destructive/30 text-destructive',
+                        )}
+                        onClick={() => {
+                          setSelectedDate(item.date);
+                          setSelectedOrderIds([]);
+                        }}
+                      >
+                        {formatPlanningDate(item.date)} · {item.count} งาน
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-3 overflow-auto xl:h-[calc(100%-7.25rem)]">
@@ -382,7 +443,11 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
             {visibleOrders.length === 0 && (
               <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
                 <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
-                ยังไม่มีงานในแผนวันนี้ — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”
+                {plannedForSelectedDate.length > 0
+                  ? 'ไม่พบงานที่ตรงกับคำค้นหา'
+                  : otherPlanDates.length > 0
+                    ? 'ไม่มีงานในวันที่เลือก — เลือกวันที่มีงานจากแถบด้านบน'
+                    : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”`}
               </div>
             )}
           </CardContent>
@@ -528,12 +593,12 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
       {routeAction?.type === 'cancel' && (
         <ResolutionDialog
           open
-          title={`ยกเลิก Route ${routeAction.route.code}`}
-          description={`ดึงทั้ง Route ${routeAction.route.stops.length} จุดกลับเข้า Planning และแจ้งคนขับ`}
+          title={`ดึง Route ${routeAction.route.code} กลับเข้า Planning`}
+          description={`ดึงทั้ง Route ${routeAction.route.stops.length} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Rider ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={planningCancelReasons}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
-          confirmLabel="ยืนยันยกเลิก Route"
+          confirmLabel="ยืนยันดึงกลับเข้า Planning"
           confirmVariant="destructive"
           onCancel={() => setRouteAction(null)}
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}

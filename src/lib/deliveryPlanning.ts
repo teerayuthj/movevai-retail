@@ -1,5 +1,7 @@
 import type { Order } from '@/data/mock';
 
+export const SCHEDULED_DELIVERY_GRACE_MINUTES = 15;
+
 export function getLocalDateKey(date: Date) {
   const year = date.getFullYear();
   const month = `${date.getMonth() + 1}`.padStart(2, '0');
@@ -71,7 +73,8 @@ export function getAssignedOrderOverdueMinutes(order: Order, nowMs = Date.now())
   if (!plan?.plannedDate || !plan.plannedTime) return null;
 
   const scheduledAt = new Date(`${plan.plannedDate}T${plan.plannedTime}:00+07:00`).getTime();
-  if (Number.isNaN(scheduledAt) || nowMs < scheduledAt) return null;
+  const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
+  if (Number.isNaN(scheduledAt) || nowMs < overdueAt) return null;
   return Math.floor((nowMs - scheduledAt) / 60_000);
 }
 

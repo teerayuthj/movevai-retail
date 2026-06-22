@@ -282,7 +282,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             }}
           >
             <Ban className="h-4 w-4" />
-            ยกเลิก/ดึงกลับ
+            ดึงกลับเข้า Planning
           </Button>
         </div>
       );
@@ -437,12 +437,12 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       {routeAction?.type === 'cancel' && routeAction.order.deliveryRoute && (
         <ResolutionDialog
           open
-          title={`ยกเลิก Route ${routeAction.order.deliveryRoute.code}`}
-          description={`ดึงทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับเข้า Planning และแจ้งคนขับ`}
+          title={`ดึง Route ${routeAction.order.deliveryRoute.code} กลับเข้า Planning`}
+          description={`ดึงทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Rider ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={PLANNING_CANCEL_REASONS}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
-          confirmLabel="ยืนยันยกเลิก Route"
+          confirmLabel="ยืนยันดึงกลับเข้า Planning"
           confirmVariant="destructive"
           onCancel={() => setRouteAction(null)}
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
