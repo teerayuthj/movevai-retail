@@ -31,6 +31,21 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export type GeoCoordinate = { lat: number; lng: number };
+
+/**
+ * geocode ที่อยู่เดี่ยว → พิกัด ผ่าน backend (provider เดียวกับ route planning)
+ * ใช้ทำ preview ปลายทางฝั่ง admin ก่อนจัดคิว — null = หาพิกัดไม่ได้
+ */
+export async function geocodeAddress(address: string): Promise<GeoCoordinate | null> {
+  const trimmed = address.trim();
+  if (!trimmed) return null;
+  const result = await request<{ coordinate: GeoCoordinate | null }>(
+    `${APP_API_BASE}/geocode?q=${encodeURIComponent(trimmed)}`,
+  );
+  return result.coordinate;
+}
+
 function normalizeDriver(driver: ApiDriver): Driver {
   return { ...driver, id: driver.code };
 }

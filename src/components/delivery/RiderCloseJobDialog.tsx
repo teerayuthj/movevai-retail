@@ -21,12 +21,10 @@ import {
 type Props = {
   open: boolean;
   order: Order | null;
+  location?: { lat: number; lng: number; accuracy?: number } | null;
   onCancel: () => void;
   onSubmit: (input: SubmitDeliveryInput) => void | Promise<void>;
 };
-
-// จำลองพิกัด GPS ตอนปิดงาน (ของจริงดึงจากอุปกรณ์ rider)
-const MOCK_LOCATION = { lat: 13.7392, lng: 100.5408, label: 'ใกล้ที่อยู่ผู้รับ' };
 
 const MAX_PHOTO_EDGE = 1280;
 const PHOTO_QUALITY = 0.72;
@@ -368,7 +366,7 @@ const CLOSE_STEPS: { key: CloseStep; label: string }[] = [
   { key: 'review', label: 'ตรวจสอบ' },
 ];
 
-export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) {
+export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -414,7 +412,16 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
         signatureCaptured,
         signatureDataUrl: signatureDataUrl ?? undefined,
         otpVerified: false,
-        location: MOCK_LOCATION,
+        location: location
+          ? {
+              lat: location.lat,
+              lng: location.lng,
+              label:
+                location.accuracy != null
+                  ? `พิกัด GPS ขณะปิดงาน (±${Math.round(location.accuracy)} ม.)`
+                  : 'พิกัด GPS ขณะปิดงาน',
+            }
+          : undefined,
       });
     } catch (error) {
       setSubmitError(
@@ -630,7 +637,13 @@ export function RiderCloseJobDialog({ open, order, onCancel, onSubmit }: Props) 
 
               <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
                 <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-info" />
-                ปั๊กตำแหน่ง GPS อัตโนมัติ — {MOCK_LOCATION.label}
+                {location
+                  ? `แนบพิกัด GPS ปัจจุบันอัตโนมัติ${
+                      location.accuracy != null
+                        ? ` · แม่นยำประมาณ ±${Math.round(location.accuracy)} ม.`
+                        : ''
+                    }`
+                  : 'ยังอ่านพิกัด GPS ไม่ได้ — ระบบจะบันทึกรูปและลายเซ็นโดยไม่สร้างพิกัดจำลอง'}
               </div>
 
               {willReview && (

@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { AlertCircle, Loader2, LocateFixed, Navigation, Radio } from 'lucide-react';
@@ -39,17 +39,39 @@ const riderIcon = L.divIcon({
   html: '<div style="width:30px;height:30px;border-radius:50%;background:#2563eb;border:4px solid #fff;box-shadow:0 0 0 8px rgba(37,99,235,.2),0 2px 6px rgba(0,0,0,.35);"></div>',
 });
 
-/** ปรับ zoom/center ให้เห็นทุกหมุดพอดีจอ เมื่อรายการจุดเปลี่ยน */
-function FitBounds({ points }: { points: [number, number][] }) {
+/**
+ * ปรับ viewport เมื่อจุดส่งเปลี่ยน และเมื่อได้ GPS ครั้งแรกเท่านั้น
+ * เพื่อไม่ให้ GPS realtime เขียนทับ zoom/pan ที่ผู้ใช้ปรับเองทุกครั้งที่ตำแหน่งอัปเดต
+ */
+function FitBounds({
+  points,
+  riderPoint,
+}: {
+  points: [number, number][];
+  riderPoint: [number, number] | null;
+}) {
   const map = useMap();
+  const previousPointsKey = useRef<string | null>(null);
+  const hasFitInitialRider = useRef(false);
+
   useEffect(() => {
-    if (points.length === 0) return;
-    if (points.length === 1) {
-      map.setView(points[0], 14);
+    const pointsKey = points.map(([lat, lng]) => `${lat},${lng}`).join('|');
+    const deliveryPointsChanged = previousPointsKey.current !== pointsKey;
+    const riderBecameAvailable = riderPoint != null && !hasFitInitialRider.current;
+
+    if (!deliveryPointsChanged && !riderBecameAvailable) return;
+
+    previousPointsKey.current = pointsKey;
+    if (riderPoint) hasFitInitialRider.current = true;
+
+    const viewportPoints = riderPoint ? [...points, riderPoint] : points;
+    if (viewportPoints.length === 0) return;
+    if (viewportPoints.length === 1) {
+      map.setView(viewportPoints[0], 14);
       return;
     }
-    map.fitBounds(L.latLngBounds(points), { padding: [40, 40], maxZoom: 15 });
-  }, [map, points]);
+    map.fitBounds(L.latLngBounds(viewportPoints), { padding: [40, 40], maxZoom: 15 });
+  }, [map, points, riderPoint]);
   return null;
 }
 
@@ -86,14 +108,10 @@ export function RiderRouteMap({
     () => (riderPoint ? [riderPoint, ...points] : points),
     [points, riderPoint],
   );
-  const viewportPoints = useMemo(
-    () => (riderPoint ? [...points, riderPoint] : points),
-    [points, riderPoint],
-  );
   const pendingCount = stops.filter((stop) => stop.pending).length;
 
   return (
-    <div className="relative h-full w-full">
+    <div className="relative isolate h-full w-full">
       <MapContainer
         center={[BANGKOK_CENTER.lat, BANGKOK_CENTER.lng]}
         zoom={12}
@@ -161,7 +179,7 @@ export function RiderRouteMap({
             </Marker>
           );
         })}
-        <FitBounds points={viewportPoints} />
+        <FitBounds points={points} riderPoint={riderPoint} />
       </MapContainer>
 
       <div className="absolute left-2 top-2 z-[1000] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-2.5 py-2 text-xs shadow-sm backdrop-blur">

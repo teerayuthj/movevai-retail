@@ -10,8 +10,10 @@ import {
   List,
   Loader2,
   Map as MapIcon,
+  MapPin,
   RefreshCw,
 } from 'lucide-react';
+import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { RIDER_JOB_STATUSES, RIDER_TABS, type RiderTab } from './riderTabs';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { useRiderTab } from './hooks/useRiderTab';
@@ -37,6 +39,7 @@ import { hasRiderSession, logoutRider, type RiderSession } from '@/lib/retailApi
 import { RiderLogin } from './components/RiderLogin';
 import { TestRouteDialog } from './components/TestRouteDialog';
 import { useRiderTracking } from './hooks/useRiderTracking';
+import { useRiderLocation } from './hooks/useRiderLocation';
 
 const RIDER_STORAGE_KEY = 'movevai:rider-code';
 
@@ -56,6 +59,10 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [assignedView, setAssignedView] = useState<'list' | 'map'>('list');
+  // โฟกัสแผนที่ไปที่ปลายทางของงานเดียว (กดจากการ์ด) — null = ดูทั้ง Route ที่เลือก
+  const [mapFocusOrderId, setMapFocusOrderId] = useState<string | null>(null);
+  // กลุ่ม Route+วันส่งที่เลือกดูบนแผนที่ (null = ใช้กลุ่มแรก)
+  const [mapGroupKey, setMapGroupKey] = useState<string | null>(null);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
@@ -63,6 +70,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const { activeTab, setTab } = useRiderTab();
   const [riderCode, setRiderCode] = useState(resolveRiderCode);
   const tracking = useRiderTracking(authenticated);
+  // ถ้า backend เริ่ม tracking session ไม่สำเร็จ ยังอ่าน GPS บนอุปกรณ์เพื่อแสดงแผนที่
+  // และแนบพิกัดจริงตอนปิดงานได้ โดยไม่สร้างตำแหน่งจำลอง
+  const fallbackLocation = useRiderLocation(
+    authenticated && activeTab === 'in_transit' && !tracking.session,
+  );
   const autoOpenedSessionId = useRef<string | null>(null);
 
   const rider = drivers.find((driver) => driver.id === riderCode) ?? null;
@@ -197,36 +209,99 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     (order) => getRiderJobOverdueMinutes(order, nowMs) != null,
   ).length;
 
-  const tabJobs = activeTab
-    ? myJobs
-        .filter((order) => order.status === activeTab)
-        .sort((a, b) => {
-          const aOverdue = getRiderJobOverdueMinutes(a, nowMs) != null;
-          const bOverdue = getRiderJobOverdueMinutes(b, nowMs) != null;
-          if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-          if (aOverdue && bOverdue) {
-            return (getRiderJobScheduledAt(a) ?? 0) - (getRiderJobScheduledAt(b) ?? 0);
-          }
-          const dateCompare = (a.deliveryPlan?.plannedDate ?? '').localeCompare(
-            b.deliveryPlan?.plannedDate ?? '',
-          );
-          return dateCompare || (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0);
-        })
-    : [];
+  const tabJobs = useMemo(
+    () =>
+      activeTab
+        ? myJobs
+            .filter((order) => order.status === activeTab)
+            .sort((a, b) => {
+              const aOverdue = getRiderJobOverdueMinutes(a, nowMs) != null;
+              const bOverdue = getRiderJobOverdueMinutes(b, nowMs) != null;
+              if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+              if (aOverdue && bOverdue) {
+                return (getRiderJobScheduledAt(a) ?? 0) - (getRiderJobScheduledAt(b) ?? 0);
+              }
+              const dateCompare = (a.deliveryPlan?.plannedDate ?? '').localeCompare(
+                b.deliveryPlan?.plannedDate ?? '',
+              );
+              return (
+                dateCompare || (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0)
+              );
+            })
+        : [],
+    [activeTab, myJobs, nowMs],
+  );
 
   const showAssignedMap = activeTab === 'assigned' && assignedView === 'map';
-  const showTrackingMap = activeTab === 'in_transit' && Boolean(tracking.session);
+  const showTrackingMap =
+    activeTab === 'in_transit' && (Boolean(tracking.session) || counts.in_transit > 0);
+  // Leaflet ใช้ transform/GPU layers ซึ่งบน iOS Safari สามารถทะลุ fixed modal และ video ได้
+  // เมื่อเปิด overlay ต้อง unmount map จริง ไม่ใช่แค่เพิ่ม z-index หรือซ่อนด้วย opacity
+  const suspendMap = Boolean(closeTargetId) || testDialogOpen || profileOpen;
+
+  // จัดงานใหม่เป็นกลุ่มตาม Route + วันส่ง เพื่อให้แผนที่แยกแต่ละรอบชัดเจน
+  // (ไม่รวมงานล่วงหน้าหลายวัน/หลาย Route ไว้บนภาพเดียวจนหมุดทับกัน)
+  const mapGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      { key: string; date: string | null; routeCode: string | null; jobs: Order[] }
+    >();
+    for (const order of tabJobs) {
+      const date = order.deliveryPlan?.plannedDate ?? null;
+      const routeId = order.deliveryRoute?.id ?? null;
+      const key = `${date ?? 'no-date'}__${routeId ?? 'no-route'}`;
+      const existing = groups.get(key);
+      if (existing) existing.jobs.push(order);
+      else
+        groups.set(key, { key, date, routeCode: order.deliveryRoute?.code ?? null, jobs: [order] });
+    }
+    return [...groups.values()];
+  }, [tabJobs]);
+
+  const groupKeyOf = (order: Order) =>
+    `${order.deliveryPlan?.plannedDate ?? 'no-date'}__${order.deliveryRoute?.id ?? 'no-route'}`;
+
+  const selectedGroup =
+    mapGroups.find((group) => group.key === mapGroupKey) ?? mapGroups[0] ?? null;
+  const focusOrder = mapFocusOrderId
+    ? (tabJobs.find((order) => order.id === mapFocusOrderId) ?? null)
+    : null;
+
   // หน้ากำลังส่งต้องแสดงเฉพาะจุดหมายของงานที่ rider กำลังนำส่งอยู่ ไม่รวมงาน assigned
   // ที่ยังรอรับใน route เดียวกัน มิฉะนั้นผู้ใช้จะเห็นหลายจุดและไม่รู้ว่าต้องไปจุดไหนก่อน
   const activeDeliveryJob = myJobs
     .filter((order) => order.status === 'in_transit')
     .sort((a, b) => (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0))[0];
   const routeMapJobs = showAssignedMap
-    ? tabJobs
-    : showTrackingMap && tracking.session?.type === 'delivery' && activeDeliveryJob
+    ? focusOrder
+      ? [focusOrder]
+      : (selectedGroup?.jobs ?? [])
+    : showTrackingMap && activeDeliveryJob
       ? [activeDeliveryJob]
       : [];
   const routeStops = useRouteStops(routeMapJobs);
+  const liveLocation = tracking.session ? tracking.location : fallbackLocation.location;
+  const liveLocationSource = tracking.session
+    ? {
+        location: tracking.location,
+        status: tracking.status,
+        error: tracking.error,
+        retry: tracking.retry,
+        remote: !tracking.isOwner,
+      }
+    : {
+        location: fallbackLocation.location,
+        status: fallbackLocation.status,
+        error: fallbackLocation.error,
+        retry: fallbackLocation.retry,
+        remote: false,
+      };
+
+  const handleViewOrderMap = useCallback((order: Order) => {
+    setMapFocusOrderId(order.id);
+    setMapGroupKey(groupKeyOf(order));
+    setAssignedView('map');
+  }, []);
   const activeRouteId = myJobs.find((order) => order.deliveryRoute)?.deliveryRoute?.id;
 
   if (!authenticated) {
@@ -330,7 +405,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
               <button
                 key={key}
                 type="button"
-                onClick={() => setAssignedView(key)}
+                onClick={() => {
+                  setAssignedView(key);
+                  // กดดู "แผนที่" จากแท็บ = เริ่มจากภาพรวมทั้ง Route เสมอ (ล้างโฟกัสจุดเดียว)
+                  if (key === 'map') setMapFocusOrderId(null);
+                }}
                 className={cn(
                   'flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors',
                   assignedView === key
@@ -346,22 +425,95 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         )}
 
         {showAssignedMap || showTrackingMap ? (
-          <div className="relative flex-1">
-            <RiderRouteMap
-              stops={routeStops}
-              nowMs={nowMs}
-              locationSource={
-                showTrackingMap
-                  ? {
-                      location: tracking.location,
-                      status: tracking.status,
-                      error: tracking.error,
-                      retry: tracking.retry,
-                      remote: !tracking.isOwner,
-                    }
-                  : undefined
-              }
-            />
+          <div className="relative flex flex-1 flex-col">
+            {showAssignedMap &&
+              (focusOrder ? (
+                /* โฟกัสปลายทางเดียว: บอกชัดว่ากำลังดูงานไหน + กลับไปดูทั้ง Route ได้ */
+                <div className="flex items-center gap-2 border-b bg-info/5 px-3 py-2">
+                  <MapPin className="h-4 w-4 shrink-0 text-info" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">{focusOrder.customer.name}</div>
+                    <div className="truncate text-[11px] text-muted-foreground">
+                      {focusOrder.deliveryRoute
+                        ? `${focusOrder.deliveryRoute.code} · จุดที่ ${focusOrder.deliveryRoute.sequence}`
+                        : 'ปลายทางเดียว'}
+                      {focusOrder.deliveryPlan?.plannedDate &&
+                        ` · ${formatPlanningDate(focusOrder.deliveryPlan.plannedDate)}`}
+                    </div>
+                  </div>
+                  {selectedGroup && selectedGroup.jobs.length > 1 && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0"
+                      onClick={() => setMapFocusOrderId(null)}
+                    >
+                      ดูทั้ง Route ({selectedGroup.jobs.length})
+                    </Button>
+                  )}
+                </div>
+              ) : mapGroups.length > 1 ? (
+                /* หลาย Route/วันส่ง: ให้เลือกว่าจะดูรอบไหนบนแผนที่ */
+                <div className="border-b bg-background px-3 py-2">
+                  <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                    เลือกรอบที่จะดูบนแผนที่
+                  </div>
+                  <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                    {mapGroups.map((group) => (
+                      <button
+                        key={group.key}
+                        type="button"
+                        onClick={() => setMapGroupKey(group.key)}
+                        className={cn(
+                          'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                          group.key === selectedGroup?.key
+                            ? 'border-info bg-info/10 text-info'
+                            : 'border-border text-muted-foreground hover:bg-muted/50',
+                        )}
+                      >
+                        <span>{group.date ? formatPlanningDate(group.date) : 'ไม่ระบุวัน'}</span>
+                        {group.routeCode && <span className="opacity-70">· {group.routeCode}</span>}
+                        <span className="opacity-70">({group.jobs.length})</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                selectedGroup && (
+                  /* รอบเดียว: บอก context + วิธีดูปลายทางเดี่ยว */
+                  <div className="flex items-center gap-2 border-b bg-background px-3 py-2 text-[11px] text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 flex-1 truncate">
+                      {selectedGroup.date ? formatPlanningDate(selectedGroup.date) : 'ไม่ระบุวัน'}
+                      {selectedGroup.routeCode && ` · ${selectedGroup.routeCode}`} ·{' '}
+                      {selectedGroup.jobs.length} จุด — แตะ “ดูแผนที่” ในการ์ดเพื่อดูทีละปลายทาง
+                    </span>
+                  </div>
+                )
+              ))}
+            <div className="relative flex-1">
+              {!suspendMap && (
+                <RiderRouteMap
+                  stops={routeStops}
+                  nowMs={nowMs}
+                  locationSource={showTrackingMap ? liveLocationSource : undefined}
+                />
+              )}
+            </div>
+            {showTrackingMap && activeDeliveryJob && (
+              <div className="max-h-[46dvh] shrink-0 overflow-auto border-t bg-background p-3 pb-4">
+                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                  <MapPin className="h-3.5 w-3.5 text-info" />
+                  ปลายทางที่กำลังส่ง
+                </div>
+                <JobCard
+                  order={activeDeliveryJob}
+                  nowMs={nowMs}
+                  onStart={() => undefined}
+                  onClose={() => setCloseTargetId(activeDeliveryJob.id)}
+                />
+              </div>
+            )}
           </div>
         ) : (
           /* job list */
@@ -439,6 +591,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                         nowMs={nowMs}
                         onStart={() => void handleStartJob(order)}
                         onClose={() => setCloseTargetId(order.id)}
+                        onViewMap={
+                          activeTab === 'assigned' ? () => handleViewOrderMap(order) : undefined
+                        }
                       />
                     </div>
                   );
@@ -483,6 +638,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
       <RiderCloseJobDialog
         open={!!closeTargetId}
         order={orders.find((order) => order.id === closeTargetId) ?? null}
+        location={liveLocation}
         onCancel={() => setCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!closeTargetId) return;

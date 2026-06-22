@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
-import { AlertTriangle, CalendarClock, Route, Search, Users } from 'lucide-react';
+import { AlertTriangle, CalendarClock, MapPin, Route, Search, Users } from 'lucide-react';
 import {
   planningCancelReasonLabel,
   type DispatchReadiness,
@@ -28,6 +28,7 @@ import { PlanningOrderCard } from './components/PlanningOrderCard';
 import { DriverPlanningCard } from './components/DriverPlanningCard';
 import { PlanSettingsCard } from './components/PlanSettingsCard';
 import { DaySummaryCard } from './components/DaySummaryCard';
+import { PlanningMap } from './components/PlanningMap';
 import { getDefaultPlanningDate, matchesPlanningQuery } from './utils/planningHelpers';
 import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
@@ -430,26 +431,61 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               )}
             </div>
           </CardHeader>
-          <CardContent className="space-y-3 overflow-auto xl:h-[calc(100%-7.25rem)]">
-            {visibleOrders.map((order) => (
-              <PlanningOrderCard
-                key={order.id}
-                order={order}
-                drivers={drivers}
-                selected={selectedOrderSet.has(order.id)}
-                onToggle={() => toggleOrderSelection(order.id)}
-              />
-            ))}
-            {visibleOrders.length === 0 && (
-              <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
-                <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
-                {plannedForSelectedDate.length > 0
-                  ? 'ไม่พบงานที่ตรงกับคำค้นหา'
-                  : otherPlanDates.length > 0
-                    ? 'ไม่มีงานในวันที่เลือก — เลือกวันที่มีงานจากแถบด้านบน'
-                    : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”`}
+          <CardContent className="flex flex-col gap-3 xl:h-[calc(100%-7.25rem)]">
+            <section className="shrink-0" aria-labelledby="planning-map-title">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div>
+                  <div
+                    id="planning-map-title"
+                    className="flex items-center gap-1.5 text-xs font-medium"
+                  >
+                    <MapPin className="h-3.5 w-3.5 text-info" />
+                    ตรวจสอบจุดส่งบนแผนที่
+                  </div>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                    {singleSelectedOrder
+                      ? `${singleSelectedOrder.code} · ${singleSelectedOrder.customer.address}`
+                      : selectedOrders.length > 1
+                        ? `แสดงเฉพาะ ${selectedOrders.length} งานที่เลือกอยู่`
+                        : 'เลือก order จากรายการด้านล่างเพื่อดูปลายทาง'}
+                  </p>
+                </div>
+                {selectedOrders.length > 0 && (
+                  <Badge variant="info" className="shrink-0">
+                    แสดง {selectedOrders.length} จุด
+                  </Badge>
+                )}
               </div>
-            )}
+              <div className="h-[260px]">
+                <PlanningMap
+                  orders={selectedOrders}
+                  selectedIds={selectedOrderSet}
+                  onToggle={toggleOrderSelection}
+                />
+              </div>
+            </section>
+
+            <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
+              {visibleOrders.map((order) => (
+                <PlanningOrderCard
+                  key={order.id}
+                  order={order}
+                  drivers={drivers}
+                  selected={selectedOrderSet.has(order.id)}
+                  onToggle={() => toggleOrderSelection(order.id)}
+                />
+              ))}
+              {visibleOrders.length === 0 && (
+                <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
+                  <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
+                  {plannedForSelectedDate.length > 0
+                    ? 'ไม่พบงานที่ตรงกับคำค้นหา'
+                    : otherPlanDates.length > 0
+                      ? 'ไม่มีงานในวันที่เลือก — เลือกวันที่มีงานจากแถบด้านบน'
+                      : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”`}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
 
