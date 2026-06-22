@@ -42,6 +42,7 @@ import { TrackingViewTabs, type TrackingTab } from './components/TrackingViewTab
 import { TrackingCard } from './components/TrackingCard';
 import { TrackingDetailDrawer } from './components/TrackingDetailDrawer';
 import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './utils/trackingSearch';
+import { LiveRiderMap } from './components/LiveRiderMap';
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
@@ -372,6 +373,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           สายพานงานตามสถานะจริง — งานที่ต้องลงมืออยู่บนสุด จัดการได้ในที่เดียว
         </p>
       </div>
+
+      <LiveRiderMap />
 
       <ResolutionDialog
         open={!!failTargetId}

@@ -19,6 +19,9 @@ const QueuePage = lazy(() => import('@/pages/Queue').then((m) => ({ default: m.Q
 const DeliveryTrackingPage = lazy(() =>
   import('@/pages/DeliveryTracking').then((m) => ({ default: m.DeliveryTrackingPage })),
 );
+const TrackingHistoryPage = lazy(() =>
+  import('@/pages/TrackingHistory').then((m) => ({ default: m.TrackingHistoryPage })),
+);
 const PlanningPage = lazy(() =>
   import('@/pages/Planning').then((m) => ({ default: m.PlanningPage })),
 );
@@ -110,6 +113,7 @@ export default function App() {
               onOpenQueue={(search) => navigateToPage('queue', { search })}
             />
           )}
+          {page === 'tracking_history' && <TrackingHistoryPage />}
           {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}

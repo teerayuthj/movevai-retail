@@ -8,6 +8,8 @@ import {
 import { useRetailStore } from '@/state/retailStore';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { DriverCard } from './components/DriverCard';
+import { Button } from '@/components/ui/button';
+import { upsertRiderAccount } from '@/lib/retailApi';
 
 const FAIL_REASONS: { value: FailReason; label: string }[] = (
   Object.keys(failReasonLabel) as FailReason[]
@@ -16,6 +18,11 @@ const FAIL_REASONS: { value: FailReason; label: string }[] = (
 const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
   Object.keys(failNextActionLabel) as FailNextAction[]
 ).map((value) => ({ value, label: failNextActionLabel[value] }));
+
+function temporaryPin() {
+  const value = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+  return value.toString().padStart(6, '0');
+}
 
 export function DriversPage() {
   const { drivers, orders, startDelivery, completeDelivery, setDriverStatus, failDelivery } =
@@ -37,15 +44,33 @@ export function DriversPage() {
           );
 
           return (
-            <DriverCard
-              key={d.id}
-              driver={d}
-              driverOrders={driverOrders}
-              onSetStatus={setDriverStatus}
-              onStartDelivery={startDelivery}
-              onCompleteDelivery={completeDelivery}
-              onFailDelivery={setFailTargetId}
-            />
+            <div key={d.id} className="space-y-2">
+              <DriverCard
+                driver={d}
+                driverOrders={driverOrders}
+                onSetStatus={setDriverStatus}
+                onStartDelivery={startDelivery}
+                onCompleteDelivery={completeDelivery}
+                onFailDelivery={setFailTargetId}
+              />
+              <Button
+                className="w-full"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const phone = window.prompt('เบอร์โทรสำหรับ Rider Login', d.phone)?.trim();
+                  if (!phone) return;
+                  const pin = temporaryPin();
+                  void upsertRiderAccount(d.id, { phone, pin }).then(() => {
+                    window.alert(
+                      `PIN ชั่วคราวของ ${d.name}: ${pin}\nกรุณาบันทึกตอนนี้ ระบบจะไม่แสดงซ้ำ`,
+                    );
+                  });
+                }}
+              >
+                สร้าง / รีเซ็ต Rider PIN
+              </Button>
+            </div>
           );
         })}
       </div>

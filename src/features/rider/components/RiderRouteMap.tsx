@@ -1,7 +1,6 @@
 import { useEffect, useMemo } from 'react';
 import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
 import { AlertCircle, Loader2, LocateFixed, Navigation, Radio } from 'lucide-react';
 import type { Order } from '@/data/mock';
 import { getRiderJobOverdueMinutes } from '../riderSchedule';

@@ -32,12 +32,16 @@ import { RiderPushSetupBanner } from './components/RiderPushSetupBanner';
 import { RiderRouteMap } from './components/RiderRouteMap';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
+import type { Order } from '@/data/mock';
+import { hasRiderSession, logoutRider, type RiderSession } from '@/lib/retailApi';
+import { RiderLogin } from './components/RiderLogin';
+import { useRiderTracking } from './hooks/useRiderTracking';
 
 const RIDER_STORAGE_KEY = 'movevai:rider-code';
 
 function resolveRiderCode() {
   const fromUrl = new URLSearchParams(window.location.search).get('rider')?.trim();
-  if (fromUrl) {
+  if (fromUrl && import.meta.env.DEV && import.meta.env.VITE_ALLOW_LEGACY_RIDER_QUERY === 'true') {
     localStorage.setItem(RIDER_STORAGE_KEY, fromUrl);
     return fromUrl;
   }
@@ -45,6 +49,7 @@ function resolveRiderCode() {
 }
 
 export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
+  const [authenticated, setAuthenticated] = useState(hasRiderSession);
   const { orders, drivers, startDelivery, submitDelivery, refreshRiderJobs } = useRetailStore();
   const [closeTargetId, setCloseTargetId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -54,7 +59,8 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const [nowMs, setNowMs] = useState(Date.now);
   const install = useInstallPrompt();
   const { activeTab, setTab } = useRiderTab();
-  const [riderCode] = useState(resolveRiderCode);
+  const [riderCode, setRiderCode] = useState(resolveRiderCode);
+  const tracking = useRiderTracking(authenticated);
 
   const rider = drivers.find((driver) => driver.id === riderCode) ?? null;
 
@@ -104,6 +110,24 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     void subscribeToPush(rider.id);
   }, [rider]);
 
+  // เริ่มส่งงาน = จังหวะ rider ออกไปส่งของจริง → ถ้ายังไม่ได้บันทึก Route ของรอบนี้
+  // ให้ start tracking อัตโนมัติ เพื่อให้ "ทุกรอบถูกบันทึก" โดยไม่ต้องพึ่งความจำ rider
+  const handleStartJob = useCallback(
+    async (order: Order) => {
+      await startDelivery(order.id);
+      const routeId = order.deliveryRoute?.id;
+      if (routeId && !tracking.session) {
+        // GPS/route start อาจล้มเหลว (สิทธิ์ตำแหน่ง/เครือข่าย) — ไม่ให้บล็อกการเริ่มส่งงาน
+        try {
+          await tracking.start(routeId);
+        } catch {
+          /* ปล่อยให้ rider ส่งงานต่อได้ แม้บันทึกเส้นทางไม่เริ่ม */
+        }
+      }
+    },
+    [startDelivery, tracking],
+  );
+
   const refreshJobs = useCallback(
     async (background = false) => {
       if (!background) setJobsLoading(true);
@@ -120,6 +144,10 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   );
 
   useEffect(() => {
+    // อย่ายิง fetch ก่อน login — ตอนยังไม่มี bearer token backend จะตอบ
+    // "Missing rider bearer token" แล้ว error ค้างทับหน้าจอหลัง login เสร็จ
+    if (!authenticated) return;
+
     void refreshJobs();
 
     const intervalId = window.setInterval(() => void refreshJobs(true), 15_000);
@@ -143,7 +171,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       navigator.serviceWorker?.removeEventListener('message', onServiceWorkerMessage);
     };
-  }, [refreshJobs]);
+  }, [authenticated, refreshJobs]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 60_000);
@@ -173,12 +201,85 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
 
   const showMap = activeTab === 'assigned' && assignedView === 'map';
   const assignedStops = useRouteStops(activeTab === 'assigned' ? tabJobs : []);
+  const activeRouteId = myJobs.find((order) => order.deliveryRoute)?.deliveryRoute?.id;
+
+  if (!authenticated) {
+    return (
+      <RiderLogin
+        onLogin={(session: RiderSession) => {
+          setRiderCode(session.rider.code);
+          setAuthenticated(true);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex min-h-dvh w-full justify-center bg-muted/40">
       {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
       <div className="relative flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
         <RiderHeader rider={rider} onOpenProfile={() => setProfileOpen(true)} />
+        {(activeRouteId || tracking.session) && (
+          <div className="flex items-center gap-2 border-b bg-background px-3 py-2 text-xs">
+            <span
+              className={cn(
+                'h-2.5 w-2.5 rounded-full',
+                tracking.session ? 'animate-pulse bg-success' : 'bg-muted-foreground',
+              )}
+            />
+            <span className="min-w-0 flex-1 truncate">
+              {tracking.session
+                ? `${tracking.session.type === 'test' ? `Test${tracking.session.label ? ` · ${tracking.session.label}` : ''} · ` : ''}${
+                    tracking.status === 'tracking'
+                      ? `กำลังส่ง GPS · ±${Math.round(tracking.location?.accuracy ?? 0)} ม.`
+                      : tracking.error || 'กำลังเปิด GPS…'
+                  }`
+                : 'ระบบจะเริ่มบันทึกเส้นทางเมื่อกดรับงาน'}
+            </span>
+            {/* บันทึกเริ่มอัตโนมัติตอนกดรับงาน — เหลือแค่ปุ่ม "จบ Route" ระหว่างบันทึก */}
+            {tracking.session && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  // Test Route ไม่ผูกกับงานลูกค้า → จบได้เลยไม่ต้องถามเหตุผล
+                  if (tracking.session?.type === 'test') {
+                    void tracking.end();
+                    return;
+                  }
+                  const openStops = myJobs.some(
+                    (order) => !['delivered', 'failed', 'cancelled'].includes(order.status),
+                  );
+                  const reason = openStops
+                    ? window.prompt('ยังมีงานค้าง กรุณาระบุเหตุผลที่จบ Route')?.trim()
+                    : undefined;
+                  if (openStops && !reason) return;
+                  void tracking.end(reason);
+                }}
+              >
+                จบ Route
+              </Button>
+            )}
+          </div>
+        )}
+        {/* Test Route: ทดสอบ GPS/เส้นทางโดยไม่ต้องมีงานลูกค้า (เช่น ไปกินข้าว) */}
+        {!tracking.session && !activeRouteId && (
+          <div className="border-b bg-background px-3 py-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full border-dashed text-muted-foreground"
+              onClick={() => {
+                const label = window.prompt('ตั้งชื่อรอบทดสอบ (เช่น Lunch GPS Test)')?.trim();
+                if (label === undefined) return; // กดยกเลิก
+                void tracking.startTest(label || undefined);
+              }}
+            >
+              <MapIcon className="h-3.5 w-3.5" />
+              เริ่ม Test Route (ทดสอบ GPS)
+            </Button>
+          </div>
+        )}
         {rider && <RiderPushSetupBanner installed={install.installed} riderCode={rider.id} />}
 
         {/* toggle รายการ/แผนที่ — เฉพาะ tab งานใหม่ ที่ rider ดูเส้นทางก่อนออกงาน */}
@@ -286,7 +387,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                       <JobCard
                         order={order}
                         nowMs={nowMs}
-                        onStart={() => void startDelivery(order.id)}
+                        onStart={() => void handleStartJob(order)}
                         onClose={() => setCloseTargetId(order.id)}
                       />
                     </div>
@@ -310,7 +411,12 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
             rider={rider}
             install={install}
             onClose={() => setProfileOpen(false)}
-            onExit={onExit}
+            onExit={() => {
+              void logoutRider().finally(() => {
+                setAuthenticated(false);
+                onExit?.();
+              });
+            }}
           />
         )}
       </div>
