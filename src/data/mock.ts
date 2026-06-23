@@ -6,7 +6,7 @@ export type OrderStatus =
   | 'ready'
   | 'assigned'
   | 'in_transit'
-  | 'pending_confirmation' // rider ส่งมอบแล้ว รอ CS ตรวจหลักฐาน (เฉพาะงานเสี่ยงสูง)
+  | 'pending_confirmation' // rider ส่งมอบแล้ว รอ CS ตรวจหลักฐานก่อนปิดจริง
   | 'delivered'
   | 'failed'
   | 'cancelled'
@@ -76,6 +76,8 @@ export type DeliveryRoute = {
   sequence: number;
   stopCount?: number;
   driverCode?: string;
+  plannedDistanceMeters?: number;
+  plannedGeometryJson?: { lat: number; lng: number }[];
   pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
   pushError?: string;
 };
@@ -807,7 +809,7 @@ export const statusLabel: Record<OrderStatus, string> = {
   ready: 'พร้อมส่ง',
   assigned: 'มอบหมายแล้ว',
   in_transit: 'กำลังส่ง',
-  pending_confirmation: 'รออนุมัติ',
+  pending_confirmation: 'รอตรวจสอบ',
   delivered: 'ส่งสำเร็จ',
   failed: 'ส่งไม่สำเร็จ',
   cancelled: 'ยกเลิกแล้ว',

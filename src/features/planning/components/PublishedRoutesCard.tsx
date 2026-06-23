@@ -10,7 +10,20 @@ import {
 } from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
-import { BellRing, Ban, Clock, RefreshCw, Route, UserCog } from 'lucide-react';
+import { formatRouteDistance } from '@/lib/routeDistance';
+import { BellRing, Ban, Clock, Info, RefreshCw, Route, UserCog } from 'lucide-react';
+
+function formatPulledBackAt(value?: string) {
+  if (!value) return null;
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return null;
+  return new Intl.DateTimeFormat('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(at);
+}
 
 function formatScheduledPush(route: PlanningRoute) {
   if (!route.plannedTime) return null;
@@ -36,11 +49,15 @@ export function PublishedRoutesCard({
   onRetry,
   onCancel,
   onReassign,
+  onViewRoute,
+  selectedRouteId,
 }: {
   routes: PlanningRoute[];
   onRetry: (routeId: string) => void;
   onCancel: (route: PlanningRoute) => void;
   onReassign: (route: PlanningRoute) => void;
+  onViewRoute: (route: PlanningRoute) => void;
+  selectedRouteId?: string | null;
 }) {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -67,6 +84,7 @@ export function PublishedRoutesCard({
               key={route.id}
               className={cn(
                 'rounded-xl border p-3 text-xs',
+                selectedRouteId === route.id && 'border-primary bg-primary/5',
                 cancelled && 'border-dashed bg-muted/30 opacity-80',
                 overdueMinutes != null &&
                   'border-destructive/50 border-l-4 border-l-destructive bg-destructive/5',
@@ -79,7 +97,7 @@ export function PublishedRoutesCard({
                 </div>
                 {cancelled ? (
                   <Badge variant="muted">
-                    <Ban className="h-3 w-3" /> ยกเลิกแล้ว
+                    <Ban className="h-3 w-3" /> ดึงกลับแล้ว
                   </Badge>
                 ) : route.pushStatus === 'failed' ? (
                   <Badge variant="warning">
@@ -88,13 +106,26 @@ export function PublishedRoutesCard({
                 ) : null}
               </div>
               <div className="mt-2 text-muted-foreground">
-                {route.driver.name} · {route.stops.length} จุดส่ง
+                {route.driver.name}
+                {!cancelled && ` · ${route.stops.length} จุดส่ง`}
               </div>
               <div className="mt-1 flex items-center gap-1 text-muted-foreground">
                 <Clock className="h-3 w-3 shrink-0" />
                 นัดส่ง {formatPlanningDate(route.plannedDate)} ·{' '}
                 {route.plannedTime ? `${route.plannedTime} น.` : 'ไม่ระบุเวลา'}
               </div>
+              {route.plannedDistanceMeters != null && route.plannedDistanceMeters > 0 && (
+                <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                  <Route className="h-3 w-3 shrink-0" />
+                  ระยะตามถนนประมาณ {formatRouteDistance(route.plannedDistanceMeters)}
+                </div>
+              )}
+              {route.plannedDistanceMeters != null && route.plannedDistanceMeters > 0 && (
+                <div className="mt-1 flex items-start gap-1 text-[11px] text-muted-foreground">
+                  <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                  คำนวณจากเส้นทางถนน ไม่รวมสภาพจราจร
+                </div>
+              )}
               {overdueMinutes != null && (
                 <Badge variant="destructive" className="mt-2">
                   <Clock className="h-3 w-3" />
@@ -102,11 +133,19 @@ export function PublishedRoutesCard({
                 </Badge>
               )}
               {cancelled ? (
-                <div className="mt-1 text-muted-foreground">
-                  เหตุผล:{' '}
-                  {route.cancelReason ? planningCancelReasonLabel[route.cancelReason] : 'ไม่ระบุ'}
-                  {route.cancelNote ? ` · ${route.cancelNote}` : ''}
-                </div>
+                <>
+                  {formatPulledBackAt(route.cancelledAt) && (
+                    <div className="mt-1 flex items-center gap-1 text-muted-foreground">
+                      <Clock className="h-3 w-3 shrink-0" />
+                      ดึงกลับเข้า Planning เมื่อ {formatPulledBackAt(route.cancelledAt)}
+                    </div>
+                  )}
+                  <div className="mt-1 text-muted-foreground">
+                    เหตุผล:{' '}
+                    {route.cancelReason ? planningCancelReasonLabel[route.cancelReason] : 'ไม่ระบุ'}
+                    {route.cancelNote ? ` · ${route.cancelNote}` : ''}
+                  </div>
+                </>
               ) : (
                 formatScheduledPush(route) && (
                   <div className="mt-1 flex items-center gap-1 text-muted-foreground">
@@ -123,6 +162,11 @@ export function PublishedRoutesCard({
               )}
               {route.status !== 'cancelled' && route.status !== 'completed' && (
                 <div className="mt-2 flex flex-wrap gap-2">
+                  {route.plannedGeometryJson && route.plannedGeometryJson.length > 1 && (
+                    <Button size="sm" variant="outline" onClick={() => onViewRoute(route)}>
+                      <Route className="h-3.5 w-3.5" /> ดูเส้นทาง
+                    </Button>
+                  )}
                   {(route.pushStatus === 'failed' || route.reminderPushStatus === 'failed') && (
                     <Button size="sm" variant="outline" onClick={() => onRetry(route.id)}>
                       <RefreshCw className="h-3.5 w-3.5" /> Retry Push

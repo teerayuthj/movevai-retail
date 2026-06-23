@@ -2,16 +2,23 @@ import { Badge } from '@/components/ui/badge';
 import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/mock';
 import { formatPlanningDateTime, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
-import { Package } from 'lucide-react';
+import { MapPin, Package } from 'lucide-react';
 
 type PlanningOrderCardProps = {
   order: Order;
   drivers: Driver[];
   selected: boolean;
   onToggle: () => void;
+  onViewMap: () => void;
 };
 
-export function PlanningOrderCard({ order, drivers, selected, onToggle }: PlanningOrderCardProps) {
+export function PlanningOrderCard({
+  order,
+  drivers,
+  selected,
+  onToggle,
+  onViewMap,
+}: PlanningOrderCardProps) {
   const plannedDriverName = order.deliveryPlan?.plannedDriverId
     ? drivers.find((driver) => driver.id === order.deliveryPlan?.plannedDriverId)?.name
     : undefined;
@@ -23,11 +30,18 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
     .join(', ');
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onToggle}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onToggle();
+        }
+      }}
       className={cn(
-        'w-full rounded-xl border bg-card p-4 text-left transition-all',
+        'w-full cursor-pointer rounded-xl border bg-card p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
         selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary/40',
         !selected && needsAttention && 'border-l-4 border-l-warning bg-warning/5',
       )}
@@ -76,6 +90,19 @@ export function PlanningOrderCard({ order, drivers, selected, onToggle }: Planni
           <span className="font-medium text-warning">{formatTHB(order.totalValue)}</span>
         </div>
       </div>
-    </button>
+      <div className="mt-3 flex justify-end">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onViewMap();
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-info/30 bg-info/5 px-2.5 py-1 text-[11px] font-medium text-info transition-colors hover:bg-info/10"
+        >
+          <MapPin className="h-3.5 w-3.5" />
+          ดูแผนที่
+        </button>
+      </div>
+    </div>
   );
 }

@@ -10,7 +10,17 @@ import {
 } from '@/data/mock';
 import { cn } from '@/lib/utils';
 import { formatOverdueDuration, formatPlanningDateTime } from '@/lib/deliveryPlanning';
-import { ArrowUpRight, CheckCircle2, Clock3, Coins, IdCard, MapPin, Phone } from 'lucide-react';
+import { formatRouteDistance } from '@/lib/routeDistance';
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  Clock3,
+  Coins,
+  IdCard,
+  MapPin,
+  Phone,
+  Route,
+} from 'lucide-react';
 
 type TrackingCardProps = {
   order: Order;
@@ -115,6 +125,16 @@ export function TrackingCard({
             <Phone className="h-3 w-3" />
             <span>{order.customer.phone}</span>
           </div>
+          {order.deliveryRoute?.plannedDistanceMeters != null &&
+            order.deliveryRoute.plannedDistanceMeters > 0 && (
+              <div className="flex items-center gap-1.5">
+                <Route className="h-3 w-3" />
+                <span>
+                  ระยะตามถนนประมาณ {formatRouteDistance(order.deliveryRoute.plannedDistanceMeters)}{' '}
+                  · ไม่รวม traffic
+                </span>
+              </div>
+            )}
         </div>
 
         <div className="mt-2 flex items-center justify-between border-t pt-2">

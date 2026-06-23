@@ -11,11 +11,15 @@ const statusLabel: Record<Driver['status'], string> = {
 
 export function RiderHeader({
   rider,
+  effectiveStatus,
   onOpenProfile,
 }: {
   rider: Driver | null;
+  /** สถานะที่สะท้อนกิจกรรมจริง (เช่น กำลังส่ง GPS) — override ค่า static ใน driver record */
+  effectiveStatus?: Driver['status'];
   onOpenProfile?: () => void;
 }) {
+  const status = effectiveStatus ?? rider?.status;
   return (
     <header className="sticky top-0 z-10 border-b bg-primary/5 backdrop-blur-sm">
       <button
@@ -32,10 +36,10 @@ export function RiderHeader({
           </div>
         </div>
         <Badge
-          variant={rider?.status === 'available' ? 'success' : 'muted'}
+          variant={status === 'on_delivery' ? 'info' : status === 'available' ? 'success' : 'muted'}
           className="h-5 px-1.5 text-[10px]"
         >
-          {rider ? statusLabel[rider.status] : '—'}
+          {status ? statusLabel[status] : '—'}
         </Badge>
         {rider && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
       </button>

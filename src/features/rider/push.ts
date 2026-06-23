@@ -107,7 +107,10 @@ export async function subscribeToPush(driverCode = DEFAULT_RIDER_CODE): Promise<
   try {
     const response = await fetch(`${RIDER_API_BASE_URL.replace(/\/$/, '')}/push-subscriptions`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${localStorage.getItem('movevai:rider-token') ?? ''}`,
+      },
       body: JSON.stringify({
         driverCode,
         subscription: json,

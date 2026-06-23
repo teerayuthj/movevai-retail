@@ -11,6 +11,9 @@ type DaySummaryCardProps = {
   unassignedCount: number;
   awaitingItemsCount: number;
   onHoldCount: number;
+  selectedCount: number;
+  releasableSelectedCount: number;
+  releasableAllCount: number;
   onReleaseSelected: () => void;
   releaseSelectedDisabled: boolean;
   onReleaseAll: () => void;
@@ -25,6 +28,9 @@ export function DaySummaryCard({
   unassignedCount,
   awaitingItemsCount,
   onHoldCount,
+  selectedCount,
+  releasableSelectedCount,
+  releasableAllCount,
   onReleaseSelected,
   releaseSelectedDisabled,
   onReleaseAll,
@@ -33,13 +39,28 @@ export function DaySummaryCard({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-sm">สรุปของวันที่ {formatPlanningDate(selectedDate)}</CardTitle>
-        <CardDescription>ตรวจความพร้อมแล้ว Publish Route ให้ Rider เห็นงานล่วงหน้า</CardDescription>
+        <CardTitle className="text-sm">
+          ภาพรวมทั้งวัน · {formatPlanningDate(selectedDate)}
+        </CardTitle>
+        <CardDescription>
+          ตัวเลขส่วนนี้รวมทุก order ของวันที่เลือก ไม่ใช่เฉพาะงานที่เลือกอยู่
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="rounded-xl border border-info/30 bg-info/5 px-3 py-2.5 text-xs">
+          <div className="font-medium text-info">กำลังเลือก {selectedCount} รายการ</div>
+          <div className="mt-0.5 text-muted-foreground">
+            {selectedCount === 0
+              ? 'เลือก order จากรายการก่อน Publish'
+              : releasableSelectedCount === selectedCount
+                ? `ปุ่ม Publish เฉพาะที่เลือกจะส่ง ${releasableSelectedCount} รายการนี้เท่านั้น`
+                : `พร้อม Publish ${releasableSelectedCount} จาก ${selectedCount} รายการที่เลือก`}
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-xl border bg-muted/20 p-3">
-            <div className="text-[11px] text-muted-foreground">ตามแผนทั้งหมด</div>
+            <div className="text-[11px] text-muted-foreground">งานทั้งหมดของวันที่เลือก</div>
             <div className="mt-1 text-2xl font-semibold tabular-nums">{plannedCount}</div>
           </div>
           <div className="rounded-xl border bg-muted/20 p-3">
@@ -81,11 +102,11 @@ export function DaySummaryCard({
         <div className="flex flex-wrap gap-2">
           <Button onClick={onReleaseSelected} disabled={releaseSelectedDisabled}>
             <Route className="h-4 w-4" />
-            Publish Route ที่เลือก
+            Publish เฉพาะที่เลือก ({releasableSelectedCount})
           </Button>
           <Button variant="outline" onClick={onReleaseAll} disabled={releaseAllDisabled}>
             <Truck className="h-4 w-4" />
-            Publish ทุก Route ของวันที่เลือก
+            Publish งานพร้อมทั้งหมด ({releasableAllCount})
           </Button>
         </div>
 

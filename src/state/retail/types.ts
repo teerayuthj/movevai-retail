@@ -97,11 +97,20 @@ export type RetailStore = RetailState & {
   releasePlannedOrders: (orderIds: string[]) => Promise<PlanningRoute>;
   publishUrgentRoute: (
     orderId: string,
-    input: { driverCode: string; note?: string },
+    input: { driverCode: string; note?: string; origin?: { lat: number; lng: number } },
   ) => Promise<PlanningRoute>;
   cancelRoute: (
     routeId: string,
     input: { reason: PlanningCancelReason; note?: string },
+    // ข้อมูล route เดิมจาก frontend ใช้คง Rider/วันเวลาตามแผน เพราะ backend ลบ stops
+    // ทิ้งตอน cancel แล้ว response จึงไม่มี orderIds ให้ savePlanning ซ้ำ
+    restore?: {
+      orderIds: string[];
+      plannedDate: string;
+      plannedTime?: string;
+      driverCode: string;
+      note?: string;
+    },
   ) => Promise<PlanningRoute>;
   reassignRoute: (
     routeId: string,

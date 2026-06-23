@@ -1,6 +1,7 @@
 import { IdCard, MapPin, Phone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Order } from '@/data/mock';
+import { AddressMapPreview } from '@/components/AddressMapPreview';
 
 type CustomerInfoFormProps = {
   customer: Order['customer'];
@@ -68,6 +69,9 @@ export default function CustomerInfoForm({ customer, editing, onChange }: Custom
           onChange={(event) => updateField('address', event.target.value)}
           className="mt-1"
         />
+        <div className="mt-2">
+          <AddressMapPreview address={customer.address} geo={customer.geo} />
+        </div>
       </div>
     </div>
   );

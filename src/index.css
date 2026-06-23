@@ -213,6 +213,12 @@
   * {
     @apply border-border;
   }
+  /* Leaflet panes/controls use high internal z-index (~400–1000). Without its own
+     stacking context the map paints over overlays (e.g. DetailDrawer at z-50).
+     isolation:isolate caps those z-indexes inside the map container. */
+  .leaflet-container {
+    isolation: isolate;
+  }
   body {
     @apply bg-background text-foreground;
     font-feature-settings:

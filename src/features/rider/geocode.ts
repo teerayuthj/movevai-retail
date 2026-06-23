@@ -12,6 +12,10 @@ export type LatLng = { lat: number; lng: number };
 // ย่าน/เขตในกรุงเทพ + เมืองหลักต่างจังหวัด — พิกัดโดยประมาณ พอให้หมุดลงถูกย่าน
 // match = substring ที่พบใน address (เรียงจากเฉพาะเจาะจง → กว้าง)
 const ANCHORS: { match: string; lat: number; lng: number }[] = [
+  // POI ที่ใช้งานส่งจริงต้องอยู่ก่อน anchor ระดับย่าน เพื่อไม่ให้ "สีลม" ดักไปปักกลางย่าน
+  { match: 'silom complex', lat: 13.7281, lng: 100.5351 },
+  { match: 'สีลมคอมเพล็กซ์', lat: 13.7281, lng: 100.5351 },
+  { match: 'สีลม คอมเพล็กซ์', lat: 13.7281, lng: 100.5351 },
   { match: 'เยาวราช', lat: 13.7404, lng: 100.5095 },
   { match: 'สัมพันธวงศ์', lat: 13.7398, lng: 100.5135 },
   { match: 'สุขุมวิท 61', lat: 13.7332, lng: 100.5872 },
@@ -61,8 +65,9 @@ function writeCache(cache: Record<string, LatLng>) {
 
 /** หาพิกัดทันทีจาก anchor lookup (sync, ไม่มี network) — null ถ้าไม่เจอย่านที่รู้จัก */
 export function localGeocode(address: string): LatLng | null {
+  const normalizedAddress = address.toLocaleLowerCase('th-TH');
   for (const anchor of ANCHORS) {
-    if (address.includes(anchor.match)) {
+    if (normalizedAddress.includes(anchor.match)) {
       return { lat: anchor.lat, lng: anchor.lng };
     }
   }

@@ -52,6 +52,7 @@ import {
   syncAppOrder,
   syncAndAssignOrder,
 } from '@/lib/retailApi';
+import { getAdminRouteOrigin } from '@/lib/adminLocation';
 
 const RIDER_JOB_STATUSES = ['assigned', 'in_transit', 'pending_confirmation', 'delivered'];
 const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
@@ -63,6 +64,31 @@ function replaceOrder(orders: RetailState['orders'], canonical: RetailState['ord
         order.id === canonical.id || order.code === canonical.code ? canonical : order,
       )
     : [...orders, canonical];
+}
+
+function preservePendingReview(
+  current: RetailState,
+  remoteOrder: RetailState['orders'][number],
+): RetailState['orders'][number] {
+  const local = current.orders.find(
+    (order) => order.id === remoteOrder.id || order.code === remoteOrder.code,
+  );
+  const confirmedByCs = remoteOrder.activityLog?.some(
+    (event) => event.type === 'delivery_confirmed',
+  );
+  if (
+    local?.status === 'pending_confirmation' &&
+    remoteOrder.status === 'delivered' &&
+    !confirmedByCs
+  ) {
+    return {
+      ...remoteOrder,
+      status: local.status,
+      proofOfDelivery: local.proofOfDelivery,
+      activityLog: local.activityLog,
+    };
+  }
+  return remoteOrder;
 }
 
 const StoreContext = createContext<RetailStore | null>(null);
@@ -121,7 +147,7 @@ export function RetailProvider({
             (order) =>
               order.assignedDriverId !== driverCode || !RIDER_JOB_STATUSES.includes(order.status),
           ),
-          ...remote.orders,
+          ...remote.orders.map((order) => preservePendingReview(current, order)),
         ],
         drivers: current.drivers.some((driver) => driver.id === driverCode)
           ? current.drivers.map((driver) => (driver.id === driverCode ? remote.driver : driver))
@@ -148,7 +174,14 @@ export function RetailProvider({
           !remoteIds.has(order.id) &&
           !remoteCodes.has(order.code),
       );
-      return { ...current, orders: [...localDrafts, ...remoteOrders], drivers: remoteDrivers };
+      return {
+        ...current,
+        orders: [
+          ...localDrafts,
+          ...remoteOrders.map((order) => preservePendingReview(current, order)),
+        ],
+        drivers: remoteDrivers,
+      };
     });
   }, [commit]);
 
@@ -237,7 +270,18 @@ export function RetailProvider({
       const canonical = await submitRiderOrder(orderId, order.assignedDriverId, input);
       commit((current) => {
         const submitted = submitDeliveryState(current, orderId, input);
-        return { ...submitted, orders: replaceOrder(submitted.orders, canonical) };
+        const submittedOrder = submitted.orders.find(
+          (item) => item.id === canonical.id || item.code === canonical.code,
+        );
+        const reviewCanonical = submittedOrder
+          ? {
+              ...canonical,
+              status: submittedOrder.status,
+              proofOfDelivery: submittedOrder.proofOfDelivery,
+              activityLog: submittedOrder.activityLog,
+            }
+          : canonical;
+        return { ...submitted, orders: replaceOrder(submitted.orders, reviewCanonical) };
       });
     },
     [commit, state.orders],
@@ -368,28 +412,37 @@ export function RetailProvider({
   );
 
   const cancelRoute = useCallback(
-    async (routeId: string, input: Parameters<RetailStore['cancelRoute']>[1]) => {
+    async (
+      routeId: string,
+      input: Parameters<RetailStore['cancelRoute']>[1],
+      restore?: Parameters<RetailStore['cancelRoute']>[2],
+    ) => {
       const route = await cancelPlanningRoute(routeId, input);
 
-      // การดึง Route กลับไม่ใช่การยกเลิกแผน: บันทึก stops กลับเป็น Planning
-      // อย่างชัดเจนเพื่อไม่ให้ backend ที่คืนเพียง status=ready ทำให้งานหลุดไปหน้า
-      // "จ่ายงานวันนี้" ระหว่าง refresh รอบถัดไป
-      const orderIds = route.stops.map((stop) => stop.order.id);
-      if (orderIds.length === 0) {
-        throw new Error('Route นี้ไม่มีงานสำหรับดึงกลับเข้า Planning');
+      // backend ลบ stops ทิ้งตอน cancel (เพื่อปล่อย unique orderId) แล้ว restore order
+      // กลับเป็น releaseState='planned' พร้อม plannedDate/Time เดิมให้เรียบร้อย ดังนั้น
+      // response.stops จึง "ว่างเสมอ" — ไม่ใช่สัญญาณว่าดึงกลับไม่สำเร็จ จึงห้าม throw
+      // ที่ backend ไม่ได้คงไว้คือ plannedDriverId (Rider) เลย savePlanning ซ้ำด้วย
+      // ข้อมูล route เดิมจาก frontend (restore) เพื่อคง Rider ตามแผนเดิมไว้
+      const plan =
+        restore && restore.orderIds.length > 0
+          ? restore
+          : route.stops.length > 0
+            ? {
+                orderIds: route.stops.map((stop) => stop.order.id),
+                plannedDate: route.plannedDate,
+                plannedTime: route.plannedTime,
+                driverCode: route.driver.code,
+                note: route.note,
+              }
+            : null;
+      if (plan) {
+        const canonical = await savePlanning(plan);
+        commit((current) => ({
+          ...current,
+          orders: canonical.reduce(replaceOrder, current.orders),
+        }));
       }
-
-      const canonical = await savePlanning({
-        orderIds,
-        plannedDate: route.plannedDate,
-        plannedTime: route.plannedTime,
-        driverCode: route.driver.code,
-        note: route.note,
-      });
-      commit((current) => ({
-        ...current,
-        orders: canonical.reduce(replaceOrder, current.orders),
-      }));
       return route;
     },
     [commit],
@@ -429,6 +482,7 @@ export function RetailProvider({
         plannedTime,
         driverCode,
         note: first.deliveryPlan?.note,
+        origin: await getAdminRouteOrigin(),
       });
       await syncFromBackend();
       return route;
@@ -441,7 +495,11 @@ export function RetailProvider({
       const order = state.orders.find((item) => item.id === orderId);
       if (!order) throw new Error('ไม่พบออเดอร์ที่เลือก');
       await syncAppOrder(order);
-      const route = await publishUrgentPlanningRoute({ orderId, ...input });
+      const route = await publishUrgentPlanningRoute({
+        orderId,
+        ...input,
+        origin: input.origin ?? (await getAdminRouteOrigin()),
+      });
       await syncFromBackend();
       return route;
     },

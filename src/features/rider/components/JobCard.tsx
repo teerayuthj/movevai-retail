@@ -9,6 +9,7 @@ import {
   Clock3,
   Image,
   IdCard,
+  Map as MapIcon,
   MapPin,
   Navigation,
   Package,
@@ -26,11 +27,14 @@ export function JobCard({
   nowMs = Date.now(),
   onStart,
   onClose,
+  onViewMap,
 }: {
   order: Order;
   nowMs?: number;
   onStart: () => void;
   onClose: () => void;
+  /** เปิดแผนที่โฟกัสปลายทางของงานนี้โดยเฉพาะ (แยกจากภาพรวมทั้ง Route) */
+  onViewMap?: () => void;
 }) {
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
@@ -102,11 +106,21 @@ export function JobCard({
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{order.customer.address}</span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-info">
             <Phone className="h-3.5 w-3.5" />
             <span>{order.customer.phone}</span>
           </a>
+          {onViewMap && (
+            <button
+              type="button"
+              onClick={onViewMap}
+              className="flex items-center gap-1.5 font-medium text-info"
+            >
+              <MapIcon className="h-3.5 w-3.5" />
+              ดูแผนที่
+            </button>
+          )}
           <a
             href={navigationUrl(order.customer.address, order.customer.geo)}
             target="_blank"
