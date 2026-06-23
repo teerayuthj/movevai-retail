@@ -43,6 +43,7 @@ export function JobCard({
   const overdueMinutes = getRiderJobOverdueMinutes(order, nowMs);
   const isOverdue = overdueMinutes != null;
   const timing = getRiderJobTiming(order, nowMs);
+  const isPendingReview = order.status === 'pending_confirmation';
 
   return (
     <div
@@ -111,7 +112,7 @@ export function JobCard({
             <Phone className="h-3.5 w-3.5" />
             <span>{order.customer.phone}</span>
           </a>
-          {onViewMap && (
+          {onViewMap && !isPendingReview && (
             <button
               type="button"
               onClick={onViewMap}
@@ -121,15 +122,17 @@ export function JobCard({
               ดูแผนที่
             </button>
           )}
-          <a
-            href={navigationUrl(order.customer.address, order.customer.geo)}
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center gap-1.5 font-medium text-info"
-          >
-            <Navigation className="h-3.5 w-3.5" />
-            นำทาง
-          </a>
+          {!isPendingReview && (
+            <a
+              href={navigationUrl(order.customer.address, order.customer.geo)}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-1.5 font-medium text-info"
+            >
+              <Navigation className="h-3.5 w-3.5" />
+              นำทาง
+            </a>
+          )}
         </div>
       </div>
 
@@ -229,10 +232,18 @@ export function JobCard({
               <ClipboardCheck className="h-3 w-3" />
               รอตรวจสอบ
             </Badge>
-            <Button size="sm" variant="outline" onClick={onClose}>
-              <PenLine className="h-3.5 w-3.5" />
-              แก้ไขหลักฐาน
-            </Button>
+            <div className="flex items-center gap-1.5">
+              {onViewMap && (
+                <Button size="sm" variant="outline" onClick={onViewMap}>
+                  <MapIcon className="h-3.5 w-3.5" />
+                  แผนที่
+                </Button>
+              )}
+              <Button size="sm" variant="outline" onClick={onClose}>
+                <PenLine className="h-3.5 w-3.5" />
+                แก้ไขหลักฐาน
+              </Button>
+            </div>
           </div>
         )}
         {order.status === 'delivered' && (

@@ -29,7 +29,10 @@ const segmentByTab = new Map(RIDER_TABS.map((tab) => [tab.key, tab.segment]));
 /** /rider/in-transit → 'in_transit' ; /rider หรือ segment ไม่รู้จัก → null */
 export function getRiderTabFromPath(pathname: string): RiderTab | null {
   if (!pathname.startsWith(RIDER_BASE_PATH)) return null;
-  const segment = pathname.slice(RIDER_BASE_PATH.length).replace(/^\/+|\/+$/g, '');
+  const segment = pathname
+    .slice(RIDER_BASE_PATH.length)
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')[0];
   if (!segment) return null;
   return tabBySegment.get(segment) ?? null;
 }
@@ -37,4 +40,23 @@ export function getRiderTabFromPath(pathname: string): RiderTab | null {
 /** 'in_transit' → '/rider/in-transit' */
 export function getRiderTabPath(tab: RiderTab): string {
   return `${RIDER_BASE_PATH}/${segmentByTab.get(tab)}`;
+}
+
+export function getRiderOrderMapPath(orderId: string): string {
+  return `${RIDER_BASE_PATH}/pending-confirmation/${encodeURIComponent(orderId)}/map`;
+}
+
+export function getRiderOrderMapId(pathname: string): string | null {
+  if (!pathname.startsWith(`${RIDER_BASE_PATH}/pending-confirmation/`)) return null;
+  const [rawOrderId, leaf] = pathname
+    .slice(`${RIDER_BASE_PATH}/pending-confirmation`.length)
+    .replace(/^\/+|\/+$/g, '')
+    .split('/');
+  if (leaf !== 'map' || !rawOrderId) return null;
+
+  try {
+    return decodeURIComponent(rawOrderId);
+  } catch {
+    return null;
+  }
 }

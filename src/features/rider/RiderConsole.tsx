@@ -32,6 +32,7 @@ import { RiderCompletedList } from './components/RiderCompletedList';
 import { RiderProfileSheet } from './components/RiderProfileSheet';
 import { RiderPushSetupBanner } from './components/RiderPushSetupBanner';
 import { RiderRouteMap } from './components/RiderRouteMap';
+import { RiderOrderMapPage } from './components/RiderOrderMapPage';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
 import type { Order } from '@/data/mock';
@@ -73,7 +74,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
   const install = useInstallPrompt();
-  const { activeTab, setTab } = useRiderTab();
+  const { activeTab, mapOrderId, setTab, openOrderMap, backToPending } = useRiderTab();
   const [riderCode, setRiderCode] = useState(resolveRiderCode);
   const tracking = useRiderTracking(authenticated);
   // ถ้า backend เริ่ม tracking session ไม่สำเร็จ ยังอ่าน GPS บนอุปกรณ์เพื่อแสดงแผนที่
@@ -332,6 +333,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     setAssignedView('map');
   }, []);
   const activeRouteId = myJobs.find((order) => order.deliveryRoute)?.deliveryRoute?.id;
+  const mapOrder = mapOrderId
+    ? (myJobs.find((order) => order.id === mapOrderId) ?? null)
+    : null;
 
   if (!authenticated) {
     return (
@@ -340,6 +344,16 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
           setRiderCode(session.rider.code);
           setAuthenticated(true);
         }}
+      />
+    );
+  }
+
+  if (mapOrderId) {
+    return (
+      <RiderOrderMapPage
+        order={mapOrder}
+        orderId={mapOrderId}
+        onBack={backToPending}
       />
     );
   }
@@ -625,7 +639,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                         onStart={() => void handleStartJob(order)}
                         onClose={() => setCloseTargetId(order.id)}
                         onViewMap={
-                          activeTab === 'assigned' ? () => handleViewOrderMap(order) : undefined
+                          activeTab === 'assigned'
+                            ? () => handleViewOrderMap(order)
+                            : activeTab === 'pending_confirmation'
+                              ? () => openOrderMap(order.id)
+                              : undefined
                         }
                       />
                     </div>

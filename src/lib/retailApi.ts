@@ -596,6 +596,34 @@ export function fetchActiveRiderTracking(deviceId: string) {
     `${RIDER_API_BASE}/tracking/active?deviceId=${encodeURIComponent(deviceId)}`,
   );
 }
+
+export type RiderOrderRouteHistory = {
+  order: {
+    id: string;
+    code: string;
+    status: string;
+    routeSequence: number | null;
+  };
+  route: {
+    id: string;
+    code: string;
+    status: string;
+    plannedGeometryJson?: { lat: number | string; lng: number | string }[] | null;
+  } | null;
+  proofLocation: {
+    lat: number | string;
+    lng: number | string;
+    label?: string | null;
+    capturedAt: string;
+  } | null;
+  session: RiderTrackingHistory | null;
+};
+
+export function fetchRiderOrderRouteHistory(orderId: string) {
+  return request<RiderOrderRouteHistory>(
+    `${RIDER_API_BASE}/orders/${encodeURIComponent(orderId)}/route-history`,
+  );
+}
 export function startRiderRoute(routeId: string, deviceId: string) {
   return request<RiderTrackingSession>(
     `${RIDER_API_BASE}/routes/${encodeURIComponent(routeId)}/start`,

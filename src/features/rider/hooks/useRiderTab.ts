@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getRiderTabFromPath, getRiderTabPath, type RiderTab } from '../riderTabs';
+import {
+  getRiderOrderMapId,
+  getRiderOrderMapPath,
+  getRiderTabFromPath,
+  getRiderTabPath,
+  type RiderTab,
+} from '../riderTabs';
 
 type NavigateOptions = {
   /** ใช้ replaceState แทน pushState — สำหรับ auto-select/redirect ที่ไม่ควรค้างใน history */
@@ -25,6 +31,7 @@ export function useRiderTab() {
   }, []);
 
   const activeTab = getRiderTabFromPath(pathname);
+  const mapOrderId = getRiderOrderMapId(pathname);
 
   const setTab = useCallback((tab: RiderTab, options?: NavigateOptions) => {
     const nextPath = getRiderTabPath(tab);
@@ -38,5 +45,18 @@ export function useRiderTab() {
     setPathname(nextPath);
   }, []);
 
-  return { activeTab, setTab };
+  const openOrderMap = useCallback((orderId: string) => {
+    const nextPath = getRiderOrderMapPath(orderId);
+    if (window.location.pathname === nextPath) return;
+    window.history.pushState({ page: 'rider' }, '', nextPath);
+    setPathname(nextPath);
+  }, []);
+
+  const backToPending = useCallback(() => {
+    const nextPath = getRiderTabPath('pending_confirmation');
+    window.history.replaceState({ page: 'rider' }, '', nextPath);
+    setPathname(nextPath);
+  }, []);
+
+  return { activeTab, mapOrderId, setTab, openOrderMap, backToPending };
 }
