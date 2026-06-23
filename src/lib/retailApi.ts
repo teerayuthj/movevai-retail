@@ -6,16 +6,38 @@ const RIDER_API_BASE =
   (import.meta.env.VITE_RIDER_API_BASE_URL as string | undefined) ?? '/api/rider';
 const APP_API_BASE = (import.meta.env.VITE_APP_API_BASE_URL as string | undefined) ?? '/api/app';
 const RIDER_TOKEN_KEY = 'movevai:rider-token';
+export const RIDER_AUTH_EXPIRED_EVENT = 'movevai:rider-auth-expired';
 
 export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
 type ApiOrder = Order & { assignedDriver?: ApiDriver };
 
+export class RiderAuthError extends Error {
+  constructor(message = 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่') {
+    super(message);
+    this.name = 'RiderAuthError';
+  }
+}
+
+export function isRiderAuthError(error: unknown): error is RiderAuthError {
+  return error instanceof RiderAuthError;
+}
+
+function clearLocalRiderSession(notify = false) {
+  localStorage.removeItem(RIDER_TOKEN_KEY);
+  localStorage.removeItem('movevai:rider-code');
+  if (notify && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(RIDER_AUTH_EXPIRED_EVENT));
+  }
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body != null) headers.set('content-type', 'application/json');
-  if (url.startsWith(RIDER_API_BASE)) {
-    const token = localStorage.getItem(RIDER_TOKEN_KEY);
-    if (token) headers.set('authorization', `Bearer ${token}`);
+  const isRiderRequest = url.startsWith(RIDER_API_BASE);
+  let riderToken: string | null = null;
+  if (isRiderRequest) {
+    riderToken = localStorage.getItem(RIDER_TOKEN_KEY);
+    if (riderToken) headers.set('authorization', `Bearer ${riderToken}`);
   }
   const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
@@ -25,6 +47,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       message = body.error?.message ?? message;
     } catch {
       // response ไม่ใช่ JSON
+    }
+    const riderTokenExpired =
+      isRiderRequest &&
+      riderToken &&
+      (response.status === 401 || /invalid or expired rider token/i.test(message));
+    if (riderTokenExpired) {
+      clearLocalRiderSession(true);
+      throw new RiderAuthError(message);
     }
     throw new Error(message);
   }
@@ -465,8 +495,7 @@ export async function logoutRider() {
   } catch {
     /* clear local session even when offline/expired */
   }
-  localStorage.removeItem(RIDER_TOKEN_KEY);
-  localStorage.removeItem('movevai:rider-code');
+  clearLocalRiderSession();
 }
 
 export type RiderTrackingSession = {

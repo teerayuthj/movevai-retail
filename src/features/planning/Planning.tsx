@@ -472,7 +472,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                     )}
                     <span>
                       {hiddenOverdueCount > 0
-                        ? `มี ${hiddenOverdueCount} งานเลยกำหนดที่ถูกกรองไว้`
+                        ? `มีงานค้างรอรับ ${hiddenOverdueCount} งาน`
                         : 'มีงาน Planning ในวันอื่น'}
                     </span>
                   </div>

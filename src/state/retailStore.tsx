@@ -65,6 +65,31 @@ function replaceOrder(orders: RetailState['orders'], canonical: RetailState['ord
     : [...orders, canonical];
 }
 
+function preservePendingReview(
+  current: RetailState,
+  remoteOrder: RetailState['orders'][number],
+): RetailState['orders'][number] {
+  const local = current.orders.find(
+    (order) => order.id === remoteOrder.id || order.code === remoteOrder.code,
+  );
+  const confirmedByCs = remoteOrder.activityLog?.some(
+    (event) => event.type === 'delivery_confirmed',
+  );
+  if (
+    local?.status === 'pending_confirmation' &&
+    remoteOrder.status === 'delivered' &&
+    !confirmedByCs
+  ) {
+    return {
+      ...remoteOrder,
+      status: local.status,
+      proofOfDelivery: local.proofOfDelivery,
+      activityLog: local.activityLog,
+    };
+  }
+  return remoteOrder;
+}
+
 const StoreContext = createContext<RetailStore | null>(null);
 
 export function RetailProvider({
@@ -121,7 +146,7 @@ export function RetailProvider({
             (order) =>
               order.assignedDriverId !== driverCode || !RIDER_JOB_STATUSES.includes(order.status),
           ),
-          ...remote.orders,
+          ...remote.orders.map((order) => preservePendingReview(current, order)),
         ],
         drivers: current.drivers.some((driver) => driver.id === driverCode)
           ? current.drivers.map((driver) => (driver.id === driverCode ? remote.driver : driver))
@@ -148,7 +173,14 @@ export function RetailProvider({
           !remoteIds.has(order.id) &&
           !remoteCodes.has(order.code),
       );
-      return { ...current, orders: [...localDrafts, ...remoteOrders], drivers: remoteDrivers };
+      return {
+        ...current,
+        orders: [
+          ...localDrafts,
+          ...remoteOrders.map((order) => preservePendingReview(current, order)),
+        ],
+        drivers: remoteDrivers,
+      };
     });
   }, [commit]);
 
@@ -237,7 +269,18 @@ export function RetailProvider({
       const canonical = await submitRiderOrder(orderId, order.assignedDriverId, input);
       commit((current) => {
         const submitted = submitDeliveryState(current, orderId, input);
-        return { ...submitted, orders: replaceOrder(submitted.orders, canonical) };
+        const submittedOrder = submitted.orders.find(
+          (item) => item.id === canonical.id || item.code === canonical.code,
+        );
+        const reviewCanonical = submittedOrder
+          ? {
+              ...canonical,
+              status: submittedOrder.status,
+              proofOfDelivery: submittedOrder.proofOfDelivery,
+              activityLog: submittedOrder.activityLog,
+            }
+          : canonical;
+        return { ...submitted, orders: replaceOrder(submitted.orders, reviewCanonical) };
       });
     },
     [commit, state.orders],

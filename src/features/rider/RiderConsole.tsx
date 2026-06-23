@@ -35,7 +35,13 @@ import { RiderRouteMap } from './components/RiderRouteMap';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
 import type { Order } from '@/data/mock';
-import { hasRiderSession, logoutRider, type RiderSession } from '@/lib/retailApi';
+import {
+  hasRiderSession,
+  isRiderAuthError,
+  logoutRider,
+  RIDER_AUTH_EXPIRED_EVENT,
+  type RiderSession,
+} from '@/lib/retailApi';
 import { RiderLogin } from './components/RiderLogin';
 import { TestRouteDialog } from './components/TestRouteDialog';
 import { useRiderTracking } from './hooks/useRiderTracking';
@@ -140,17 +146,23 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   // ให้ start tracking อัตโนมัติ เพื่อให้ "ทุกรอบถูกบันทึก" โดยไม่ต้องพึ่งความจำ rider
   const handleStartJob = useCallback(
     async (order: Order) => {
-      await startDelivery(order.id);
-      const routeId = order.deliveryRoute?.id;
-      if (routeId && !tracking.session) {
-        // GPS/route start อาจล้มเหลว (สิทธิ์ตำแหน่ง/เครือข่าย) — ไม่ให้บล็อกการเริ่มส่งงาน
-        try {
-          await tracking.start(routeId);
-        } catch {
-          /* ปล่อยให้ rider ส่งงานต่อได้ แม้บันทึกเส้นทางไม่เริ่ม */
+      try {
+        await startDelivery(order.id);
+        const routeId = order.deliveryRoute?.id;
+        if (routeId && !tracking.session) {
+          // GPS/route start อาจล้มเหลว (สิทธิ์ตำแหน่ง/เครือข่าย) — ไม่ให้บล็อกการเริ่มส่งงาน
+          try {
+            await tracking.start(routeId);
+          } catch (error) {
+            if (isRiderAuthError(error)) return;
+            /* ปล่อยให้ rider ส่งงานต่อได้ แม้บันทึกเส้นทางไม่เริ่ม */
+          }
         }
+        setTab('in_transit');
+      } catch (error) {
+        if (isRiderAuthError(error)) return;
+        setJobsError(error instanceof Error ? error.message : 'เริ่มงานไม่สำเร็จ');
       }
-      setTab('in_transit');
     },
     [setTab, startDelivery, tracking],
   );
@@ -162,6 +174,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         await refreshRiderJobs(riderCode);
         setJobsError(null);
       } catch (error) {
+        if (isRiderAuthError(error)) {
+          setJobsError(null);
+          setAuthenticated(false);
+          return;
+        }
         setJobsError(error instanceof Error ? error.message : 'โหลดข้อมูลงานไม่สำเร็จ');
       } finally {
         if (!background) setJobsLoading(false);
@@ -169,6 +186,18 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     },
     [refreshRiderJobs, riderCode],
   );
+
+  useEffect(() => {
+    const onAuthExpired = () => {
+      setAuthenticated(false);
+      setJobsError(null);
+      setJobsLoading(false);
+      setCloseTargetId(null);
+      setProfileOpen(false);
+    };
+    window.addEventListener(RIDER_AUTH_EXPIRED_EVENT, onAuthExpired);
+    return () => window.removeEventListener(RIDER_AUTH_EXPIRED_EVENT, onAuthExpired);
+  }, []);
 
   useEffect(() => {
     // อย่ายิง fetch ก่อน login — ตอนยังไม่มี bearer token backend จะตอบ
@@ -321,14 +350,17 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
       <div className="relative flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
         <RiderHeader
           rider={rider}
-          // สถานะ badge ต้องตามกิจกรรมจริง: กำลังบันทึก GPS หรือมีงานที่กำลังส่ง = "กำลังส่ง"
-          // ไม่ใช่ค่า static ใน driver record (ที่ค้างเป็น available)
+          // สถานะ badge ต้องตามกิจกรรมจริงเท่านั้น ไม่เชื่อค่า static ใน driver record
+          // (ที่ค้างได้ทั้งเป็น available ทั้งที่กำลังส่ง และค้างเป็น on_delivery ทั้งที่ส่งเสร็จแล้ว):
+          //  - off_duty = rider กดหยุดเอง → คงไว้
+          //  - กำลังบันทึก GPS หรือมีงานสถานะ in_transit → "กำลังส่ง"
+          //  - นอกนั้น (มีแต่งาน assigned/รอตรวจ/เสร็จ) → "ว่าง"
           effectiveStatus={
             rider?.status === 'off_duty'
               ? 'off_duty'
               : tracking.session || counts.in_transit > 0
                 ? 'on_delivery'
-                : rider?.status
+                : 'available'
           }
           onOpenProfile={() => setProfileOpen(true)}
         />

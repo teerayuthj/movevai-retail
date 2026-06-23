@@ -1,10 +1,6 @@
 import { failNextActionLabel, failReasonLabel } from '@/data/mock';
 import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
-import {
-  describeProof,
-  planAutoAssignments,
-  requiresDeliveryReview,
-} from '@/lib/deliveryExecution';
+import { describeProof, planAutoAssignments } from '@/lib/deliveryExecution';
 import type { Driver, FailReason, Order, ProofOfDelivery } from '@/data/mock';
 import {
   appendEvent,
@@ -225,8 +221,8 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
 
 /**
  * rider ปิดงาน: บันทึกหลักฐาน (POD) แล้ว
- * - งานเสี่ยงสูง (requiresDeliveryReview) → เข้าสถานะ pending_confirmation รออนุมัติ (คนขับยังถือโหลดไว้)
- * - งานทั่วไป → ปิดเป็น delivered ทันที และคืน capacity คนขับ
+ * - ทุกงานต้องเข้ารอตรวจสอบก่อน เพื่อให้ CS/admin ยืนยันหลักฐานก่อนปิดจริง
+ * - capacity คนขับยังถูกถือไว้จนกว่า CS/admin จะยืนยันปิดงาน
  */
 export function submitDeliveryState(
   current: RetailState,
@@ -252,7 +248,6 @@ export function submitDeliveryState(
     capturedAt: at,
   };
   const proofDetails = describeProof(proof).join(' · ');
-  const needsReview = requiresDeliveryReview(order);
 
   return {
     ...current,
@@ -261,37 +256,19 @@ export function submitDeliveryState(
 
       const next: Order = {
         ...item,
-        status: needsReview ? 'pending_confirmation' : 'delivered',
+        status: 'pending_confirmation',
         proofOfDelivery: proof,
       };
 
-      return appendEvent(
-        next,
-        needsReview
-          ? {
-              type: isRevision ? 'delivery_proof_revised' : 'delivery_submitted',
-              at,
-              actor: riderActor,
-              summary: isRevision ? 'rider แก้ไขและส่งหลักฐานใหม่' : 'rider ส่งมอบแล้ว — รออนุมัติ',
-              details: proofDetails || undefined,
-            }
-          : {
-              type: 'delivery_completed',
-              at,
-              actor: riderActor,
-              summary: 'rider ปิดงาน — ส่งสำเร็จ',
-              details: proofDetails || undefined,
-            },
-      );
+      return appendEvent(next, {
+        type: isRevision ? 'delivery_proof_revised' : 'delivery_submitted',
+        at,
+        actor: riderActor,
+        summary: isRevision ? 'rider แก้ไขและส่งหลักฐานใหม่' : 'rider ส่งมอบแล้ว — รอตรวจสอบ',
+        details: proofDetails || undefined,
+      });
     }),
-    // งานทั่วไปปิดเลย → คืนโหลด; งานรออนุมัติ → ยังถือโหลดไว้จนยืนยัน
-    drivers: needsReview
-      ? current.drivers
-      : current.drivers.map((item) =>
-          item.id === order.assignedDriverId
-            ? reduceDriverLoad(item, current.orders, orderId)
-            : item,
-        ),
+    drivers: current.drivers,
   };
 }
 

@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { formatTHB, type Order } from '@/data/mock';
-import { requiresDeliveryReview } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 import {
   AlertCircle,
@@ -14,7 +13,6 @@ import {
   MapPin,
   PenLine,
   RotateCcw,
-  ShieldAlert,
   X,
 } from 'lucide-react';
 
@@ -386,7 +384,6 @@ export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit 
     }
   }, [open, order]);
 
-  const willReview = order ? requiresDeliveryReview(order) : false;
   const signatureCaptured = !!signatureDataUrl;
 
   const missing = useMemo(() => {
@@ -591,7 +588,7 @@ export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit 
                   ตรวจหลักฐานก่อนปิดงาน
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ตรวจว่ารูปส่งมอบและลายเซ็นครบ ก่อนยืนยันปิดงาน
+                  ตรวจว่ารูปส่งมอบและลายเซ็นครบ ก่อนส่งให้ CS/admin ตรวจสอบและยืนยันปิดงาน
                 </p>
               </div>
 
@@ -646,12 +643,9 @@ export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit 
                   : 'ยังอ่านพิกัด GPS ไม่ได้ — ระบบจะบันทึกรูปและลายเซ็นโดยไม่สร้างพิกัดจำลอง'}
               </div>
 
-              {willReview && (
-                <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-warning">
-                  <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                  งานนี้เป็นงานเสี่ยงสูง — เมื่อกดปิด จะส่งเข้าคิวรออนุมัติก่อนปิดจริง
-                </div>
-              )}
+              <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-warning">
+                เมื่อกดยืนยัน รายการจะอยู่ใน “รอตรวจสอบ” ก่อน ยังไม่ปิดเป็นส่งสำเร็จ
+              </div>
             </div>
           )}
         </div>
@@ -713,9 +707,7 @@ export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit 
                     ? 'กำลังบันทึก...'
                     : order.status === 'pending_confirmation'
                       ? 'บันทึกและส่งตรวจใหม่'
-                      : willReview
-                        ? 'ส่งรออนุมัติ'
-                        : 'ปิดงาน — ส่งสำเร็จ'}
+                      : 'ส่งตรวจสอบ'}
                 </Button>
               </div>
             )}

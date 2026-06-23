@@ -14,7 +14,6 @@ import {
   failNextActionLabel,
   failReasonLabel,
 } from '@/data/mock';
-import { requiresDeliveryReview } from '@/lib/deliveryExecution';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import {
   fetchAppOrder,
@@ -440,14 +439,10 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         onCancel={() => setRiderCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!riderCloseTargetId) return;
-          const target =
-            trackingOrders.find((o) => o.id === riderCloseTargetId) ??
-            orders.find((o) => o.id === riderCloseTargetId);
           await submitDelivery(riderCloseTargetId, input);
           setSelectedOrderId(null);
           setRiderCloseTargetId(null);
-          // งานเสี่ยงสูง → ไปแท็บต้องทำ (รอยืนยัน), งานทั่วไป → ปิดเลย
-          changeView(target && requiresDeliveryReview(target) ? 'needs_action' : 'closed');
+          changeView('needs_action');
           refreshTracking();
         }}
       />
