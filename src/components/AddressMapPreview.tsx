@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { MapContainer, Marker, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { AlertCircle, Loader2, MapPin } from 'lucide-react';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import { BANGKOK_CENTER, type LatLng } from '@/features/rider/geocode';
 import { geocodeAddress } from '@/lib/retailApi';
 
@@ -124,7 +125,7 @@ export function AddressMapPreview({ address, geo }: { address: string; geo?: Lat
         style={{ background: 'hsl(var(--muted))' }}
         attributionControl={false}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <BaseTileLayer />
         <AutoResize />
         {state.status === 'found' && (
           <>

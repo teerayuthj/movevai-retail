@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Pause, Play } from 'lucide-react';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { RiderTrackingHistory } from '@/lib/retailApi';
 import { BANGKOK_CENTER } from '@/features/rider/geocode';
 
@@ -99,10 +100,7 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
         zoom={12}
         className="h-80 w-full sm:h-[400px]"
       >
-        <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <BaseTileLayer />
         {planned.length > 1 && (
           <Polyline
             positions={planned}

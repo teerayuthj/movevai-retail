@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { ArrowLeft, AlertCircle, Loader2, MapPin, PackageCheck } from 'lucide-react';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Order } from '@/data/mock';
@@ -192,10 +193,7 @@ export function RiderOrderMapPage({
           className="h-full w-full"
           style={{ background: 'hsl(var(--muted))' }}
         >
-          <TileLayer
-            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <BaseTileLayer />
 
           {plannedPoints.length >= 2 && (
             <Polyline

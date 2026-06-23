@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import {
   fetchDeliveryTrackingOrders,
   fetchLiveRiders,
@@ -201,10 +202,7 @@ export function LiveRiderMap() {
           zoom={11}
           className="h-80 w-full"
         >
-          <TileLayer
-            attribution="&copy; OpenStreetMap contributors"
-            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          />
+          <BaseTileLayer />
           {riders.flatMap((rider) =>
             rider.latest ? (
               <Marker

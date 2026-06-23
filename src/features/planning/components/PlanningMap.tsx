@@ -1,7 +1,8 @@
 import { useEffect, useMemo } from 'react';
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Info, Loader2, MapPin, Route } from 'lucide-react';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
 import { BANGKOK_CENTER } from '@/features/rider/geocode';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
@@ -27,6 +28,18 @@ function numberedIcon(label: number, selected: boolean) {
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
     html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};color:#fff;border:${selected ? 3 : 2}px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:600 ${selected ? 14 : 12}px/1 sans-serif;">${label}</div>`,
+  });
+}
+
+/** หมุดต้นทาง (GPS ของ admin) — จุดเริ่มของเส้นทางพรีวิว/Route */
+function originIcon() {
+  const size = 30;
+  return L.divIcon({
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:hsl(var(--success));color:#fff;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:700 13px/1 sans-serif;">●</div>`,
   });
 }
 
@@ -92,6 +105,8 @@ export function PlanningMap({
     () => route?.geometry.map((point) => [point.lat, point.lng]) ?? [],
     [route],
   );
+  // จุดแรกของ geometry คือต้นทาง (GPS admin / fallback env) — ปักหมุดให้เห็นจุดเริ่ม
+  const originPoint = routePoints.length > 0 ? routePoints[0] : null;
 
   const stops = useMemo(
     () =>
@@ -130,7 +145,7 @@ export function PlanningMap({
         style={{ background: 'hsl(var(--muted))' }}
         attributionControl={false}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <BaseTileLayer />
         <AutoResize />
         {routePoints.length > 1 && (
           <Polyline
@@ -143,6 +158,16 @@ export function PlanningMap({
               opacity: route?.preview ? 0.85 : 1,
             }}
           />
+        )}
+        {originPoint && (
+          <Marker position={originPoint} icon={originIcon()} zIndexOffset={500}>
+            <Popup>
+              <div className="space-y-0.5 text-[13px]">
+                <div className="font-semibold text-success">ต้นทาง</div>
+                <div className="text-muted-foreground">จุดเริ่มเส้นทาง (ตำแหน่ง GPS)</div>
+              </div>
+            </Popup>
+          </Marker>
         )}
         {stops.map((stop) => {
           const selected = selectedIds.has(stop.order.id);

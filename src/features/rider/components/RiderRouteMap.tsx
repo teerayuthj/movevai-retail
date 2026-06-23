@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { Circle, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { AlertCircle, Loader2, LocateFixed, Navigation, Radio } from 'lucide-react';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
 import { getRiderJobOverdueMinutes } from '../riderSchedule';
 import { BANGKOK_CENTER, navigationUrl } from '../geocode';
@@ -187,10 +188,7 @@ export function RiderRouteMap({
         className="h-full w-full"
         style={{ background: 'hsl(var(--muted))' }}
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <BaseTileLayer />
         {roadGeometry.length >= 2 ? (
           <Polyline
             positions={roadGeometry}
