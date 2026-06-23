@@ -52,6 +52,7 @@ import {
   syncAppOrder,
   syncAndAssignOrder,
 } from '@/lib/retailApi';
+import { getAdminRouteOrigin } from '@/lib/adminLocation';
 
 const RIDER_JOB_STATUSES = ['assigned', 'in_transit', 'pending_confirmation', 'delivered'];
 const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
@@ -481,6 +482,7 @@ export function RetailProvider({
         plannedTime,
         driverCode,
         note: first.deliveryPlan?.note,
+        origin: await getAdminRouteOrigin(),
       });
       await syncFromBackend();
       return route;
@@ -493,7 +495,11 @@ export function RetailProvider({
       const order = state.orders.find((item) => item.id === orderId);
       if (!order) throw new Error('ไม่พบออเดอร์ที่เลือก');
       await syncAppOrder(order);
-      const route = await publishUrgentPlanningRoute({ orderId, ...input });
+      const route = await publishUrgentPlanningRoute({
+        orderId,
+        ...input,
+        origin: input.origin ?? (await getAdminRouteOrigin()),
+      });
       await syncFromBackend();
       return route;
     },

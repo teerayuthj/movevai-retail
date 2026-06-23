@@ -6,6 +6,7 @@ import type { Order } from '@/data/mock';
 import { getRiderJobOverdueMinutes } from '../riderSchedule';
 import { BANGKOK_CENTER, navigationUrl } from '../geocode';
 import type { RouteStop } from '../hooks/useRouteStops';
+import { useRoadRoute } from '../hooks/useRoadRoute';
 import {
   useRiderLocation,
   type RiderLocation,
@@ -136,14 +137,32 @@ export function RiderRouteMap({
   );
   const pendingCount = stops.filter((stop) => stop.pending).length;
   const destination = located[0] ?? null;
-  const remainingDistance =
+
+  // เส้นทางตามถนน (OSRM) จากตำแหน่ง rider → จุดส่งที่เหลือ — แทนเส้นตรงเดิม
+  const stopCoords = useMemo(() => located.map((stop) => stop.coords!), [located]);
+  const roadRoute = useRoadRoute(location, stopCoords, showRemainingDistance && Boolean(location));
+  const roadGeometry = useMemo<[number, number][]>(
+    () => roadRoute?.geometry.map((point) => [point.lat, point.lng]) ?? [],
+    [roadRoute],
+  );
+
+  const straightDistance =
     showRemainingDistance && location && destination?.coords
       ? distanceBetweenMeters(location, destination.coords)
       : null;
+  // legs[0] = ระยะตามถนนจากตำแหน่งปัจจุบัน → จุดส่งถัดไป
+  const roadDistance = showRemainingDistance ? (roadRoute?.legs?.[0] ?? null) : null;
+  const remainingDistance = roadDistance ?? straightDistance;
+  // การตัดสินว่า "ถึงบริเวณปลายทาง" ยังใช้ระยะเส้นตรง + ความแม่นยำ GPS (ตรงกับ logic ปิดงานจริง)
+  const arrived =
+    straightDistance != null &&
+    straightDistance <= 200 &&
+    location != null &&
+    location.accuracy <= 100;
   const arrivalStatus =
     remainingDistance == null
       ? null
-      : remainingDistance <= 200 && location && location.accuracy <= 100
+      : arrived
         ? 'ถึงบริเวณปลายทางแล้ว'
         : remainingDistance <= 1_000
           ? 'ใกล้ถึงปลายทาง'
@@ -162,12 +181,18 @@ export function RiderRouteMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        {routePoints.length >= 2 && (
+        {roadGeometry.length >= 2 ? (
+          <Polyline
+            positions={roadGeometry}
+            pathOptions={{ color: 'hsl(var(--info))', weight: 4, opacity: 0.85 }}
+          />
+        ) : routePoints.length >= 2 ? (
+          // fallback ระหว่างยังไม่ได้เส้นตามถนน — เส้นตรงประ
           <Polyline
             positions={routePoints}
             pathOptions={{ color: 'hsl(var(--info))', weight: 3, opacity: 0.7, dashArray: '6 6' }}
           />
-        )}
+        ) : null}
         {location && riderPoint && (
           <>
             <Circle
@@ -272,7 +297,8 @@ export function RiderRouteMap({
             {formatRemainingDistance(remainingDistance)}
           </div>
           <div className="truncate text-[10px] text-muted-foreground">
-            ถึง {destination.order.customer.name} · ระยะเส้นตรงโดยประมาณ
+            ถึง {destination.order.customer.name} ·{' '}
+            {roadDistance != null ? 'ระยะตามถนนโดยประมาณ' : 'ระยะเส้นตรงโดยประมาณ'}
           </div>
         </div>
       )}

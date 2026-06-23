@@ -76,6 +76,8 @@ export type DeliveryRoute = {
   sequence: number;
   stopCount?: number;
   driverCode?: string;
+  plannedDistanceMeters?: number;
+  plannedGeometryJson?: { lat: number; lng: number }[];
   pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
   pushError?: string;
 };

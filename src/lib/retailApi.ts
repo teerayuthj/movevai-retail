@@ -62,6 +62,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export type GeoCoordinate = { lat: number; lng: number };
+export type RouteOrigin = GeoCoordinate;
 
 /**
  * geocode ที่อยู่เดี่ยว → พิกัด ผ่าน backend (provider เดียวกับ route planning)
@@ -140,6 +141,8 @@ export type PlanningRoute = {
   cancelledAt?: string;
   cancelReason?: PlanningCancelReason;
   cancelNote?: string;
+  plannedDistanceMeters?: number;
+  plannedGeometryJson?: { lat: number; lng: number }[];
   driver: ApiDriver;
   pushStatus: 'queued' | 'running' | 'succeeded' | 'failed';
   pushError?: string;
@@ -340,12 +343,29 @@ export async function clearPlanning(
   });
 }
 
+export type RoutePreview = {
+  distanceMeters: number | null;
+  geometry: { lat: number; lng: number }[];
+};
+
+/**
+ * พรีวิวเส้นทางตามถนน (ต้นทาง → จุดส่ง) ก่อน Publish — backend คำนวณผ่าน OSRM
+ * ใช้ origin จาก GPS ของ admin ถ้ามี ไม่งั้น backend จะ fallback ไปต้นทางใน env
+ */
+export async function previewPlanningRoute(input: { orderIds: string[]; origin?: RouteOrigin }) {
+  return request<RoutePreview>(`${APP_API_BASE}/planning/routes/preview`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export async function publishPlanningRoute(input: {
   orderIds: string[];
   plannedDate: string;
   plannedTime?: string;
   driverCode: string;
   note?: string;
+  origin?: RouteOrigin;
 }) {
   const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/publish`, {
     method: 'POST',
@@ -358,6 +378,7 @@ export async function publishUrgentPlanningRoute(input: {
   orderId: string;
   driverCode: string;
   note?: string;
+  origin?: RouteOrigin;
 }) {
   const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/urgent`, {
     method: 'POST',
@@ -400,6 +421,24 @@ export async function reassignPlanningRoute(
     { method: 'POST', body: JSON.stringify(input) },
   );
   return normalizeRoute(route);
+}
+
+export type RiderRoadRoute = {
+  geometry: { lat: number; lng: number }[];
+  distanceMeters: number | null;
+  /** ระยะรายช่วง: legs[0] = จากจุดเริ่ม (ตำแหน่ง rider) → จุดส่งถัดไป */
+  legs: number[];
+};
+
+/**
+ * เส้นทางตามถนนระหว่างกำลังส่ง — points[0] = ตำแหน่ง rider, ที่เหลือ = จุดส่ง
+ * backend คำนวณผ่าน OSRM คืน geometry (วาดเส้นตามถนน) + legs (ระยะถึงจุดถัดไป)
+ */
+export async function fetchRiderRoadRoute(points: { lat: number; lng: number }[]) {
+  return request<RiderRoadRoute>(`${RIDER_API_BASE}/route`, {
+    method: 'POST',
+    body: JSON.stringify({ points }),
+  });
 }
 
 export async function fetchRiderOrders(_driverCode: string) {

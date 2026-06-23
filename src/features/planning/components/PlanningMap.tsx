@@ -1,11 +1,22 @@
 import { useEffect, useMemo } from 'react';
-import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Loader2, MapPin } from 'lucide-react';
+import { Info, Loader2, MapPin, Route } from 'lucide-react';
 import type { Order } from '@/data/mock';
 import { BANGKOK_CENTER } from '@/features/rider/geocode';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
+import { formatRouteDistance } from '@/lib/routeDistance';
 import { useOrdersGeo } from '../hooks/useOrdersGeo';
+
+type PlannedRouteOverlay = {
+  /** preview = เส้นทางที่คำนวณก่อน Publish (ยังแตะหมุดปรับกลุ่มได้) */
+  preview?: boolean;
+  loading?: boolean;
+  code?: string;
+  driverName?: string;
+  distanceMeters?: number | null;
+  geometry: { lat: number; lng: number }[];
+};
 
 function numberedIcon(label: number, selected: boolean) {
   const color = selected ? 'hsl(var(--primary))' : 'hsl(var(--info))';
@@ -56,12 +67,21 @@ export function PlanningMap({
   orders,
   selectedIds,
   onToggle,
+  route,
 }: {
   orders: Order[];
   selectedIds: Set<string>;
   onToggle: (orderId: string) => void;
+  route?: PlannedRouteOverlay | null;
 }) {
   const geo = useOrdersGeo(orders);
+  const routeMode = Boolean(route);
+  // โหมด preview ยังให้แตะหมุดเพื่อเพิ่ม/นำจุดออกได้ (ระยะจะคำนวณใหม่ตามที่เลือก)
+  const lockedRoute = routeMode && !route?.preview;
+  const routePoints = useMemo<[number, number][]>(
+    () => route?.geometry.map((point) => [point.lat, point.lng]) ?? [],
+    [route],
+  );
 
   const stops = useMemo(
     () =>
@@ -74,10 +94,14 @@ export function PlanningMap({
     () => stops.map((stop) => [stop.geo!.coords!.lat, stop.geo!.coords!.lng]),
     [stops],
   );
+  const viewportPoints = useMemo<[number, number][]>(
+    () => (routePoints.length > 0 ? [...routePoints, ...points] : points),
+    [points, routePoints],
+  );
   const pendingCount = orders.filter((order) => geo[order.id]?.pending).length;
   const unlocatedCount = orders.length - stops.length - pendingCount;
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && !route) {
     return (
       <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed bg-muted/20 text-sm text-muted-foreground">
         <MapPin className="h-7 w-7 opacity-50" />
@@ -98,6 +122,18 @@ export function PlanningMap({
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <AutoResize />
+        {routePoints.length > 1 && (
+          <Polyline
+            positions={routePoints}
+            pathOptions={{
+              color: '#2563eb',
+              weight: 5,
+              // เส้น preview เป็นเส้นประ เพื่อสื่อว่ายังไม่ได้บันทึก/Publish
+              dashArray: route?.preview ? '10 8' : undefined,
+              opacity: route?.preview ? 0.85 : 1,
+            }}
+          />
+        )}
         {stops.map((stop) => {
           const selected = selectedIds.has(stop.order.id);
           return (
@@ -106,7 +142,7 @@ export function PlanningMap({
               position={[stop.geo!.coords!.lat, stop.geo!.coords!.lng]}
               icon={numberedIcon(stop.label, selected)}
               zIndexOffset={selected ? 1000 : 0}
-              eventHandlers={{ click: () => onToggle(stop.order.id) }}
+              eventHandlers={lockedRoute ? undefined : { click: () => onToggle(stop.order.id) }}
             >
               <Popup>
                 <div className="space-y-1 text-[13px]">
@@ -124,15 +160,42 @@ export function PlanningMap({
                     </div>
                   )}
                   <div className={selected ? 'font-medium text-primary' : 'font-medium text-info'}>
-                    {selected ? '✓ เลือกอยู่ — แตะเพื่อนำออก' : 'แตะเพื่อเลือกเข้ากลุ่ม'}
+                    {lockedRoute
+                      ? `จุดที่ ${stop.label} ใน Route`
+                      : selected
+                        ? '✓ เลือกอยู่ — แตะเพื่อนำออก'
+                        : 'แตะเพื่อเลือกเข้ากลุ่ม'}
                   </div>
                 </div>
               </Popup>
             </Marker>
           );
         })}
-        <FitBounds points={points} />
+        <FitBounds points={viewportPoints} />
       </MapContainer>
+
+      {route && (
+        <div className="absolute left-2 top-2 z-[500] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
+          <div className="flex items-center gap-1.5 font-medium">
+            <Route className="h-3.5 w-3.5 text-info" />
+            {route.preview ? 'พรีวิวเส้นทาง (ก่อน Publish)' : `${route.code} · ${route.driverName}`}
+          </div>
+          {route.loading ? (
+            <div className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              กำลังคำนวณระยะตามถนน…
+            </div>
+          ) : route.distanceMeters != null && route.distanceMeters > 0 ? (
+            <div className="mt-0.5 text-sm font-semibold text-foreground">
+              ระยะตามถนนประมาณ {formatRouteDistance(route.distanceMeters)}
+            </div>
+          ) : null}
+          <div className="mt-1 flex items-start gap-1 text-[11px] text-muted-foreground">
+            <Info className="mt-0.5 h-3 w-3 shrink-0" />
+            เส้นทางถนน ไม่รวมสภาพจราจร
+          </div>
+        </div>
+      )}
 
       {(pendingCount > 0 || unlocatedCount > 0) && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 z-[500] -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow-xs">

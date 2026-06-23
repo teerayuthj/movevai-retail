@@ -30,7 +30,14 @@ import { PlanSettingsCard } from './components/PlanSettingsCard';
 import { DaySummaryCard } from './components/DaySummaryCard';
 import { PlanningMap } from './components/PlanningMap';
 import { getDefaultPlanningDate, matchesPlanningQuery } from './utils/planningHelpers';
-import { fetchPlanningRoutes, retryPlanningRoutePush, type PlanningRoute } from '@/lib/retailApi';
+import {
+  fetchPlanningRoutes,
+  previewPlanningRoute,
+  retryPlanningRoutePush,
+  type PlanningRoute,
+  type RoutePreview,
+} from '@/lib/retailApi';
+import { getAdminRouteOrigin } from '@/lib/adminLocation';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 import { SuccessToast } from '@/components/ui/SuccessToast';
@@ -60,6 +67,9 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const [readiness, setReadiness] = useState<DispatchReadiness>('ready');
   const [planNote, setPlanNote] = useState('');
   const [routes, setRoutes] = useState<PlanningRoute[]>([]);
+  const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
+  const [routePreview, setRoutePreview] = useState<RoutePreview | null>(null);
+  const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
   const [operationState, setOperationState] = useState<'idle' | 'saving' | 'publishing'>('idle');
   const [operationError, setOperationError] = useState('');
   const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
@@ -132,6 +142,11 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     (order) => (order.dispatchReadiness ?? 'ready') === 'on_hold',
   );
   const singleSelectedOrder = selectedOrders.length === 1 ? selectedOrders[0] : null;
+  const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
+  const mapOrders = selectedRoute ? selectedRoute.stops.map((stop) => stop.order) : selectedOrders;
+  const mapSelectedIds = selectedRoute
+    ? new Set(selectedRoute.stops.map((stop) => stop.order.id))
+    : selectedOrderSet;
 
   useEffect(() => {
     if (!focusedOrderId) return;
@@ -210,14 +225,61 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrderSnapshot]);
 
+  // พรีวิวเส้นทางตามถนน (ต้นทาง GPS admin → จุดที่เลือก) ทันทีที่ดูบนแผนที่ ก่อน Publish
+  // คำนวณใหม่เมื่อชุด order ที่เลือกเปลี่ยน; ข้ามเมื่อกำลังดู Route ที่ Publish แล้ว (มี geometry อยู่แล้ว)
+  const previewOrderIdsKey = selectedRoute
+    ? ''
+    : selectedOrders
+        .map((order) => order.id)
+        .sort()
+        .join(',');
+
+  useEffect(() => {
+    if (paneView !== 'map' || selectedRoute || !previewOrderIdsKey) {
+      setRoutePreview(null);
+      setRoutePreviewLoading(false);
+      return;
+    }
+    let cancelled = false;
+    const orderIds = previewOrderIdsKey.split(',');
+    setRoutePreviewLoading(true);
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        const origin = await getAdminRouteOrigin();
+        try {
+          const preview = await previewPlanningRoute({ orderIds, origin });
+          if (!cancelled) setRoutePreview(preview);
+        } catch {
+          // พรีวิวล้มเหลวไม่ใช่เรื่องคอขวด — ปล่อยให้ map แสดงแค่หมุด
+          if (!cancelled) setRoutePreview(null);
+        } finally {
+          if (!cancelled) setRoutePreviewLoading(false);
+        }
+      })();
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paneView, previewOrderIdsKey]);
+
   const toggleOrderSelection = (orderId: string) => {
+    setSelectedRouteId(null);
     setSelectedOrderIds((current) =>
       current.includes(orderId) ? current.filter((id) => id !== orderId) : [...current, orderId],
     );
   };
 
   const viewOrderOnMap = (orderId: string) => {
+    setSelectedRouteId(null);
     setSelectedOrderIds((current) => (current.includes(orderId) ? current : [...current, orderId]));
+    setPaneView('map');
+  };
+
+  const viewRouteOnMap = (route: PlanningRoute) => {
+    setSelectedRouteId(route.id);
+    setSelectedOrderIds(route.stops.map((stop) => stop.order.id));
     setPaneView('map');
   };
 
@@ -227,6 +289,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
 
   const clearSelection = () => {
     setSelectedOrderIds([]);
+    setSelectedRouteId(null);
     setPlanDate(selectedDate);
     setPlanTime(getNextHourTime());
     setPlannedDriverId('');
@@ -513,27 +576,55 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                       className="flex items-center gap-1.5 text-xs font-medium"
                     >
                       <MapPin className="h-3.5 w-3.5 text-info" />
-                      ตรวจสอบจุดส่งบนแผนที่
+                      {selectedRoute
+                        ? 'เส้นทางตามถนนของ Route'
+                        : routePreview?.geometry.length
+                          ? 'เส้นทางตามถนน (พรีวิวก่อน Publish)'
+                          : 'ตรวจสอบจุดส่งบนแผนที่'}
                     </div>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
-                      {singleSelectedOrder
-                        ? `${singleSelectedOrder.code} · ${singleSelectedOrder.customer.address}`
-                        : selectedOrders.length > 1
-                          ? `แสดงเฉพาะ ${selectedOrders.length} งานที่เลือกอยู่`
-                          : 'เลือก order จากแท็บรายการเพื่อดูปลายทาง'}
+                      {selectedRoute
+                        ? `${selectedRoute.code} · ${selectedRoute.driver.name}`
+                        : singleSelectedOrder
+                          ? `${singleSelectedOrder.code} · ${singleSelectedOrder.customer.address}`
+                          : selectedOrders.length > 1
+                            ? `แสดงเฉพาะ ${selectedOrders.length} งานที่เลือกอยู่`
+                            : 'เลือก order จากแท็บรายการเพื่อดูปลายทาง'}
                     </p>
                   </div>
-                  {selectedOrders.length > 0 && (
+                  {selectedRoute ? (
+                    <Badge variant="info" className="shrink-0">
+                      {selectedRoute.stops.length} จุดส่ง
+                    </Badge>
+                  ) : selectedOrders.length > 0 ? (
                     <Badge variant="info" className="shrink-0">
                       แสดง {selectedOrders.length} จุด
                     </Badge>
-                  )}
+                  ) : null}
                 </div>
                 <div className="min-h-[260px] flex-1">
                   <PlanningMap
-                    orders={selectedOrders}
-                    selectedIds={selectedOrderSet}
+                    orders={mapOrders}
+                    selectedIds={mapSelectedIds}
                     onToggle={toggleOrderSelection}
+                    route={
+                      selectedRoute?.plannedGeometryJson
+                        ? {
+                            code: selectedRoute.code,
+                            driverName: selectedRoute.driver.name,
+                            distanceMeters: selectedRoute.plannedDistanceMeters,
+                            geometry: selectedRoute.plannedGeometryJson,
+                          }
+                        : selectedOrders.length > 0 &&
+                            (routePreview?.geometry.length || routePreviewLoading)
+                          ? {
+                              preview: true,
+                              loading: routePreviewLoading && !routePreview?.geometry.length,
+                              distanceMeters: routePreview?.distanceMeters,
+                              geometry: routePreview?.geometry ?? [],
+                            }
+                          : null
+                    }
                   />
                 </div>
               </section>
@@ -633,6 +724,8 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
 
           <PublishedRoutesCard
             routes={routes}
+            selectedRouteId={selectedRouteId}
+            onViewRoute={viewRouteOnMap}
             onCancel={(route) => {
               setRouteActionError('');
               setRouteAction({ type: 'cancel', route });

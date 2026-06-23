@@ -31,6 +31,7 @@ import {
 } from '@/data/mock';
 import { cn } from '@/lib/utils';
 import { describeProof } from '@/lib/deliveryExecution';
+import { formatRouteDistance } from '@/lib/routeDistance';
 
 export function VehicleIcon({ v }: { v: Driver['vehicle'] }) {
   if (v === 'motorcycle') return <Bike className="h-3.5 w-3.5" />;
@@ -220,6 +221,19 @@ export function OrderSummary({ order }: { order: Order }) {
           {formatTHB(order.totalValue)}
         </span>
       </div>
+      {order.deliveryRoute?.plannedDistanceMeters != null &&
+        order.deliveryRoute.plannedDistanceMeters > 0 && (
+          <div className="mt-2 rounded-md border bg-muted/20 px-2.5 py-2 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <Route className="h-3.5 w-3.5" />
+              <span>ระยะตามถนนประมาณ</span>
+              <span className="font-medium tabular-nums text-foreground">
+                {formatRouteDistance(order.deliveryRoute.plannedDistanceMeters)}
+              </span>
+            </div>
+            <div className="mt-0.5 text-[10px]">ไม่รวมสภาพจราจร</div>
+          </div>
+        )}
       <div className="mt-1 flex flex-wrap gap-1">
         <Badge variant="muted" className="gap-1 text-[10px]">
           <Coins className="h-2.5 w-2.5" />
