@@ -430,15 +430,46 @@ export type RiderRoadRoute = {
   legs: number[];
 };
 
+async function fetchPublicOsrmRoadRoute(points: { lat: number; lng: number }[]) {
+  const coords = points.map((point) => `${point.lng},${point.lat}`).join(';');
+  const url = new URL(`https://router.project-osrm.org/route/v1/driving/${coords}`);
+  url.searchParams.set('overview', 'full');
+  url.searchParams.set('geometries', 'geojson');
+
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`OSRM route failed: ${response.status}`);
+  const body = (await response.json()) as {
+    routes?: {
+      distance?: number;
+      legs?: { distance?: number }[];
+      geometry?: { coordinates?: [number, number][] };
+    }[];
+  };
+  const route = body.routes?.[0];
+  const geometry = route?.geometry?.coordinates?.map(([lng, lat]) => ({ lat, lng })) ?? [];
+
+  return {
+    geometry,
+    distanceMeters: route?.distance ?? null,
+    legs: route?.legs?.map((leg) => leg.distance ?? 0) ?? [],
+  } satisfies RiderRoadRoute;
+}
+
 /**
  * เส้นทางตามถนนระหว่างกำลังส่ง — points[0] = ตำแหน่ง rider, ที่เหลือ = จุดส่ง
  * backend คำนวณผ่าน OSRM คืน geometry (วาดเส้นตามถนน) + legs (ระยะถึงจุดถัดไป)
  */
 export async function fetchRiderRoadRoute(points: { lat: number; lng: number }[]) {
-  return request<RiderRoadRoute>(`${RIDER_API_BASE}/route`, {
-    method: 'POST',
-    body: JSON.stringify({ points }),
-  });
+  try {
+    const route = await request<RiderRoadRoute>(`${RIDER_API_BASE}/route`, {
+      method: 'POST',
+      body: JSON.stringify({ points }),
+    });
+    if (route.geometry.length >= 2 && route.legs.length > 0) return route;
+  } catch {
+    // fallback ด้านล่าง: ถ้า backend/OSRM ภายในล้มเหลว หน้า rider ยังใช้ระยะตามถนนได้
+  }
+  return fetchPublicOsrmRoadRoute(points);
 }
 
 export async function fetchRiderOrders(_driverCode: string) {

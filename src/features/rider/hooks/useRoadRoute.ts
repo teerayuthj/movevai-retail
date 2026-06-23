@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchRiderRoadRoute, type RiderRoadRoute } from '@/lib/retailApi';
 
 type Coords = { lat: number; lng: number };
+export type RoadRouteStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 const EARTH_RADIUS_METERS = 6_371_000;
 // อย่าเรียก OSRM ถี่เกินไป — รอจน rider ขยับพอสมควรหรือครบเวลาขั้นต่ำ
@@ -21,10 +22,12 @@ function metersBetween(from: Coords, to: Coords) {
 /**
  * คำนวณเส้นทางตามถนนจากตำแหน่ง rider → จุดส่งที่เหลือ (ผ่าน backend/OSRM)
  * รีเฟรชเมื่อชุดจุดส่งเปลี่ยน หรือ rider ขยับเกิน MIN_MOVE_METERS (กันยิงถี่ด้วย MIN_REFRESH_MS)
- * ระหว่างที่ยังไม่ได้เส้นจริง ผู้เรียกควร fallback ไปเส้นตรงเดิม
+ * ส่ง status กลับไปให้ผู้เรียกแสดงสถานะระหว่างรอ/ล้มเหลวโดยไม่ต้องโชว์ระยะเส้นตรงเป็นคำตอบหลัก
  */
 export function useRoadRoute(rider: Coords | null, stops: Coords[], enabled: boolean) {
   const [route, setRoute] = useState<RiderRoadRoute | null>(null);
+  const [status, setStatus] = useState<RoadRouteStatus>('idle');
+  const [error, setError] = useState('');
   const lastFetch = useRef<{ at: number; rider: Coords; stopsKey: string } | null>(null);
 
   const stopsKey = stops.map((stop) => `${stop.lat.toFixed(5)},${stop.lng.toFixed(5)}`).join('|');
@@ -32,6 +35,8 @@ export function useRoadRoute(rider: Coords | null, stops: Coords[], enabled: boo
   useEffect(() => {
     if (!enabled || !rider || stops.length === 0) {
       setRoute(null);
+      setStatus('idle');
+      setError('');
       lastFetch.current = null;
       return;
     }
@@ -45,14 +50,25 @@ export function useRoadRoute(rider: Coords | null, stops: Coords[], enabled: boo
     let cancelled = false;
     const points = [rider, ...stops];
     lastFetch.current = { at: Date.now(), rider, stopsKey };
+    setStatus((current) => (current === 'ready' ? current : 'loading'));
+    setError('');
     void fetchRiderRoadRoute(points)
       .then((result) => {
-        if (!cancelled) setRoute(result.geometry.length >= 2 ? result : null);
+        if (cancelled) return;
+        if (result.geometry.length >= 2 && result.legs.length > 0) {
+          setRoute(result);
+          setStatus('ready');
+          return;
+        }
+        setRoute(null);
+        setStatus('error');
+        setError('ไม่พบเส้นทางถนนสำหรับตำแหน่งนี้');
       })
-      .catch(() => {
-        // เส้นทางถนนล้มเหลวไม่เป็นไร — ปล่อยให้ map ใช้เส้นตรง fallback
+      .catch((reason) => {
         if (!cancelled) {
           setRoute(null);
+          setStatus('error');
+          setError(reason instanceof Error ? reason.message : 'คำนวณเส้นทางถนนไม่สำเร็จ');
           lastFetch.current = null;
         }
       });
@@ -63,5 +79,5 @@ export function useRoadRoute(rider: Coords | null, stops: Coords[], enabled: boo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, rider?.lat, rider?.lng, stopsKey]);
 
-  return route;
+  return { route, status, error };
 }

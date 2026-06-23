@@ -140,7 +140,11 @@ export function RiderRouteMap({
 
   // เส้นทางตามถนน (OSRM) จากตำแหน่ง rider → จุดส่งที่เหลือ — แทนเส้นตรงเดิม
   const stopCoords = useMemo(() => located.map((stop) => stop.coords!), [located]);
-  const roadRoute = useRoadRoute(location, stopCoords, showRemainingDistance && Boolean(location));
+  const {
+    route: roadRoute,
+    status: roadRouteStatus,
+    error: roadRouteError,
+  } = useRoadRoute(location, stopCoords, showRemainingDistance && Boolean(location));
   const roadGeometry = useMemo<[number, number][]>(
     () => roadRoute?.geometry.map((point) => [point.lat, point.lng]) ?? [],
     [roadRoute],
@@ -152,7 +156,7 @@ export function RiderRouteMap({
       : null;
   // legs[0] = ระยะตามถนนจากตำแหน่งปัจจุบัน → จุดส่งถัดไป
   const roadDistance = showRemainingDistance ? (roadRoute?.legs?.[0] ?? null) : null;
-  const remainingDistance = roadDistance ?? straightDistance;
+  const remainingDistance = roadDistance;
   // การตัดสินว่า "ถึงบริเวณปลายทาง" ยังใช้ระยะเส้นตรง + ความแม่นยำ GPS (ตรงกับ logic ปิดงานจริง)
   const arrived =
     straightDistance != null &&
@@ -160,13 +164,19 @@ export function RiderRouteMap({
     location != null &&
     location.accuracy <= 100;
   const arrivalStatus =
-    remainingDistance == null
+    roadDistance == null
       ? null
       : arrived
         ? 'ถึงบริเวณปลายทางแล้ว'
-        : remainingDistance <= 1_000
+        : roadDistance <= 1_000
           ? 'ใกล้ถึงปลายทาง'
           : 'ระยะถึงปลายทาง';
+  const roadRouteMessage =
+    roadRouteStatus === 'loading'
+      ? 'กำลังคำนวณระยะตามถนน'
+      : roadRouteStatus === 'error'
+        ? 'คำนวณระยะตามถนนไม่ได้'
+        : null;
 
   return (
     <div className="relative isolate h-full w-full">
@@ -186,8 +196,7 @@ export function RiderRouteMap({
             positions={roadGeometry}
             pathOptions={{ color: 'hsl(var(--info))', weight: 4, opacity: 0.85 }}
           />
-        ) : routePoints.length >= 2 ? (
-          // fallback ระหว่างยังไม่ได้เส้นตามถนน — เส้นตรงประ
+        ) : !showRemainingDistance && routePoints.length >= 2 ? (
           <Polyline
             positions={routePoints}
             pathOptions={{ color: 'hsl(var(--info))', weight: 3, opacity: 0.7, dashArray: '6 6' }}
@@ -282,26 +291,46 @@ export function RiderRouteMap({
         )}
       </div>
 
-      {remainingDistance != null && destination && (
-        <div className="absolute bottom-2 right-2 z-[1000] max-w-[70%] rounded-lg border bg-background/95 px-3 py-2 text-right shadow-sm backdrop-blur">
-          <div
-            className={
-              remainingDistance <= 1_000
-                ? 'text-xs font-semibold text-success'
-                : 'text-xs font-medium'
-            }
-          >
-            {arrivalStatus}
+      {destination &&
+        (remainingDistance != null || (showRemainingDistance && roadRouteMessage)) && (
+          <div className="absolute bottom-2 right-2 z-[1000] max-w-[70%] rounded-lg border bg-background/95 px-3 py-2 text-right shadow-sm backdrop-blur">
+            {remainingDistance != null ? (
+              <>
+                <div
+                  className={
+                    remainingDistance <= 1_000
+                      ? 'text-xs font-semibold text-success'
+                      : 'text-xs font-medium'
+                  }
+                >
+                  {arrivalStatus}
+                </div>
+                <div className="text-xl font-semibold tabular-nums">
+                  {formatRemainingDistance(remainingDistance)}
+                </div>
+                <div className="truncate text-[10px] text-muted-foreground">
+                  ถึง {destination.order.customer.name} · ระยะตามถนนโดยประมาณ
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-end gap-1 text-xs font-medium text-muted-foreground">
+                  {roadRouteStatus === 'loading' ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <AlertCircle className="h-3.5 w-3.5 text-destructive" />
+                  )}
+                  {roadRouteMessage}
+                </div>
+                <div className="max-w-48 truncate text-[10px] text-muted-foreground">
+                  {roadRouteStatus === 'error'
+                    ? roadRouteError || 'ลองขยับตำแหน่งหรือเปิดใหม่อีกครั้ง'
+                    : `ถึง ${destination.order.customer.name}`}
+                </div>
+              </>
+            )}
           </div>
-          <div className="text-xl font-semibold tabular-nums">
-            {formatRemainingDistance(remainingDistance)}
-          </div>
-          <div className="truncate text-[10px] text-muted-foreground">
-            ถึง {destination.order.customer.name} ·{' '}
-            {roadDistance != null ? 'ระยะตามถนนโดยประมาณ' : 'ระยะเส้นตรงโดยประมาณ'}
-          </div>
-        </div>
-      )}
+        )}
 
       {pendingCount > 0 && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 z-[1000] -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow-xs">
