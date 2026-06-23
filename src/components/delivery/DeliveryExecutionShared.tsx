@@ -1,3 +1,4 @@
+import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { DriverAvatar } from '@/components/DriverAvatar';
@@ -16,6 +17,9 @@ import {
   ShieldCheck,
   Sparkles,
   Truck as TruckIcon,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import {
   type CancelReason,
@@ -337,8 +341,124 @@ export function DriverSummary({ driver, order }: { driver: Driver | null; order?
   );
 }
 
+function ImageLightbox({
+  src,
+  alt,
+  onWhite,
+  onClose,
+}: {
+  src: string;
+  alt: string;
+  onWhite?: boolean;
+  onClose: () => void;
+}) {
+  const MIN = 1;
+  const MAX = 5;
+  const [scale, setScale] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
+
+  const reset = () => {
+    setScale(1);
+    setOffset({ x: 0, y: 0 });
+  };
+  const zoomBy = (delta: number) =>
+    setScale((s) => {
+      const next = Math.min(MAX, Math.max(MIN, +(s + delta).toFixed(2)));
+      if (next === MIN) setOffset({ x: 0, y: 0 });
+      return next;
+    });
+
+  const onPointerDown = (e: ReactPointerEvent) => {
+    if (scale <= 1) return;
+    e.preventDefault();
+    drag.current = { x: e.clientX, y: e.clientY, ox: offset.x, oy: offset.y };
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: ReactPointerEvent) => {
+    if (!drag.current) return;
+    setOffset({
+      x: drag.current.ox + (e.clientX - drag.current.x),
+      y: drag.current.oy + (e.clientY - drag.current.y),
+    });
+  };
+  const onPointerUp = () => {
+    drag.current = null;
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      onWheel={(e) => zoomBy(e.deltaY < 0 ? 0.25 : -0.25)}
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-black/85 p-4 backdrop-blur-sm"
+    >
+      <button
+        type="button"
+        aria-label="ปิด"
+        onClick={onClose}
+        className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25"
+      >
+        <X className="h-5 w-5" />
+      </button>
+
+      <div
+        className="absolute bottom-6 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-full bg-white/15 p-1 text-white backdrop-blur"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          aria-label="ซูมออก"
+          onClick={() => zoomBy(-0.5)}
+          disabled={scale <= MIN}
+          className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-40"
+        >
+          <ZoomOut className="h-5 w-5" />
+        </button>
+        <button
+          type="button"
+          onClick={reset}
+          className="min-w-[3rem] rounded-full px-2 text-sm tabular-nums hover:bg-white/20"
+        >
+          {Math.round(scale * 100)}%
+        </button>
+        <button
+          type="button"
+          aria-label="ซูมเข้า"
+          onClick={() => zoomBy(0.5)}
+          disabled={scale >= MAX}
+          className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-40"
+        >
+          <ZoomIn className="h-5 w-5" />
+        </button>
+      </div>
+
+      <img
+        src={src}
+        alt={alt}
+        draggable={false}
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={() => (scale > 1 ? reset() : zoomBy(1))}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})` }}
+        className={cn(
+          'max-h-full max-w-full select-none rounded-lg object-contain shadow-2xl transition-transform',
+          onWhite && 'bg-white p-4',
+          scale > 1 ? 'cursor-grab active:cursor-grabbing' : 'cursor-zoom-in',
+        )}
+      />
+    </div>
+  );
+}
+
 export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; driverName?: string }) {
   const pod = order.proofOfDelivery;
+  const [preview, setPreview] = useState<{ src: string; alt: string; onWhite?: boolean } | null>(
+    null,
+  );
   if (!pod) return null;
 
   const items = describeProof(pod);
@@ -370,15 +490,14 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
       {pod.photos && pod.photos.length > 0 && (
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {pod.photos.map((src, i) => (
-            <a
+            <button
               key={i}
-              href={src}
-              target="_blank"
-              rel="noreferrer"
-              className="aspect-4/3 overflow-hidden rounded-md border border-success/30"
+              type="button"
+              onClick={() => setPreview({ src, alt: `รูปหลักฐาน ${i + 1}` })}
+              className="aspect-4/3 overflow-hidden rounded-md border border-success/30 transition hover:opacity-90"
             >
               <img src={src} alt={`รูปหลักฐาน ${i + 1}`} className="h-full w-full object-cover" />
-            </a>
+            </button>
           ))}
         </div>
       )}
@@ -386,15 +505,32 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
       {pod.signatureDataUrl && (
         <div className="mt-2">
           <div className="text-[10px] text-success/80">ลายเซ็นผู้รับ</div>
-          <img
-            src={pod.signatureDataUrl}
-            alt="ลายเซ็นผู้รับ"
-            className="mt-1 h-16 w-full rounded-md border border-success/30 bg-white object-contain"
-          />
+          <button
+            type="button"
+            onClick={() =>
+              setPreview({ src: pod.signatureDataUrl!, alt: 'ลายเซ็นผู้รับ', onWhite: true })
+            }
+            className="mt-1 block w-full"
+          >
+            <img
+              src={pod.signatureDataUrl}
+              alt="ลายเซ็นผู้รับ"
+              className="h-16 w-full rounded-md border border-success/30 bg-white object-contain transition hover:opacity-90"
+            />
+          </button>
         </div>
       )}
 
       <div className="mt-2 text-[10px] text-success/80">บันทึกโดย {capturedBy}</div>
+
+      {preview && (
+        <ImageLightbox
+          src={preview.src}
+          alt={preview.alt}
+          onWhite={preview.onWhite}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }

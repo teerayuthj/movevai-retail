@@ -30,7 +30,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Map as MapIcon,
   PackageCheck,
+  PenLine,
   RefreshCw,
   Truck,
   Undo2,
@@ -43,6 +45,7 @@ import { TrackingCard } from './components/TrackingCard';
 import { TrackingDetailDrawer } from './components/TrackingDetailDrawer';
 import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './utils/trackingSearch';
 import { LiveRiderMap } from './components/LiveRiderMap';
+import { RiderOrderMapPage } from '@/features/rider/components/RiderOrderMapPage';
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
@@ -84,6 +87,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [riderCloseTargetId, setRiderCloseTargetId] = useState<string | null>(null);
+  const [routeHistoryOrderId, setRouteHistoryOrderId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -119,6 +123,10 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     null;
   const selectedDriver =
     drivers.find((driver) => driver.id === selectedOrder?.assignedDriverId) ?? null;
+  const routeHistoryOrder =
+    trackingOrders.find((order) => order.id === routeHistoryOrderId) ??
+    orders.find((order) => order.id === routeHistoryOrderId) ??
+    null;
 
   const totalPages = Math.max(1, Math.ceil(trackingTotal / PAGE_SIZE));
 
@@ -320,9 +328,17 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
 
     if (order.status === 'pending_confirmation') {
       return (
-        <div className="flex gap-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Button
-            className="flex-1"
+            variant="outline"
+            className="w-full"
+            onClick={() => setRouteHistoryOrderId(order.id)}
+          >
+            <MapIcon className="h-4 w-4" />
+            เส้นทาง
+          </Button>
+          <Button
+            className="w-full"
             onClick={async () => {
               await confirmDelivery(order.id);
               setSelectedOrderId(null);
@@ -332,7 +348,15 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             <CheckCircle2 className="h-4 w-4" />
             ยืนยันปิดงาน
           </Button>
-          <Button variant="outline" className="flex-1" onClick={() => setFailTargetId(order.id)}>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setRiderCloseTargetId(order.id)}
+          >
+            <PenLine className="h-4 w-4" />
+            แก้ไขหลักฐาน
+          </Button>
+          <Button variant="outline" className="w-full" onClick={() => setFailTargetId(order.id)}>
             <XCircle className="h-4 w-4" />
             ตีกลับ
           </Button>
@@ -585,6 +609,16 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         onClose={() => setSelectedOrderId(null)}
         actions={selectedOrder ? renderActions(selectedOrder) : undefined}
       />
+
+      {routeHistoryOrderId && (
+        <div className="fixed inset-0 z-[70] bg-background">
+          <RiderOrderMapPage
+            order={routeHistoryOrder}
+            orderId={routeHistoryOrderId}
+            onBack={() => setRouteHistoryOrderId(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }

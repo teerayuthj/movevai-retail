@@ -68,11 +68,21 @@ export function PlanningMap({
   selectedIds,
   onToggle,
   route,
+  emptyLabel = 'เลือก order เพื่อดูปลายทางบนแผนที่',
+  selectedLabel = '✓ เลือกอยู่ — แตะเพื่อนำออก',
+  unselectedLabel = 'แตะเพื่อเลือกเข้ากลุ่ม',
+  lockedLabel,
+  routePreviewTitle = 'พรีวิวเส้นทาง (ก่อน Publish)',
 }: {
   orders: Order[];
   selectedIds: Set<string>;
   onToggle: (orderId: string) => void;
   route?: PlannedRouteOverlay | null;
+  emptyLabel?: string;
+  selectedLabel?: string;
+  unselectedLabel?: string;
+  lockedLabel?: string;
+  routePreviewTitle?: string;
 }) {
   const geo = useOrdersGeo(orders);
   const routeMode = Boolean(route);
@@ -105,7 +115,7 @@ export function PlanningMap({
     return (
       <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed bg-muted/20 text-sm text-muted-foreground">
         <MapPin className="h-7 w-7 opacity-50" />
-        เลือก order เพื่อดูปลายทางบนแผนที่
+        {emptyLabel}
       </div>
     );
   }
@@ -161,10 +171,10 @@ export function PlanningMap({
                   )}
                   <div className={selected ? 'font-medium text-primary' : 'font-medium text-info'}>
                     {lockedRoute
-                      ? `จุดที่ ${stop.label} ใน Route`
+                      ? (lockedLabel ?? `จุดที่ ${stop.label} ใน Route`)
                       : selected
-                        ? '✓ เลือกอยู่ — แตะเพื่อนำออก'
-                        : 'แตะเพื่อเลือกเข้ากลุ่ม'}
+                        ? selectedLabel
+                        : unselectedLabel}
                   </div>
                 </div>
               </Popup>
@@ -178,7 +188,7 @@ export function PlanningMap({
         <div className="absolute left-2 top-2 z-[500] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
           <div className="flex items-center gap-1.5 font-medium">
             <Route className="h-3.5 w-3.5 text-info" />
-            {route.preview ? 'พรีวิวเส้นทาง (ก่อน Publish)' : `${route.code} · ${route.driverName}`}
+            {route.preview ? routePreviewTitle : `${route.code} · ${route.driverName}`}
           </div>
           {route.loading ? (
             <div className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">

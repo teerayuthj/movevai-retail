@@ -647,7 +647,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                       ? 'ไม่พบงานที่ตรงกับคำค้นหา'
                       : otherPlanDates.length > 0
                         ? 'ไม่มีงานในวันที่เลือก — เลือกวันที่มีงานจากแถบด้านบน'
-                        : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “จ่ายงานวันนี้”`}
+                        : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “คิวงานพร้อมจ่าย”`}
                   </div>
                 )}
               </div>

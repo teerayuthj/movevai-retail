@@ -5,10 +5,7 @@ import { ArrowLeft, AlertCircle, Loader2, MapPin, PackageCheck } from 'lucide-re
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Order } from '@/data/mock';
-import {
-  fetchRiderOrderRouteHistory,
-  type RiderOrderRouteHistory,
-} from '@/lib/retailApi';
+import { fetchRiderOrderRouteHistory, type RiderOrderRouteHistory } from '@/lib/retailApi';
 import { BANGKOK_CENTER } from '../geocode';
 import { useRouteStops } from '../hooks/useRouteStops';
 
@@ -123,6 +120,17 @@ export function RiderOrderMapPage({
     [history],
   );
 
+  // เส้นทางที่ snap เกาะถนนแล้ว (จาก OSRM map matching) — ใช้เป็นเส้นหลักให้ "เกาะ street"
+  // ถ้า match ไม่ได้ ค่อย fallback ไปวาดจุด GPS ดิบ
+  const matchedPoints = useMemo<[number, number][]>(
+    () =>
+      (history?.matchedGeometryJson ?? [])
+        .map((point) => toLatLng(point))
+        .filter((point): point is [number, number] => Boolean(point)),
+    [history],
+  );
+  const ridePath = matchedPoints.length >= 2 ? matchedPoints : actualPoints;
+
   const plannedPoints = useMemo<[number, number][]>(
     () =>
       (history?.session?.plannedGeometryJson ?? history?.route?.plannedGeometryJson ?? [])
@@ -137,12 +145,17 @@ export function RiderOrderMapPage({
   );
 
   const fitPoints = useMemo(
-    () => [...actualPoints, ...plannedPoints, ...(destination ? [destination] : []), ...(proofPoint ? [proofPoint] : [])],
-    [actualPoints, destination, plannedPoints, proofPoint],
+    () => [
+      ...ridePath,
+      ...plannedPoints,
+      ...(destination ? [destination] : []),
+      ...(proofPoint ? [proofPoint] : []),
+    ],
+    [ridePath, destination, plannedPoints, proofPoint],
   );
 
-  const firstPoint = actualPoints[0] ?? null;
-  const lastPoint = actualPoints[actualPoints.length - 1] ?? null;
+  const firstPoint = ridePath[0] ?? null;
+  const lastPoint = ridePath[ridePath.length - 1] ?? null;
   const displayCode = order?.code ?? history?.order.code ?? orderId;
   const displayRoute = order?.deliveryRoute?.code ?? history?.route?.code;
 
@@ -190,9 +203,9 @@ export function RiderOrderMapPage({
               pathOptions={{ color: '#64748b', weight: 3, opacity: 0.65, dashArray: '8 8' }}
             />
           )}
-          {actualPoints.length >= 2 && (
+          {ridePath.length >= 2 && (
             <Polyline
-              positions={actualPoints}
+              positions={ridePath}
               pathOptions={{ color: '#2563eb', weight: 5, opacity: 0.85 }}
             />
           )}
@@ -235,7 +248,8 @@ export function RiderOrderMapPage({
                   <div className="space-y-1 text-[13px]">
                     <div className="font-semibold">จุดส่งจริงจาก GPS ตอนปิดงาน</div>
                     <div className="text-muted-foreground">
-                      {history?.proofLocation?.label ?? formatDateTime(history?.proofLocation?.capturedAt)}
+                      {history?.proofLocation?.label ??
+                        formatDateTime(history?.proofLocation?.capturedAt)}
                     </div>
                   </div>
                 </Popup>
@@ -268,6 +282,13 @@ export function RiderOrderMapPage({
                   ? `${actualPoints.length} จุด · ${formatDistance(history?.session?.distanceMeters)}`
                   : 'ยังไม่มีจุด GPS ที่บันทึกได้'}
               </div>
+              {actualPoints.length > 0 && (
+                <div className="text-[11px] text-muted-foreground">
+                  {matchedPoints.length >= 2
+                    ? 'เส้นทางเกาะถนนจากจุด GPS จริง'
+                    : 'แสดงจุด GPS ดิบ (snap ถนนไม่ได้)'}
+                </div>
+              )}
             </div>
           )}
         </div>

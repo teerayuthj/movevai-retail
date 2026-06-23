@@ -616,6 +616,8 @@ export type RiderOrderRouteHistory = {
     label?: string | null;
     capturedAt: string;
   } | null;
+  /** เส้นทาง GPS ที่ rider วิ่งจริง snap ให้เกาะถนนแล้ว (map matching) — null ถ้า match ไม่ได้ */
+  matchedGeometryJson?: { lat: number | string; lng: number | string }[] | null;
   session: RiderTrackingHistory | null;
 };
 
