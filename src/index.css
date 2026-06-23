@@ -219,8 +219,14 @@
   .leaflet-container {
     isolation: isolate;
   }
+  html {
+    /* กัน double-tap zoom และ delay 300ms บนมือถือ — pan/scroll ปกติยังทำงาน */
+    touch-action: manipulation;
+  }
   body {
     @apply bg-background text-foreground;
+    /* กัน rubber-band/overscroll ที่ทำให้เนื้อหาเด้งหลุดขอบบน PWA */
+    overscroll-behavior: none;
     font-feature-settings:
       'rlig' 1,
       'calt' 1;

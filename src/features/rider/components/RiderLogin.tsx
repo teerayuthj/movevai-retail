@@ -3,6 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { loginRider, type RiderSession } from '@/lib/retailApi';
 
+const TEST_PHONE = '0891112233';
+const TEST_PIN = '123456';
+
 function deviceId() {
   const key = 'movevai:rider-device-id';
   const existing = localStorage.getItem(key);
@@ -36,6 +39,30 @@ export function RiderLogin({ onLogin }: { onLogin: (session: RiderSession) => vo
         <div>
           <h1 className="text-xl font-semibold">Rider Login</h1>
           <p className="text-sm text-muted-foreground">ใช้เบอร์โทรและ PIN ที่ได้รับจากผู้ดูแล</p>
+        </div>
+        <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+          <p className="font-medium text-warning-foreground">โหมดทดสอบ — ใช้บัญชีตัวอย่างนี้</p>
+          <div className="space-y-0.5 text-muted-foreground">
+            <p>
+              เบอร์โทร:{' '}
+              <span className="font-mono font-semibold text-foreground">{TEST_PHONE}</span>
+            </p>
+            <p>
+              PIN: <span className="font-mono font-semibold text-foreground">{TEST_PIN}</span>
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              setPhone(TEST_PHONE);
+              setPin(TEST_PIN);
+            }}
+          >
+            กรอกบัญชีทดสอบให้อัตโนมัติ
+          </Button>
         </div>
         <Input
           inputMode="tel"
