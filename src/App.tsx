@@ -32,6 +32,9 @@ const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default:
 const MessengerConsolePage = lazy(() =>
   import('@/pages/MessengerConsole').then((m) => ({ default: m.MessengerConsolePage })),
 );
+const CustomerTrackingPage = lazy(() =>
+  import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
+);
 
 // อยู่ "ใน" Suspense → จะ mount ก็ต่อเมื่อ chunk ของหน้าโหลดเสร็จแล้ว
 // (ตอน suspend ทั้ง subtree ถูกแทนด้วย fallback, effect นี้จึงยังไม่ยิง)
@@ -45,6 +48,7 @@ function SplashGate() {
 
 export default function App() {
   const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
+  const [locationPathname, setLocationPathname] = useState(() => window.location.pathname);
   const [locationSearch, setLocationSearch] = useState(() => window.location.search);
 
   useEffect(() => {
@@ -57,6 +61,7 @@ export default function App() {
       }
 
       setPage(nextPage);
+      setLocationPathname(window.location.pathname);
       setLocationSearch(window.location.search);
     };
 
@@ -75,6 +80,7 @@ export default function App() {
     }
 
     setPage(nextPage);
+    setLocationPathname(nextPath);
     setLocationSearch(options?.search ?? '');
   };
 
@@ -88,6 +94,15 @@ export default function App() {
           <MessengerConsolePage onExit={() => navigateToPage('overview')} />
         </Suspense>
       </RetailProvider>
+    );
+  }
+
+  if (page === 'customer_tracking') {
+    return (
+      <Suspense fallback={null}>
+        <SplashGate />
+        <CustomerTrackingPage pathname={locationPathname} />
+      </Suspense>
     );
   }
 

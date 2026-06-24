@@ -177,10 +177,11 @@ function normalizeRoute(route: PlanningRoute): PlanningRoute {
 }
 
 // อ่าน orders จาก backend สำหรับ dashboard ฝั่ง web (ใช้ refresh/poll)
-export async function fetchAppOrders(params?: { status?: string; take?: number }) {
+export async function fetchAppOrders(params?: { status?: string; take?: number; q?: string }) {
   const search = new URLSearchParams();
   if (params?.status) search.set('status', params.status);
   if (params?.take != null) search.set('take', String(params.take));
+  if (params?.q?.trim()) search.set('q', params.q.trim());
   const query = search.toString();
   const result = await request<{ items: ApiOrder[]; total: number }>(
     `${APP_API_BASE}/orders${query ? `?${query}` : ''}`,
@@ -315,6 +316,68 @@ export function fetchTrackingSessions(params?: { date?: string; driverCode?: str
 export async function fetchAppOrder(orderId: string) {
   const result = await request<ApiOrder>(`${APP_API_BASE}/orders/${encodeURIComponent(orderId)}`);
   return normalizeOrder(result);
+}
+
+/**
+ * ดึง order สำหรับหน้าติดตามลูกค้า โดยรับได้ทั้ง order **code** (ORD-...) ที่ลูกค้ารู้จัก
+ * และ order **id** (O-...) ของลิงก์เก่า — backend `/orders/:id` รับเฉพาะ id
+ * จึง resolve code → id ผ่าน q-search ก่อน แล้วค่อยดึงรายละเอียดเต็มด้วย id
+ */
+export async function fetchCustomerOrder(idOrCode: string) {
+  try {
+    const { orders } = await fetchAppOrders({ q: idOrCode, take: 5 });
+    const match = orders.find((order) => order.code === idOrCode || order.id === idOrCode);
+    if (match) return fetchAppOrder(match.id);
+  } catch {
+    // q-search ใช้ไม่ได้ — fallback ไป lookup ด้วย id ตรงๆ ด้านล่าง
+  }
+  return fetchAppOrder(idOrCode);
+}
+
+/**
+ * ตำแหน่งล่าสุดของคนส่งที่กำลังวิ่งไปส่งออเดอร์นี้ — projection แบบ privacy-minimal
+ * สำหรับหน้าติดตามฝั่งลูกค้า. คืน null เมื่อยังไม่มีคนเริ่มวิ่ง/ไม่มีสัญญาณ GPS.
+ *
+ * NOTE (prototype): กรองจาก endpoint /tracking/riders/latest ฝั่ง client.
+ * production ควรมี endpoint สาธารณะเฉพาะ order เดียว + ผูกกับ tracking token + OTP.
+ */
+export type CustomerLiveTracking = {
+  /** ชื่อต้นของคนส่ง (ไม่เปิดเผยชื่อเต็ม/เบอร์) */
+  messengerName: string;
+  recordedAt: string;
+  position: { lat: number; lng: number };
+  destination: { lat: number; lng: number } | null;
+};
+
+function toLatLng(value: { lat: number | string; lng: number | string }) {
+  const lat = typeof value.lat === 'string' ? Number(value.lat) : value.lat;
+  const lng = typeof value.lng === 'string' ? Number(value.lng) : value.lng;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+export async function fetchCustomerLiveTracking(
+  orderId: string,
+): Promise<CustomerLiveTracking | null> {
+  const sessions = await fetchLiveMessengers();
+  for (const session of sessions) {
+    const isForOrder = session.destinations?.some((dest) => dest.orderId === orderId);
+    if (!isForOrder || !session.latest) continue;
+
+    const position = toLatLng(session.latest);
+    if (!position) continue;
+
+    const destRaw = session.destinations?.find((dest) => dest.orderId === orderId);
+    const destination = destRaw ? toLatLng(destRaw) : null;
+
+    return {
+      messengerName: session.driver.name.split(/\s+/)[0] ?? 'พนักงานจัดส่ง',
+      recordedAt: session.latest.recordedAt,
+      position,
+      destination,
+    };
+  }
+  return null;
 }
 
 export async function fetchAppDrivers() {

@@ -9,7 +9,8 @@ export type PageKey =
   | 'planning'
   | 'postal'
   | 'drivers'
-  | 'messenger';
+  | 'messenger'
+  | 'customer_tracking';
 
 type RouteDefinition = {
   page: PageKey;
@@ -29,6 +30,7 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'postal', path: '/thai-post' },
   { page: 'drivers', path: '/drivers' },
   { page: 'messenger', path: '/messenger' },
+  { page: 'customer_tracking', path: '/customer-track' },
 ];
 
 const routeByPage = Object.fromEntries(
@@ -48,6 +50,10 @@ export function getPathForPage(page: PageKey) {
 export function getPageFromPath(pathname: string): PageKey {
   const normalizedPath = normalizePath(pathname);
 
+  if (normalizedPath === '/customer-track' || normalizedPath.startsWith('/customer-track/')) {
+    return 'customer_tracking';
+  }
+
   // /messenger และ sub-route ทั้งหมด (/messenger/assigned, /messenger/in-transit, ...) = page 'messenger'
   // tab routing ภายใน /messenger จัดการที่ src/features/messenger (messengerTabs.ts)
   if (normalizedPath === '/messenger' || normalizedPath.startsWith('/messenger/')) {
@@ -64,6 +70,7 @@ export function getPageFromPath(pathname: string): PageKey {
 
 export function getCanonicalPath(pathname: string) {
   const page = getPageFromPath(pathname);
+  if (page === 'customer_tracking') return normalizePath(pathname);
   // messenger เก็บ sub-path ไว้ (อย่ายุบ /messenger/delivered → /messenger) — ให้ feature redirect เอง
   if (page === 'messenger') return normalizePath(pathname);
   return getPathForPage(page);

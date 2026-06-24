@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer } from '@/components/DetailDrawer';
+import { CustomerTrackingQrCard } from '@/components/CustomerTrackingQrCard';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import {
   DriverSummary,
@@ -71,6 +72,8 @@ export function TrackingDetailDrawer({
               </Badge>
             )}
           </div>
+
+          <CustomerTrackingQrCard order={order} />
 
           {!isDetailLoading && order.proofOfDelivery && (
             <ProofOfDeliveryInfo order={order} driverName={driver?.name} />

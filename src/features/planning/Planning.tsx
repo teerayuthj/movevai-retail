@@ -46,6 +46,16 @@ function scheduledRoutesOnly(routes: PlanningRoute[]) {
   return routes.filter((route) => route.dispatchMode !== 'urgent');
 }
 
+function uniqueDriverIds(orders: Order[]) {
+  return Array.from(
+    new Set(
+      orders
+        .map((order) => order.deliveryPlan?.plannedDriverId)
+        .filter((driverId): driverId is string => Boolean(driverId)),
+    ),
+  );
+}
+
 export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const {
     orders,
@@ -63,7 +73,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [planDate, setPlanDate] = useState(() => getDefaultPlanningDate(orders));
   const [planTime, setPlanTime] = useState(() => getNextHourTime());
-  const [plannedDriverId, setPlannedDriverId] = useState('');
+  const [plannedDriverIds, setPlannedDriverIds] = useState<string[]>([]);
   const [readiness, setReadiness] = useState<DispatchReadiness>('ready');
   const [planNote, setPlanNote] = useState('');
   const [routes, setRoutes] = useState<PlanningRoute[]>([]);
@@ -218,7 +228,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
 
     setPlanDate(sharedDate ?? selectedDate);
     setPlanTime(sharedTime || getNextHourTime());
-    setPlannedDriverId(sharedDriver ?? '');
+    setPlannedDriverIds(sharedDriver ? [sharedDriver] : uniqueDriverIds(selectedOrders));
     setReadiness(sharedReadiness);
     setPlanNote(sharedNote);
     // selectedOrderSnapshot intentionally captures the fields that drive this form.
@@ -302,7 +312,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setSelectedRouteId(null);
     setPlanDate(selectedDate);
     setPlanTime(getNextHourTime());
-    setPlannedDriverId('');
+    setPlannedDriverIds([]);
     setReadiness('ready');
     setPlanNote('');
   };
@@ -312,16 +322,33 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setOperationState('saving');
     setOperationError('');
     try {
-      await planOrders(
-        selectedOrders.map((order) => order.id),
-        {
-          plannedDate: planDate,
-          plannedTime: planTime || undefined,
-          plannedDriverId: plannedDriverId || undefined,
-          dispatchReadiness: readiness,
-          note: planNote.trim() || undefined,
-        },
-      );
+      const baseInput = {
+        plannedDate: planDate,
+        plannedTime: planTime || undefined,
+        dispatchReadiness: readiness,
+        note: planNote.trim() || undefined,
+      };
+      if (plannedDriverIds.length <= 1) {
+        await planOrders(
+          selectedOrders.map((order) => order.id),
+          {
+            ...baseInput,
+            plannedDriverId: plannedDriverIds[0],
+          },
+        );
+      } else {
+        const ordersByDriver = new Map<string, string[]>();
+        selectedOrders.forEach((order, index) => {
+          const driverId = plannedDriverIds[index % plannedDriverIds.length];
+          ordersByDriver.set(driverId, [...(ordersByDriver.get(driverId) ?? []), order.id]);
+        });
+        for (const [driverId, orderIds] of ordersByDriver) {
+          await planOrders(orderIds, {
+            ...baseInput,
+            plannedDriverId: driverId,
+          });
+        }
+      }
       setSelectedDate(planDate);
     } catch (error) {
       setOperationError(error instanceof Error ? error.message : String(error));
@@ -677,10 +704,14 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                 key={driver.id}
                 driver={driver}
                 plannedLoad={getPlannedLoadCount(orders, driver.id, selectedDate)}
-                selected={plannedDriverId === driver.id}
+                selected={plannedDriverIds.includes(driver.id)}
                 selectedDate={selectedDate}
                 onSelect={() =>
-                  setPlannedDriverId((current) => (current === driver.id ? '' : driver.id))
+                  setPlannedDriverIds((current) =>
+                    current.includes(driver.id)
+                      ? current.filter((id) => id !== driver.id)
+                      : [...current, driver.id],
+                  )
                 }
               />
             ))}
@@ -695,8 +726,8 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
             onPlanDate={setPlanDate}
             planTime={planTime}
             onPlanTime={setPlanTime}
-            plannedDriverId={plannedDriverId}
-            onPlannedDriverId={setPlannedDriverId}
+            plannedDriverIds={plannedDriverIds}
+            onPlannedDriverIds={setPlannedDriverIds}
             readiness={readiness}
             onReadiness={setReadiness}
             planNote={planNote}
