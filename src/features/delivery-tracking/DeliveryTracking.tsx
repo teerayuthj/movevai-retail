@@ -400,15 +400,21 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     { view: 'in_transit', label: 'กำลังจัดส่ง', icon: Truck, count: trackingCounts.in_transit },
     { view: 'pending', label: 'รอยืนยัน', icon: CheckCircle2, count: trackingCounts.pending },
     { view: 'returning', label: 'ส่งกลับ', icon: Undo2, count: trackingCounts.returning },
-    { view: 'closed', label: 'ปิดงานแล้ว', icon: PackageCheck, count: trackingCounts.closed },
+    { view: 'closed', label: 'ปิดล่าสุด', icon: PackageCheck, count: trackingCounts.closed },
   ];
+  const currentTabLabel = tabs.find((tab) => tab.view === view)?.label ?? 'ต้องดำเนินการ';
+  const currentViewDescription =
+    view === 'closed'
+      ? 'แสดงงานที่ปิดใน 24 ชั่วโมงล่าสุด — รายการเก่าย้ายไปดูที่ Tracking History'
+      : 'งานที่ยังไม่ปิดจะแสดงค้างไว้จนกว่าจะจัดการเสร็จ แม้เป็นงานต่างจังหวัดหรือค้างหลายวัน';
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">ติดตามการจัดส่ง</h1>
         <p className="text-sm text-muted-foreground">
-          สายพานงานตามสถานะจริง — งานที่ต้องลงมืออยู่บนสุด จัดการได้ในที่เดียว
+          งานสดและงานค้างที่ยังต้องจัดการ — ค้างไว้จนกว่าจะปิดงาน ส่วนงานย้อนหลังดูที่ Tracking
+          History
         </p>
       </div>
 
@@ -509,13 +515,12 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       <Card className="flex min-h-[calc(100vh-16rem)] flex-col overflow-hidden">
         <CardHeader className="gap-3 pb-3">
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-sm">
-              {tabs.find((tab) => tab.view === view)?.label ?? 'ต้องดำเนินการ'}
-            </CardTitle>
+            <CardTitle className="text-sm">{currentTabLabel}</CardTitle>
             <span className="text-[11px] text-muted-foreground">
               {trackingTotal.toLocaleString('th-TH')} รายการ
             </span>
           </div>
+          <div className="text-xs text-muted-foreground">{currentViewDescription}</div>
           <div className="relative w-full max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -543,8 +548,10 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             <div className="py-16 text-center text-sm text-muted-foreground">
               <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
               {view === 'needs_action'
-                ? 'เคลียร์งานหมดแล้ว ไม่มีอะไรค้าง 🎉'
-                : 'ไม่มีรายการในสถานะนี้'}
+                ? 'เคลียร์งานหมดแล้ว ไม่มีอะไรค้าง'
+                : view === 'closed'
+                  ? 'ยังไม่มีงานที่ปิดใน 24 ชั่วโมงล่าสุด'
+                  : 'ไม่มีรายการในสถานะนี้'}
             </div>
           )}
 

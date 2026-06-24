@@ -13,9 +13,38 @@ import { TrackingReplayMap } from '@/features/delivery-tracking/components/Track
 import { AlertCircle, Loader2, MapPin, RefreshCw, Route as RouteIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+const RANGE_OPTIONS = [
+  { days: 1, label: 'เฉพาะวันที่' },
+  { days: 7, label: '7 วันย้อนหลัง' },
+  { days: 14, label: '14 วันย้อนหลัง' },
+  { days: 30, label: '30 วันย้อนหลัง' },
+  { days: 60, label: '60 วันย้อนหลัง' },
+  { days: 90, label: '90 วันย้อนหลัง' },
+] as const;
+
+type RangeDays = (typeof RANGE_OPTIONS)[number]['days'];
+
+function dateKeyOf(value: Date) {
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+}
+
 function todayKey() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return dateKeyOf(new Date());
+}
+
+function dateKeysUntil(endDateKey: string, days: RangeDays) {
+  const endDate = new Date(`${endDateKey}T00:00:00`);
+  return Array.from({ length: days }, (_, index) => {
+    const date = new Date(endDate);
+    date.setDate(endDate.getDate() - index);
+    return dateKeyOf(date);
+  });
+}
+
+function formatShortDate(value?: string | null) {
+  return value
+    ? new Date(value).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })
+    : '—';
 }
 
 function formatTime(value?: string | null) {
@@ -35,9 +64,50 @@ function sessionTitle(session: { route: { code: string } | null; label: string |
   return session.route?.code ?? session.label ?? 'Test Route';
 }
 
+function messengerOptionLabel(driver: { id: string; name: string; zone?: string }) {
+  return `${driver.name} (${driver.id})${driver.zone ? ` · ${driver.zone}` : ''}`;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>) {
+  const results: R[] = [];
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const item = items[index];
+      if (item === undefined) return;
+      results[index] = await task(item);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+async function fetchTrackingSessionsInRange(input: {
+  endDate: string;
+  rangeDays: RangeDays;
+  driverCode?: string;
+}) {
+  const dates = dateKeysUntil(input.endDate, input.rangeDays);
+  const results = await mapWithConcurrency(dates, 8, (date) =>
+    fetchTrackingSessions({ date, driverCode: input.driverCode }),
+  );
+  const seen = new Set<string>();
+  return results
+    .flat()
+    .filter((session) => {
+      if (seen.has(session.id)) return false;
+      seen.add(session.id);
+      return true;
+    })
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+}
+
 export function TrackingHistoryPage() {
   const { drivers } = useRetailStore();
   const [date, setDate] = useState(todayKey);
+  const [rangeDays, setRangeDays] = useState<RangeDays>(1);
   const [driverCode, setDriverCode] = useState('');
   const [sessions, setSessions] = useState<MessengerTrackingSessionSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -51,11 +121,17 @@ export function TrackingHistoryPage() {
     let active = true;
     setIsListLoading(true);
     setError(null);
-    void fetchTrackingSessions({ date: date || undefined, driverCode: driverCode || undefined })
+    void fetchTrackingSessionsInRange({
+      endDate: date || todayKey(),
+      rangeDays,
+      driverCode: driverCode || undefined,
+    })
       .then((rows) => {
         if (!active) return;
         setSessions(rows);
-        setSelectedId((current) => current ?? rows[0]?.id ?? null);
+        setSelectedId((current) =>
+          current && rows.some((row) => row.id === current) ? current : (rows[0]?.id ?? null),
+        );
       })
       .catch((err: unknown) => {
         if (active) setError(err instanceof Error ? err.message : 'โหลดรายการ Route ไม่สำเร็จ');
@@ -66,7 +142,7 @@ export function TrackingHistoryPage() {
     return () => {
       active = false;
     };
-  }, [date, driverCode, refreshKey]);
+  }, [date, rangeDays, driverCode, refreshKey]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -94,6 +170,10 @@ export function TrackingHistoryPage() {
     () => sessions.find((s) => s.id === selectedId) ?? null,
     [sessions, selectedId],
   );
+  const selectedMessenger = useMemo(
+    () => drivers.find((driver) => driver.id === driverCode) ?? null,
+    [driverCode, drivers],
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
@@ -108,7 +188,7 @@ export function TrackingHistoryPage() {
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          วันที่
+          ถึงวันที่
           <Input
             type="date"
             value={date}
@@ -120,19 +200,36 @@ export function TrackingHistoryPage() {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          คนขับ
+          ช่วงเวลา
+          <select
+            value={rangeDays}
+            onChange={(event) => {
+              setRangeDays(Number(event.target.value) as RangeDays);
+              setSelectedId(null);
+            }}
+            className="h-9 w-44 rounded-md border border-input bg-background px-3 text-sm"
+          >
+            {RANGE_OPTIONS.map((option) => (
+              <option key={option.days} value={option.days}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Messenger
           <select
             value={driverCode}
             onChange={(event) => {
               setDriverCode(event.target.value);
               setSelectedId(null);
             }}
-            className="h-9 w-52 rounded-md border border-input bg-background px-3 text-sm"
+            className="h-9 w-64 rounded-md border border-input bg-background px-3 text-sm"
           >
-            <option value="">ทั้งหมด</option>
+            <option value="">ทั้งหมด (ทุก Messenger)</option>
             {drivers.map((driver) => (
               <option key={driver.id} value={driver.id}>
-                {driver.name}
+                {messengerOptionLabel(driver)}
               </option>
             ))}
           </select>
@@ -154,6 +251,12 @@ export function TrackingHistoryPage() {
             <CardTitle className="text-sm">
               {sessions.length.toLocaleString('th-TH')} Route
             </CardTitle>
+            <div className="text-xs text-muted-foreground">
+              {rangeDays === 1
+                ? formatShortDate(date)
+                : `${rangeDays} วัน ถึง ${formatShortDate(date)}`}
+              {selectedMessenger ? ` · ${selectedMessenger.name}` : ' · ทุก Messenger'}
+            </div>
           </CardHeader>
           <CardContent className="flex-1 space-y-1 overflow-y-auto px-2">
             {error && (
@@ -170,7 +273,8 @@ export function TrackingHistoryPage() {
             )}
             {!isListLoading && !error && sessions.length === 0 && (
               <div className="py-10 text-center text-sm text-muted-foreground">
-                ไม่มี Route ในวันนี้
+                ไม่มี Route ในช่วงนี้
+                {selectedMessenger ? ` สำหรับ ${selectedMessenger.name}` : ''}
               </div>
             )}
             {sessions.map((session) => (
@@ -198,7 +302,7 @@ export function TrackingHistoryPage() {
                   <span className="truncate">{sessionTitle(session)}</span>
                 </div>
                 <div className="mt-0.5 text-[11px] text-muted-foreground">
-                  {formatTime(session.startedAt)}
+                  {formatShortDate(session.startedAt)} · {formatTime(session.startedAt)}
                   {session.endedAt ? `–${formatTime(session.endedAt)}` : ' · กำลังวิ่ง'} ·{' '}
                   {(session.distanceMeters / 1000).toFixed(1)} กม.
                 </div>

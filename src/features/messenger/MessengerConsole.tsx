@@ -359,7 +359,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   return (
     <div className="flex min-h-dvh w-full justify-center bg-muted/40">
       {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
-      <div className="relative flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
+      <div className="relative flex h-dvh max-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
         <MessengerHeader
           messenger={messenger}
           // สถานะ badge ต้องตามกิจกรรมจริงเท่านั้น ไม่เชื่อค่า static ใน driver record
@@ -452,7 +452,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         )}
 
         {showAssignedMap || showTrackingMap ? (
-          <div className="relative flex flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1 flex-col">
             {showAssignedMap &&
               (focusOrder ? (
                 /* โฟกัสปลายทางเดียว: บอกชัดว่ากำลังดูงานไหน + กลับไปดูทั้ง Route ได้ */
@@ -518,7 +518,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                   </div>
                 )
               ))}
-            <div className="relative flex-1">
+            <div className="relative min-h-0 flex-1">
               {!suspendMap && (
                 <MessengerRouteMap
                   stops={routeStops}
@@ -529,7 +529,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               )}
             </div>
             {showTrackingMap && activeDeliveryJob && (
-              <div className="max-h-[46dvh] shrink-0 overflow-auto border-t bg-background p-3 pb-4">
+              <div className="app-scroll max-h-[46dvh] shrink-0 overflow-auto border-t bg-background p-3 pb-4">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5 text-info" />
                   ปลายทางที่กำลังส่ง
@@ -545,7 +545,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           </div>
         ) : (
           /* job list */
-          <div className="flex-1 space-y-2.5 overflow-auto p-3 pb-safe">
+          <div className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3">
             {jobsLoading && myJobs.length === 0 && (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />

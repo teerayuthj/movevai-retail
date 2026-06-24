@@ -165,11 +165,11 @@ export function MessengerRouteMap({
     location != null &&
     location.accuracy <= 100;
   const arrivalStatus =
-    roadDistance == null
+    remainingDistance == null
       ? null
       : arrived
         ? 'ถึงบริเวณปลายทางแล้ว'
-        : roadDistance <= 1_000
+        : remainingDistance <= 1_000
           ? 'ใกล้ถึงปลายทาง'
           : 'ระยะถึงปลายทาง';
   const roadRouteMessage =

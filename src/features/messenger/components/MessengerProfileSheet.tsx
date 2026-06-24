@@ -63,7 +63,7 @@ export function MessengerProfileSheet({
         <span className="text-sm font-semibold">บัญชี messenger</span>
       </header>
 
-      <div className="flex-1 space-y-4 overflow-auto p-4 pb-safe">
+      <div className="app-scroll flex-1 space-y-4 overflow-auto p-4 pb-safe">
         {/* ตัวตน + รูป (รูปใหญ่ที่นี่) */}
         <div className="flex flex-col items-center gap-2 text-center">
           <DriverAvatar driver={messenger} className="h-24 w-24" />

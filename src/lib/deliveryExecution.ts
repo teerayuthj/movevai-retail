@@ -22,7 +22,7 @@ export const deliveryTrackingTabLabels: Record<DeliveryTrackingTab, string> = {
   in_transit: 'กำลังจัดส่ง',
   pending: 'รอยืนยัน',
   returning: 'ส่งกลับ',
-  closed: 'ปิดงานแล้ว',
+  closed: 'ปิดล่าสุด',
 };
 
 export function getDriverQueueTab(order: Order): DriverQueueTab | null {

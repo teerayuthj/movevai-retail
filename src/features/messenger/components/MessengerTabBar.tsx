@@ -11,7 +11,7 @@ export function MessengerTabBar({
   onSelect: (tab: MessengerTab) => void;
 }) {
   return (
-    <nav className="border-t bg-background/95 p-1.5 pb-safe shadow-[0_-6px_18px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+    <nav className="shrink-0 border-t bg-background/95 p-1.5 pb-safe shadow-[0_-6px_18px_rgba(15,23,42,0.06)] backdrop-blur-sm">
       <div className="flex gap-1">
         {MESSENGER_TABS.map((tab) => {
           const active = activeTab === tab.key;

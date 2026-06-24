@@ -6,6 +6,7 @@ const MESSENGER_API_BASE =
   (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
 const APP_API_BASE = (import.meta.env.VITE_APP_API_BASE_URL as string | undefined) ?? '/api/app';
 const MESSENGER_TOKEN_KEY = 'movevai:messenger-token';
+const ROAD_ROUTE_TIMEOUT_MS = 7_000;
 export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
 
 export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
@@ -60,6 +61,21 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(message);
   }
   return response.json() as Promise<T>;
+}
+
+async function withTimeout<T>(timeoutMs: number, run: (signal: AbortSignal) => Promise<T>) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await run(controller.signal);
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('คำนวณระยะตามถนนใช้เวลานานเกินไป');
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 }
 
 export type GeoCoordinate = { lat: number; lng: number };
@@ -211,6 +227,16 @@ export type MessengerDestination = {
   sequence?: number;
 };
 
+export type MessengerProofLocation = {
+  orderId?: string;
+  label?: string | null;
+  lat: number | string;
+  lng: number | string;
+  capturedAt?: string | null;
+  accuracy?: number | null;
+  sequence?: number;
+};
+
 export type LiveMessengerTracking = {
   id: string;
   routeId: string | null;
@@ -236,6 +262,8 @@ export type MessengerTrackingHistory = LiveMessengerTracking & {
   endReason?: string | null;
   status: string;
   plannedGeometryJson?: { lat: number; lng: number }[];
+  /** จุดส่งจริงจาก GPS ตอนปิดงานของแต่ละ order ใน route */
+  proofLocations?: MessengerProofLocation[];
   points: {
     id: string;
     lat: number | string;
@@ -439,7 +467,7 @@ async function fetchPublicOsrmRoadRoute(points: { lat: number; lng: number }[]) 
   url.searchParams.set('overview', 'full');
   url.searchParams.set('geometries', 'geojson');
 
-  const response = await fetch(url);
+  const response = await withTimeout(ROAD_ROUTE_TIMEOUT_MS, (signal) => fetch(url, { signal }));
   if (!response.ok) throw new Error(`OSRM route failed: ${response.status}`);
   const body = (await response.json()) as {
     routes?: {
@@ -458,21 +486,50 @@ async function fetchPublicOsrmRoadRoute(points: { lat: number; lng: number }[]) 
   } satisfies MessengerRoadRoute;
 }
 
+function assertValidRoadRoute(route: MessengerRoadRoute) {
+  if (route.geometry.length >= 2 && route.legs.length > 0) return route;
+  throw new Error('ไม่พบเส้นทางถนนสำหรับตำแหน่งนี้');
+}
+
+async function fetchBackendMessengerRoadRoute(points: { lat: number; lng: number }[]) {
+  const route = await withTimeout(ROAD_ROUTE_TIMEOUT_MS, (signal) =>
+    request<MessengerRoadRoute>(`${MESSENGER_API_BASE}/route`, {
+      method: 'POST',
+      body: JSON.stringify({ points }),
+      signal,
+    }),
+  );
+  return assertValidRoadRoute(route);
+}
+
+async function firstValidRoadRoute(tasks: Promise<MessengerRoadRoute>[]) {
+  return new Promise<MessengerRoadRoute>((resolve, reject) => {
+    let pending = tasks.length;
+    let lastError: unknown = new Error('คำนวณเส้นทางถนนไม่สำเร็จ');
+
+    for (const task of tasks) {
+      task
+        .then((route) => {
+          resolve(route);
+        })
+        .catch((error) => {
+          lastError = error;
+          pending -= 1;
+          if (pending === 0) reject(lastError);
+        });
+    }
+  });
+}
+
 /**
  * เส้นทางตามถนนระหว่างกำลังส่ง — points[0] = ตำแหน่ง messenger, ที่เหลือ = จุดส่ง
  * backend คำนวณผ่าน OSRM คืน geometry (วาดเส้นตามถนน) + legs (ระยะถึงจุดถัดไป)
  */
 export async function fetchMessengerRoadRoute(points: { lat: number; lng: number }[]) {
-  try {
-    const route = await request<MessengerRoadRoute>(`${MESSENGER_API_BASE}/route`, {
-      method: 'POST',
-      body: JSON.stringify({ points }),
-    });
-    if (route.geometry.length >= 2 && route.legs.length > 0) return route;
-  } catch {
-    // fallback ด้านล่าง: ถ้า backend/OSRM ภายในล้มเหลว หน้า messenger ยังใช้ระยะตามถนนได้
-  }
-  return fetchPublicOsrmRoadRoute(points);
+  return firstValidRoadRoute([
+    fetchBackendMessengerRoadRoute(points),
+    fetchPublicOsrmRoadRoute(points).then(assertValidRoadRoute),
+  ]);
 }
 
 export async function fetchMessengerOrders(_driverCode: string) {
