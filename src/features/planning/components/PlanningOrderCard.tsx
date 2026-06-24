@@ -2,13 +2,14 @@ import { Badge } from '@/components/ui/badge';
 import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/mock';
 import { formatPlanningDateTime, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
-import { MapPin, Package } from 'lucide-react';
+import { MapPin, Minus, Package, Plus } from 'lucide-react';
 
 type PlanningOrderCardProps = {
   order: Order;
   drivers: Driver[];
   selected: boolean;
-  onToggle: () => void;
+  onSelect: () => void;
+  onToggleGroup: () => void;
   onViewMap: () => void;
 };
 
@@ -16,7 +17,8 @@ export function PlanningOrderCard({
   order,
   drivers,
   selected,
-  onToggle,
+  onSelect,
+  onToggleGroup,
   onViewMap,
 }: PlanningOrderCardProps) {
   const plannedDriverName = order.deliveryPlan?.plannedDriverId
@@ -33,11 +35,11 @@ export function PlanningOrderCard({
     <div
       role="button"
       tabIndex={0}
-      onClick={onToggle}
+      onClick={onSelect}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          onToggle();
+          onSelect();
         }
       }}
       className={cn(
@@ -95,9 +97,25 @@ export function PlanningOrderCard({
           type="button"
           onClick={(event) => {
             event.stopPropagation();
+            onToggleGroup();
+          }}
+          className={cn(
+            'inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-medium transition-colors',
+            selected
+              ? 'border-primary/30 bg-primary/5 text-primary hover:bg-primary/10'
+              : 'border-border bg-background text-foreground hover:bg-muted',
+          )}
+        >
+          {selected ? <Minus className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+          {selected ? 'นำออก' : 'เพิ่ม'}
+        </button>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
             onViewMap();
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-info/30 bg-info/5 px-2.5 py-1 text-[11px] font-medium text-info transition-colors hover:bg-info/10"
+          className="ml-2 inline-flex items-center gap-1.5 rounded-lg border border-info/30 bg-info/5 px-2.5 py-1 text-[11px] font-medium text-info transition-colors hover:bg-info/10"
         >
           <MapPin className="h-3.5 w-3.5" />
           ดูแผนที่

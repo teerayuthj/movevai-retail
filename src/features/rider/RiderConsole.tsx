@@ -333,9 +333,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     setAssignedView('map');
   }, []);
   const activeRouteId = myJobs.find((order) => order.deliveryRoute)?.deliveryRoute?.id;
-  const mapOrder = mapOrderId
-    ? (myJobs.find((order) => order.id === mapOrderId) ?? null)
-    : null;
+  const mapOrder = mapOrderId ? (myJobs.find((order) => order.id === mapOrderId) ?? null) : null;
 
   if (!authenticated) {
     return (
@@ -349,13 +347,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   }
 
   if (mapOrderId) {
-    return (
-      <RiderOrderMapPage
-        order={mapOrder}
-        orderId={mapOrderId}
-        onBack={backToPending}
-      />
-    );
+    return <RiderOrderMapPage order={mapOrder} orderId={mapOrderId} onBack={backToPending} />;
   }
 
   return (
@@ -397,28 +389,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                   }`
                 : 'ระบบจะเริ่มบันทึกเส้นทางเมื่อกดรับงาน'}
             </span>
-            {/* บันทึกเริ่มอัตโนมัติตอนกดรับงาน — เหลือแค่ปุ่ม "จบ Route" ระหว่างบันทึก */}
-            {tracking.session && tracking.isOwner && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  // Test Route ไม่ผูกกับงานลูกค้า → จบได้เลยไม่ต้องถามเหตุผล
-                  if (tracking.session?.type === 'test') {
-                    void tracking.end();
-                    return;
-                  }
-                  const openStops = myJobs.some(
-                    (order) => !['delivered', 'failed', 'cancelled'].includes(order.status),
-                  );
-                  const reason = openStops
-                    ? window.prompt('ยังมีงานค้าง กรุณาระบุเหตุผลที่จบ Route')?.trim()
-                    : undefined;
-                  if (openStops && !reason) return;
-                  void tracking.end(reason);
-                }}
-              >
-                จบ Route
+            {tracking.session?.type === 'test' && tracking.isOwner && (
+              <Button size="sm" variant="outline" onClick={() => void tracking.end()}>
+                หยุดทดสอบ
               </Button>
             )}
           </div>
@@ -693,7 +666,26 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         onCancel={() => setCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!closeTargetId) return;
+          const shouldStopTracking =
+            tracking.session?.type === 'delivery' &&
+            tracking.isOwner &&
+            !myJobs.some(
+              (order) =>
+                order.id !== closeTargetId && ['assigned', 'in_transit'].includes(order.status),
+            );
           await submitDelivery(closeTargetId, input);
+          if (shouldStopTracking) {
+            try {
+              await tracking.end();
+            } catch (error) {
+              if (isRiderAuthError(error)) return;
+              setJobsError(
+                error instanceof Error
+                  ? `ปิดงานสำเร็จ แต่หยุด GPS ไม่สำเร็จ — ${error.message}`
+                  : 'ปิดงานสำเร็จ แต่หยุด GPS ไม่สำเร็จ',
+              );
+            }
+          }
           setCloseTargetId(null);
         }}
       />

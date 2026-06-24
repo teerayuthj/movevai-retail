@@ -264,7 +264,12 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [paneView, previewOrderIdsKey]);
 
-  const toggleOrderSelection = (orderId: string) => {
+  const selectOrder = (orderId: string) => {
+    setSelectedRouteId(null);
+    setSelectedOrderIds([orderId]);
+  };
+
+  const toggleOrderInGroup = (orderId: string) => {
     setSelectedRouteId(null);
     setSelectedOrderIds((current) =>
       current.includes(orderId) ? current.filter((id) => id !== orderId) : [...current, orderId],
@@ -273,7 +278,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
 
   const viewOrderOnMap = (orderId: string) => {
     setSelectedRouteId(null);
-    setSelectedOrderIds((current) => (current.includes(orderId) ? current : [...current, orderId]));
+    setSelectedOrderIds([orderId]);
     setPaneView('map');
   };
 
@@ -283,8 +288,13 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setPaneView('map');
   };
 
-  const selectAllVisible = () => {
-    setSelectedOrderIds(visibleOrders.map((order) => order.id));
+  const addAllVisible = () => {
+    setSelectedRouteId(null);
+    setSelectedOrderIds((current) => {
+      const next = new Set(current);
+      visibleOrders.forEach((order) => next.add(order.id));
+      return Array.from(next);
+    });
   };
 
   const clearSelection = () => {
@@ -456,10 +466,10 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={selectAllVisible}
+                    onClick={addAllVisible}
                     disabled={visibleOrders.length === 0}
                   >
-                    เลือกทั้งหมด
+                    เพิ่มทั้งหมด
                   </Button>
                   <Button
                     variant="ghost"
@@ -606,7 +616,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                   <PlanningMap
                     orders={mapOrders}
                     selectedIds={mapSelectedIds}
-                    onToggle={toggleOrderSelection}
+                    onToggle={toggleOrderInGroup}
                     route={
                       selectedRoute?.plannedGeometryJson
                         ? {
@@ -636,7 +646,8 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                     order={order}
                     drivers={drivers}
                     selected={selectedOrderSet.has(order.id)}
-                    onToggle={() => toggleOrderSelection(order.id)}
+                    onSelect={() => selectOrder(order.id)}
+                    onToggleGroup={() => toggleOrderInGroup(order.id)}
                     onViewMap={() => viewOrderOnMap(order.id)}
                   />
                 ))}
