@@ -4,7 +4,7 @@ import type { Driver } from '@/data/mock';
 import { ArrowLeft, LogOut, MapPin, Phone, ShieldCheck, Star, Truck } from 'lucide-react';
 import type { useInstallPrompt } from '../hooks/useInstallPrompt';
 import { InstallBanner } from './InstallBanner';
-import { RiderPushSetupBanner } from './RiderPushSetupBanner';
+import { MessengerPushSetupBanner } from './MessengerPushSetupBanner';
 
 const statusLabel: Record<Driver['status'], string> = {
   available: 'ว่าง',
@@ -38,13 +38,13 @@ function InfoRow({
   );
 }
 
-export function RiderProfileSheet({
-  rider,
+export function MessengerProfileSheet({
+  messenger,
   install,
   onClose,
   onExit,
 }: {
-  rider: Driver;
+  messenger: Driver;
   install: ReturnType<typeof useInstallPrompt>;
   onClose: () => void;
   onExit?: () => void;
@@ -60,44 +60,44 @@ export function RiderProfileSheet({
         >
           <ArrowLeft className="h-4 w-4" />
         </button>
-        <span className="text-sm font-semibold">บัญชี rider</span>
+        <span className="text-sm font-semibold">บัญชี messenger</span>
       </header>
 
-      <div className="flex-1 space-y-4 overflow-auto p-4 pb-safe">
+      <div className="app-scroll flex-1 space-y-4 overflow-auto p-4 pb-safe">
         {/* ตัวตน + รูป (รูปใหญ่ที่นี่) */}
         <div className="flex flex-col items-center gap-2 text-center">
-          <DriverAvatar driver={rider} className="h-24 w-24" />
+          <DriverAvatar driver={messenger} className="h-24 w-24" />
           <div>
-            <div className="text-lg font-semibold">{rider.name}</div>
-            <div className="font-mono text-xs text-muted-foreground">{rider.id}</div>
+            <div className="text-lg font-semibold">{messenger.name}</div>
+            <div className="font-mono text-xs text-muted-foreground">{messenger.id}</div>
           </div>
-          <Badge variant={rider.status === 'available' ? 'success' : 'muted'}>
-            {statusLabel[rider.status]}
+          <Badge variant={messenger.status === 'available' ? 'success' : 'muted'}>
+            {statusLabel[messenger.status]}
           </Badge>
         </div>
 
         {/* ข้อมูลส่วนตัว */}
         <div className="divide-y rounded-xl border">
           <InfoRow icon={<Phone className="h-3.5 w-3.5" />} label="เบอร์โทร">
-            <a href={`tel:${rider.phone}`} className="text-info">
-              {rider.phone}
+            <a href={`tel:${messenger.phone}`} className="text-info">
+              {messenger.phone}
             </a>
           </InfoRow>
           <InfoRow icon={<Truck className="h-3.5 w-3.5" />} label="ยานพาหนะ">
-            {vehicleLabel[rider.vehicle]}
+            {vehicleLabel[messenger.vehicle]}
           </InfoRow>
           <InfoRow icon={<MapPin className="h-3.5 w-3.5" />} label="โซนที่รับผิดชอบ">
-            {rider.zone}
+            {messenger.zone}
           </InfoRow>
           <InfoRow icon={<Star className="h-3.5 w-3.5" />} label="เรตติ้ง">
-            <span className="tabular-nums">{rider.rating.toFixed(1)}</span>
+            <span className="tabular-nums">{messenger.rating.toFixed(1)}</span>
           </InfoRow>
           <InfoRow icon={<Truck className="h-3.5 w-3.5" />} label="งานวันนี้">
             <span className="tabular-nums">
-              {rider.activeOrders}/{rider.capacity}
+              {messenger.activeOrders}/{messenger.capacity}
             </span>
           </InfoRow>
-          {rider.highValueCertified && (
+          {messenger.highValueCertified && (
             <InfoRow icon={<ShieldCheck className="h-3.5 w-3.5" />} label="อบรมขนส่งของมีค่า">
               <span className="text-success">ผ่านแล้ว</span>
             </InfoRow>
@@ -110,7 +110,7 @@ export function RiderProfileSheet({
             การแจ้งเตือน &amp; แอป
           </div>
           <div className="overflow-hidden rounded-xl border">
-            <RiderPushSetupBanner installed={install.installed} riderCode={rider.id} />
+            <MessengerPushSetupBanner installed={install.installed} messengerCode={messenger.id} />
             <InstallBanner install={install} />
             <div className="px-3 py-2.5 text-[11px] text-muted-foreground">
               เปิดแจ้งเตือนเพื่อรับงานใหม่ทันที และติดตั้งแอปเพื่อเปิดแบบเต็มจอ
@@ -126,7 +126,7 @@ export function RiderProfileSheet({
             className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-destructive/30 px-4 py-2.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10"
           >
             <LogOut className="h-4 w-4" />
-            ออกจากโหมด rider
+            ออกจากโหมด messenger
           </button>
         )}
       </div>

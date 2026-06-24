@@ -3,9 +3,10 @@
 export type NotifPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
 export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-const RIDER_API_BASE_URL =
-  (import.meta.env.VITE_RIDER_API_BASE_URL as string | undefined) ?? '/api/rider';
-export const DEFAULT_RIDER_CODE = (import.meta.env.VITE_RIDER_CODE as string | undefined) ?? 'D-02';
+const MESSENGER_API_BASE_URL =
+  (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
+export const DEFAULT_MESSENGER_CODE =
+  (import.meta.env.VITE_MESSENGER_CODE as string | undefined) ?? 'D-02';
 
 type BadgeNavigator = Navigator & {
   clearAppBadge?: () => Promise<void>;
@@ -25,7 +26,7 @@ export function currentPermission(): NotifPermission {
   return Notification.permission as NotifPermission;
 }
 
-export async function clearRiderAppBadge() {
+export async function clearMessengerAppBadge() {
   if (typeof navigator === 'undefined') return;
 
   const badgeNavigator = navigator as BadgeNavigator;
@@ -38,10 +39,10 @@ export async function clearRiderAppBadge() {
   if (!('serviceWorker' in navigator)) return;
   try {
     const registration = await navigator.serviceWorker.ready;
-    registration.active?.postMessage({ type: 'movevai:rider-clear-badge' });
-    navigator.serviceWorker.controller?.postMessage({ type: 'movevai:rider-clear-badge' });
+    registration.active?.postMessage({ type: 'movevai:messenger-clear-badge' });
+    navigator.serviceWorker.controller?.postMessage({ type: 'movevai:messenger-clear-badge' });
   } catch {
-    // ถ้า service worker ยังไม่พร้อม ให้ข้าม ไม่กระทบ flow rider
+    // ถ้า service worker ยังไม่พร้อม ให้ข้าม ไม่กระทบ flow messenger
   }
 }
 
@@ -81,8 +82,10 @@ export type SubscribeResult =
       status?: number;
     };
 
-/** subscribe กับ push service และผูกเครื่องนี้กับ rider ใน backend */
-export async function subscribeToPush(driverCode = DEFAULT_RIDER_CODE): Promise<SubscribeResult> {
+/** subscribe กับ push service และผูกเครื่องนี้กับ messenger ใน backend */
+export async function subscribeToPush(
+  driverCode = DEFAULT_MESSENGER_CODE,
+): Promise<SubscribeResult> {
   if (!VAPID_PUBLIC_KEY) return { ok: false, reason: 'no-vapid-key' };
 
   const permission = await ensurePermission();
@@ -105,18 +108,21 @@ export async function subscribeToPush(driverCode = DEFAULT_RIDER_CODE): Promise<
   const json = subscription.toJSON();
 
   try {
-    const response = await fetch(`${RIDER_API_BASE_URL.replace(/\/$/, '')}/push-subscriptions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${localStorage.getItem('movevai:rider-token') ?? ''}`,
+    const response = await fetch(
+      `${MESSENGER_API_BASE_URL.replace(/\/$/, '')}/push-subscriptions`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${localStorage.getItem('movevai:messenger-token') ?? ''}`,
+        },
+        body: JSON.stringify({
+          driverCode,
+          subscription: json,
+          userAgent: navigator.userAgent,
+        }),
       },
-      body: JSON.stringify({
-        driverCode,
-        subscription: json,
-        userAgent: navigator.userAgent,
-      }),
-    });
+    );
 
     if (!response.ok) {
       return { ok: false, reason: 'backend-registration-failed', status: response.status };

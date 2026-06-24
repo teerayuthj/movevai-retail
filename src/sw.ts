@@ -38,8 +38,8 @@ type BadgeNavigator = WorkerNavigator & {
   clearAppBadge?: () => Promise<void>;
 };
 
-const badgeCacheName = 'movevai-rider-badge';
-const badgeCountUrl = new URL('/__movevai/rider-badge-count', self.location.origin).toString();
+const badgeCacheName = 'movevai-messenger-badge';
+const badgeCountUrl = new URL('/__movevai/messenger-badge-count', self.location.origin).toString();
 
 function normalizePushPayload(payload: PushPayload): PushPayload {
   if (!payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) {
@@ -111,7 +111,7 @@ async function clearBadgeCount() {
 
 async function notifyOpenClients() {
   const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  clients.forEach((client) => client.postMessage({ type: 'movevai:rider-push-job-added' }));
+  clients.forEach((client) => client.postMessage({ type: 'movevai:messenger-push-job-added' }));
 }
 
 self.addEventListener('push', (event) => {
@@ -133,8 +133,8 @@ self.addEventListener('push', (event) => {
         body: payload.body ?? 'แตะเพื่อเปิดดูงาน',
         icon: '/pwa-192x192.png',
         badge: '/pwa-192x192.png',
-        tag: payload.tag ?? 'rider-new-job',
-        data: { url: payload.url ?? '/rider/assigned', badgeCount, orderId: payload.orderId },
+        tag: payload.tag ?? 'messenger-new-job',
+        data: { url: payload.url ?? '/messenger/assigned', badgeCount, orderId: payload.orderId },
       });
     })(),
   );
@@ -142,7 +142,7 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = (event.notification.data as { url?: string })?.url ?? '/rider';
+  const targetUrl = (event.notification.data as { url?: string })?.url ?? '/messenger';
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -159,7 +159,7 @@ self.addEventListener('notificationclick', (event) => {
 
 self.addEventListener('message', (event) => {
   const data = event.data as { type?: string } | undefined;
-  if (data?.type !== 'movevai:rider-clear-badge') return;
+  if (data?.type !== 'movevai:messenger-clear-badge') return;
 
   event.waitUntil(clearBadgeCount());
 });
@@ -169,5 +169,7 @@ self.addEventListener('install', () => {
   void self.skipWaiting();
 });
 self.addEventListener('activate', (event) => {
-  event.waitUntil(Promise.all([caches.delete('movevai-rider-push-jobs'), self.clients.claim()]));
+  event.waitUntil(
+    Promise.all([caches.delete('movevai-messenger-push-jobs'), self.clients.claim()]),
+  );
 });

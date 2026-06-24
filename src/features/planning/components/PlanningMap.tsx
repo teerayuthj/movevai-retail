@@ -1,9 +1,10 @@
 import { useEffect, useMemo } from 'react';
-import { MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Info, Loader2, MapPin, Route } from 'lucide-react';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
-import { BANGKOK_CENTER } from '@/features/rider/geocode';
+import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { formatRouteDistance } from '@/lib/routeDistance';
 import { useOrdersGeo } from '../hooks/useOrdersGeo';
@@ -27,6 +28,18 @@ function numberedIcon(label: number, selected: boolean) {
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],
     html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};color:#fff;border:${selected ? 3 : 2}px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:600 ${selected ? 14 : 12}px/1 sans-serif;">${label}</div>`,
+  });
+}
+
+/** หมุดต้นทาง (GPS ของ admin) — จุดเริ่มของเส้นทางพรีวิว/Route */
+function originIcon() {
+  const size = 30;
+  return L.divIcon({
+    className: '',
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:hsl(var(--success));color:#fff;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:700 13px/1 sans-serif;">●</div>`,
   });
 }
 
@@ -60,7 +73,7 @@ function AutoResize() {
 }
 
 /**
- * แผนที่จุดส่งทั้งหมดของวัน (ฝั่ง admin) — ให้เห็นการกระจายปลายทางก่อนจัดกลุ่ม/มอบ Rider
+ * แผนที่จุดส่งทั้งหมดของวัน (ฝั่ง admin) — ให้เห็นการกระจายปลายทางก่อนจัดกลุ่ม/มอบ Messenger
  * แตะหมุดเพื่อเลือก/นำออกจากกลุ่มที่กำลังวางแผน หมุดที่เลือกอยู่จะไฮไลต์สีเด่น
  */
 export function PlanningMap({
@@ -68,11 +81,21 @@ export function PlanningMap({
   selectedIds,
   onToggle,
   route,
+  emptyLabel = 'เลือก order เพื่อดูปลายทางบนแผนที่',
+  selectedLabel = '✓ เลือกอยู่ — แตะเพื่อนำออก',
+  unselectedLabel = 'แตะเพื่อเลือกเข้ากลุ่ม',
+  lockedLabel,
+  routePreviewTitle = 'พรีวิวเส้นทาง (ก่อน Publish)',
 }: {
   orders: Order[];
   selectedIds: Set<string>;
   onToggle: (orderId: string) => void;
   route?: PlannedRouteOverlay | null;
+  emptyLabel?: string;
+  selectedLabel?: string;
+  unselectedLabel?: string;
+  lockedLabel?: string;
+  routePreviewTitle?: string;
 }) {
   const geo = useOrdersGeo(orders);
   const routeMode = Boolean(route);
@@ -82,6 +105,8 @@ export function PlanningMap({
     () => route?.geometry.map((point) => [point.lat, point.lng]) ?? [],
     [route],
   );
+  // จุดแรกของ geometry คือต้นทาง (GPS admin / fallback env) — ปักหมุดให้เห็นจุดเริ่ม
+  const originPoint = routePoints.length > 0 ? routePoints[0] : null;
 
   const stops = useMemo(
     () =>
@@ -105,7 +130,7 @@ export function PlanningMap({
     return (
       <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed bg-muted/20 text-sm text-muted-foreground">
         <MapPin className="h-7 w-7 opacity-50" />
-        เลือก order เพื่อดูปลายทางบนแผนที่
+        {emptyLabel}
       </div>
     );
   }
@@ -120,7 +145,7 @@ export function PlanningMap({
         style={{ background: 'hsl(var(--muted))' }}
         attributionControl={false}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <BaseTileLayer />
         <AutoResize />
         {routePoints.length > 1 && (
           <Polyline
@@ -133,6 +158,16 @@ export function PlanningMap({
               opacity: route?.preview ? 0.85 : 1,
             }}
           />
+        )}
+        {originPoint && (
+          <Marker position={originPoint} icon={originIcon()} zIndexOffset={500}>
+            <Popup>
+              <div className="space-y-0.5 text-[13px]">
+                <div className="font-semibold text-success">ต้นทาง</div>
+                <div className="text-muted-foreground">จุดเริ่มเส้นทาง (ตำแหน่ง GPS)</div>
+              </div>
+            </Popup>
+          </Marker>
         )}
         {stops.map((stop) => {
           const selected = selectedIds.has(stop.order.id);
@@ -161,10 +196,10 @@ export function PlanningMap({
                   )}
                   <div className={selected ? 'font-medium text-primary' : 'font-medium text-info'}>
                     {lockedRoute
-                      ? `จุดที่ ${stop.label} ใน Route`
+                      ? (lockedLabel ?? `จุดที่ ${stop.label} ใน Route`)
                       : selected
-                        ? '✓ เลือกอยู่ — แตะเพื่อนำออก'
-                        : 'แตะเพื่อเลือกเข้ากลุ่ม'}
+                        ? selectedLabel
+                        : unselectedLabel}
                   </div>
                 </div>
               </Popup>
@@ -178,7 +213,7 @@ export function PlanningMap({
         <div className="absolute left-2 top-2 z-[500] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
           <div className="flex items-center gap-1.5 font-medium">
             <Route className="h-3.5 w-3.5 text-info" />
-            {route.preview ? 'พรีวิวเส้นทาง (ก่อน Publish)' : `${route.code} · ${route.driverName}`}
+            {route.preview ? routePreviewTitle : `${route.code} · ${route.driverName}`}
           </div>
           {route.loading ? (
             <div className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">

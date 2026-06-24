@@ -6,7 +6,7 @@ export type OrderStatus =
   | 'ready'
   | 'assigned'
   | 'in_transit'
-  | 'pending_confirmation' // rider ส่งมอบแล้ว รอ CS ตรวจหลักฐานก่อนปิดจริง
+  | 'pending_confirmation' // messenger ส่งมอบแล้ว รอ CS ตรวจหลักฐานก่อนปิดจริง
   | 'delivered'
   | 'failed'
   | 'cancelled'
@@ -90,7 +90,7 @@ export type CodCollection = {
   note?: string; // เลขสลิป/หมายเหตุ
 };
 
-/** หลักฐานการส่งมอบที่ rider เก็บตอนปิดงาน (Proof of Delivery) */
+/** หลักฐานการส่งมอบที่ messenger เก็บตอนปิดงาน (Proof of Delivery) */
 export type ProofOfDelivery = {
   photoCount: number; // จำนวนรูปถ่าย ณ จุดส่ง
   photos?: string[]; // รูปถ่ายจริง (data URL ย่อขนาดแล้ว)
@@ -215,7 +215,7 @@ export type Order = {
     name: string;
     phone: string;
     address: string;
-    geo?: { lat: number; lng: number }; // พิกัดปลายทาง (geocode จาก address) — ใช้วาดหมุดบนแผนที่ rider
+    geo?: { lat: number; lng: number }; // พิกัดปลายทาง (geocode จาก address) — ใช้วาดหมุดบนแผนที่ messenger
     idCard?: string; // masked
   };
   items: OrderItem[];
@@ -231,7 +231,7 @@ export type Order = {
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
   deliveryPlan?: DeliveryPlan;
   deliveryRoute?: DeliveryRoute;
-  proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก rider
+  proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก messenger
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ
   activityLog?: OrderActivityEvent[]; // timeline กิจกรรมของออเดอร์ (newest last)

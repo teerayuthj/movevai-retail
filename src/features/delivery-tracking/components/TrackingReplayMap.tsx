@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, Marker, Polyline, TileLayer, useMap } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Pause, Play } from 'lucide-react';
-import type { RiderTrackingHistory } from '@/lib/retailApi';
-import { BANGKOK_CENTER } from '@/features/rider/geocode';
+import { BaseTileLayer } from '@/components/map/BaseTileLayer';
+import type {
+  MessengerDestination,
+  MessengerProofLocation,
+  MessengerTrackingHistory,
+} from '@/lib/retailApi';
+import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 
 const icon = L.divIcon({
   className: '',
@@ -11,6 +16,42 @@ const icon = L.divIcon({
   iconAnchor: [11, 11],
   html: '<div style="width:22px;height:22px;border-radius:50%;background:#2563eb;border:4px solid white;box-shadow:0 1px 6px #0006"></div>',
 });
+
+function endpointIcon(label: string, color: string, width = 44) {
+  return L.divIcon({
+    className: '',
+    iconSize: [width, 34],
+    iconAnchor: [width / 2, 17],
+    popupAnchor: [0, -17],
+    html: `<div style="width:${width}px;height:34px;border-radius:999px;background:${color};color:#fff;border:2px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font:700 11px/1 sans-serif;">${label}</div>`,
+  });
+}
+
+const actualDeliveryIcon = endpointIcon('ส่งจริง', '#f59e0b', 54);
+const plannedDestinationIcon = endpointIcon('ที่อยู่', '#0f766e', 48);
+const deliveredDestinationIcon = endpointIcon('ส่งแล้ว', '#64748b', 50);
+
+function asNumber(value: number | string | null | undefined): number | null {
+  if (value == null) return null;
+  const next = Number(value);
+  return Number.isFinite(next) ? next : null;
+}
+
+function toLatLng(point: { lat: number | string; lng: number | string }) {
+  const lat = asNumber(point.lat);
+  const lng = asNumber(point.lng);
+  return lat != null && lng != null ? ([lat, lng] as [number, number]) : null;
+}
+
+function formatDateTime(iso?: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 
 function FitBounds({ points }: { points: [number, number][] }) {
   const map = useMap();
@@ -48,7 +89,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
 }
 
 // แผนที่เล่นเส้นทางย้อนหลังของ session ที่จบแล้ว — เส้นวางแผน (ประ) เทียบเส้นจริง (ทึบ)
-export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }) {
+export function TrackingReplayMap({ session }: { session: MessengerTrackingHistory }) {
   const [index, setIndex] = useState(() => Math.max(0, session.points.length - 1));
   const [playing, setPlaying] = useState(false);
 
@@ -74,7 +115,10 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
   }, [playing, session]);
 
   const allPoints = useMemo<[number, number][]>(
-    () => session.points.map((p) => [Number(p.lat), Number(p.lng)]),
+    () =>
+      session.points
+        .map((point) => toLatLng(point))
+        .filter((point): point is [number, number] => Boolean(point)),
     [session],
   );
   const path = useMemo(() => allPoints.slice(0, index + 1), [allPoints, index]);
@@ -82,12 +126,39 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
     () => session.plannedGeometryJson?.map((p) => [p.lat, p.lng]) ?? [],
     [session],
   );
+  const destinations = useMemo(
+    () =>
+      (session.destinations ?? [])
+        .map((destination) => ({ destination, point: toLatLng(destination) }))
+        .filter((item): item is { destination: MessengerDestination; point: [number, number] } =>
+          Boolean(item.point),
+        ),
+    [session],
+  );
+  const proofLocations = useMemo(
+    () =>
+      (session.proofLocations ?? [])
+        .map((proof) => ({ proof, point: toLatLng(proof) }))
+        .filter((item): item is { proof: MessengerProofLocation; point: [number, number] } =>
+          Boolean(item.point),
+        ),
+    [session],
+  );
+  const viewportPoints = useMemo(
+    () => [
+      ...allPoints,
+      ...planned,
+      ...destinations.map((item) => item.point),
+      ...proofLocations.map((item) => item.point),
+    ],
+    [allPoints, destinations, planned, proofLocations],
+  );
   const head = path[path.length - 1];
 
-  if (!session.points.length) {
+  if (viewportPoints.length === 0) {
     return (
       <div className="flex h-72 items-center justify-center rounded-lg border bg-muted/30 text-sm text-muted-foreground">
-        ยังไม่มีจุด GPS ใน Route นี้
+        ยังไม่มีจุด GPS หรือปลายทางใน Route นี้
       </div>
     );
   }
@@ -99,21 +170,73 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
         zoom={12}
         className="h-80 w-full sm:h-[400px]"
       >
-        <TileLayer
-          attribution="&copy; OpenStreetMap contributors"
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-        />
+        <BaseTileLayer />
         {planned.length > 1 && (
           <Polyline
             positions={planned}
-            pathOptions={{ color: '#64748b', weight: 3, dashArray: '6 8' }}
+            pathOptions={{ color: '#93c5fd', weight: 4, opacity: 0.85 }}
           />
         )}
         {path.length > 1 && (
-          <Polyline positions={path} pathOptions={{ color: '#2563eb', weight: 4 }} />
+          <Polyline positions={path} pathOptions={{ color: '#1d4ed8', weight: 6, opacity: 1 }} />
         )}
+        {destinations.map(({ destination, point }) => {
+          const delivered = destination.status === 'delivered';
+          return (
+            <Marker
+              key={`destination-${destination.orderId ?? destination.sequence ?? point.join(',')}`}
+              position={point}
+              icon={delivered ? deliveredDestinationIcon : plannedDestinationIcon}
+            >
+              <Popup>
+                <div className="space-y-1 text-[13px]">
+                  <div className="font-semibold">
+                    ปลายทางจากที่อยู่{destination.sequence ? ` #${destination.sequence}` : ''}
+                  </div>
+                  {destination.label && <div>{destination.label}</div>}
+                  {destination.address && (
+                    <div className="text-muted-foreground">{destination.address}</div>
+                  )}
+                  {delivered && <div className="text-muted-foreground">ส่งสำเร็จแล้ว</div>}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+        {proofLocations.map(({ proof, point }) => (
+          <Marker
+            key={`proof-${proof.orderId ?? proof.sequence ?? point.join(',')}`}
+            position={point}
+            icon={actualDeliveryIcon}
+          >
+            <Popup>
+              <div className="space-y-1 text-[13px]">
+                <div className="font-semibold">
+                  จุดส่งจริงจาก GPS ตอนปิดงาน{proof.sequence ? ` #${proof.sequence}` : ''}
+                </div>
+                <div className="text-muted-foreground">
+                  {proof.label ?? formatDateTime(proof.capturedAt)}
+                  {proof.accuracy != null ? ` · ±${Math.round(proof.accuracy)} ม.` : ''}
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+        {proofLocations.map(({ proof, point }) => (
+          <Circle
+            key={`proof-radius-${proof.orderId ?? proof.sequence ?? point.join(',')}`}
+            center={point}
+            radius={proof.accuracy ?? 80}
+            pathOptions={{
+              color: '#f59e0b',
+              fillColor: '#f59e0b',
+              fillOpacity: 0.14,
+              weight: 1,
+            }}
+          />
+        ))}
         {head && <Marker position={head} icon={icon} />}
-        <FitBounds points={allPoints} />
+        <FitBounds points={viewportPoints} />
       </MapContainer>
       <div className="flex items-center gap-3 border-t bg-card px-3 py-2 text-xs text-muted-foreground">
         <button
@@ -147,8 +270,13 @@ export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }
           }}
         />
         <span className="tabular-nums">
-          {index + 1}/{session.points.length} จุด
+          {session.points.length > 0 ? index + 1 : 0}/{session.points.length} จุด
         </span>
+        {(destinations.length > 0 || proofLocations.length > 0) && (
+          <span className="hidden shrink-0 sm:inline">
+            ที่อยู่ {destinations.length} · ส่งจริง {proofLocations.length}
+          </span>
+        )}
       </div>
     </div>
   );

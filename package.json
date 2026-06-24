@@ -14,7 +14,7 @@
     "typecheck": "tsc -b --noEmit",
     "push:keys": "web-push generate-vapid-keys",
     "push:send": "node --env-file=.env scripts/send-push.mjs",
-    "gps:mock": "node --env-file=.env scripts/mock-rider-gps.mjs",
+    "gps:mock": "node --env-file=.env scripts/mock-messenger-gps.mjs",
     "prepare": "husky"
   },
   "lint-staged": {

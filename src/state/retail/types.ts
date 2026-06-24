@@ -47,7 +47,7 @@ export type MarkReturnedInput = {
   recordedBy?: Handler;
 };
 
-/** หลักฐานที่ rider ส่งตอนปิดงาน (action จะเติม capturedAt/capturedByDriverId ให้) */
+/** หลักฐานที่ messenger ส่งตอนปิดงาน (action จะเติม capturedAt/capturedByDriverId ให้) */
 export type SubmitDeliveryInput = Omit<ProofOfDelivery, 'capturedAt' | 'capturedByDriverId'>;
 
 export type ConfirmDeliveryInput = {
@@ -65,7 +65,7 @@ export type PlanOrdersInput = {
 
 export type RetailStore = RetailState & {
   createInternalChatOrder: (input: InternalChatOrderInput) => string;
-  refreshRiderJobs: (driverCode: string) => Promise<void>;
+  refreshMessengerJobs: (driverCode: string) => Promise<void>;
   /** ดึง orders + drivers จาก backend (ฝั่ง web) — ใช้ refresh/poll */
   syncFromBackend: () => Promise<void>;
   updateOrder: (orderId: string, patch: Partial<Order>) => void;
@@ -102,7 +102,7 @@ export type RetailStore = RetailState & {
   cancelRoute: (
     routeId: string,
     input: { reason: PlanningCancelReason; note?: string },
-    // ข้อมูล route เดิมจาก frontend ใช้คง Rider/วันเวลาตามแผน เพราะ backend ลบ stops
+    // ข้อมูล route เดิมจาก frontend ใช้คง Messenger/วันเวลาตามแผน เพราะ backend ลบ stops
     // ทิ้งตอน cancel แล้ว response จึงไม่มี orderIds ให้ savePlanning ซ้ำ
     restore?: {
       orderIds: string[];

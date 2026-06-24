@@ -1,19 +1,19 @@
 import { cn } from '@/lib/utils';
-import { RIDER_TABS, type RiderTab } from '../riderTabs';
+import { MESSENGER_TABS, type MessengerTab } from '../messengerTabs';
 
-export function RiderTabBar({
+export function MessengerTabBar({
   activeTab,
   counts,
   onSelect,
 }: {
-  activeTab: RiderTab | null;
-  counts: Record<RiderTab, number>;
-  onSelect: (tab: RiderTab) => void;
+  activeTab: MessengerTab | null;
+  counts: Record<MessengerTab, number>;
+  onSelect: (tab: MessengerTab) => void;
 }) {
   return (
-    <nav className="border-t bg-background/95 p-1.5 pb-safe shadow-[0_-6px_18px_rgba(15,23,42,0.06)] backdrop-blur-sm">
+    <nav className="shrink-0 border-t bg-background/95 p-1.5 pb-safe shadow-[0_-6px_18px_rgba(15,23,42,0.06)] backdrop-blur-sm">
       <div className="flex gap-1">
-        {RIDER_TABS.map((tab) => {
+        {MESSENGER_TABS.map((tab) => {
           const active = activeTab === tab.key;
           return (
             <button

@@ -1,9 +1,9 @@
-const base = (process.env.RIDER_API_URL ?? 'http://localhost:3000/v1/rider').replace(/\/$/, '');
-const phone = process.env.RIDER_PHONE;
-const pin = process.env.RIDER_PIN;
+const base = (process.env.MESSENGER_API_URL ?? 'http://localhost:3000/v1/messenger').replace(/\/$/, '');
+const phone = process.env.MESSENGER_PHONE;
+const pin = process.env.MESSENGER_PIN;
 const routeId = process.env.ROUTE_ID;
 const scenario = process.env.SCENARIO ?? 'normal';
-if (!phone || !pin || !routeId) throw new Error('Set RIDER_PHONE, RIDER_PIN and ROUTE_ID');
+if (!phone || !pin || !routeId) throw new Error('Set MESSENGER_PHONE, MESSENGER_PIN and ROUTE_ID');
 
 async function api(path, init = {}, token) {
   const response = await fetch(`${base}${path}`, { ...init, headers: { 'content-type': 'application/json', ...(token ? { authorization: `Bearer ${token}` } : {}) } });

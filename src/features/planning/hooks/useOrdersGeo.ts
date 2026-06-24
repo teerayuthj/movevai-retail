@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Order } from '@/data/mock';
-import { localGeocode } from '@/features/rider/geocode';
+import { localGeocode } from '@/features/messenger/geocode';
 import { geocodeAddress, type GeoCoordinate } from '@/lib/retailApi';
 
 export type OrderGeo = { coords: GeoCoordinate | null; pending: boolean };
@@ -38,7 +38,7 @@ export function useOrdersGeo(orders: Order[]): Record<string, OrderGeo> {
         try {
           coords = (await geocodeAddress(address)) ?? localGeocode(address);
         } catch {
-          // backend geocode ล้มเหลว — ใช้ anchor เดียวกับหน้า Rider เป็น fallback
+          // backend geocode ล้มเหลว — ใช้ anchor เดียวกับหน้า Messenger เป็น fallback
           coords = localGeocode(address);
         }
         if (cancelled) return;

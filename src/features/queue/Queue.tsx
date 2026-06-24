@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,11 +27,15 @@ import {
   recommendDriverForOrder,
   type DriverQueueTab,
 } from '@/lib/deliveryExecution';
+import { getAdminRouteOrigin } from '@/lib/adminLocation';
+import { previewPlanningRoute, type RoutePreview } from '@/lib/retailApi';
+import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';
-import { Ban, BellRing, CalendarClock, Route, Search, Sparkles } from 'lucide-react';
+import { Ban, BellRing, CalendarClock, List, MapPin, Route, Search, Sparkles } from 'lucide-react';
 import { AssignmentPanel } from './components/AssignmentPanel';
 import { UrgentDispatchDialog } from './components/UrgentDispatchDialog';
 import { buildTrackingSearch, parseQueueSearch } from './utils/queueSearch';
+import { PlanningMap } from '@/features/planning/components/PlanningMap';
 
 const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
   Object.keys(cancelReasonLabel) as CancelReason[]
@@ -54,9 +59,12 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   } = useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const [paneView, setPaneView] = useState<'list' | 'map'>('list');
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
   const [planningTargetId, setPlanningTargetId] = useState<string | null>(null);
   const [operationError, setOperationError] = useState('');
+  const [routePreview, setRoutePreview] = useState<RoutePreview | null>(null);
+  const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
   const [urgentTarget, setUrgentTarget] = useState<{
     orderId: string;
     driverId: string;
@@ -140,8 +148,16 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   }, [filteredOrders, selectedOrderId]);
 
   useEffect(() => {
-    setSelectedDriverId(selectedOrder?.assignedDriverId ?? null);
-  }, [selectedOrder?.assignedDriverId, selectedOrder?.id]);
+    if (!selectedOrder) {
+      setSelectedDriverId(null);
+      return;
+    }
+    if (selectedOrder.assignedDriverId) {
+      setSelectedDriverId(selectedOrder.assignedDriverId);
+      return;
+    }
+    setSelectedDriverId(selectedOrder.status === 'ready' ? recommendedDriverId : null);
+  }, [recommendedDriverId, selectedOrder]);
 
   const canAssign =
     selectedOrder?.status === 'ready' &&
@@ -199,6 +215,39 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     activeTab === 'assigned' && selectedOrder?.status === 'assigned'
       ? [selectedOrder]
       : assignedOrders;
+
+  const selectedOrderSet = useMemo(
+    () => new Set(selectedOrderId ? [selectedOrderId] : []),
+    [selectedOrderId],
+  );
+  const mapPreviewOrders = selectedOrder ? [selectedOrder] : [];
+
+  useEffect(() => {
+    if (paneView !== 'map' || !selectedOrder) {
+      setRoutePreview(null);
+      setRoutePreviewLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setRoutePreviewLoading(true);
+    const timeoutId = window.setTimeout(() => {
+      void (async () => {
+        const origin = await getAdminRouteOrigin();
+        try {
+          const preview = await previewPlanningRoute({ orderIds: [selectedOrder.id], origin });
+          if (!cancelled) setRoutePreview(preview);
+        } catch {
+          if (!cancelled) setRoutePreview(null);
+        } finally {
+          if (!cancelled) setRoutePreviewLoading(false);
+        }
+      })();
+    }, 400);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [paneView, selectedOrder]);
 
   // ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งคอลัมน์ขวา (เดสก์ท็อป) และ footer ของ overlay มือถือ
   const assignmentActions = selectedOrder ? (
@@ -263,7 +312,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">จ่ายงานวันนี้</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">คิวงานพร้อมจ่าย</h1>
           <p className="text-sm text-muted-foreground">
             ส่งทันทีให้เลือกคนขับที่นี่ หรือนำงานไปวางแผนล่วงหน้าโดยไม่แสดงซ้ำสองหน้า
           </p>
@@ -373,24 +422,134 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                     className="h-10 rounded-xl pl-9"
                   />
                 </div>
+                <div className="flex rounded-xl border bg-muted/40 p-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setPaneView('list')}
+                    className={cn(
+                      'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition',
+                      paneView === 'list'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    aria-pressed={paneView === 'list'}
+                  >
+                    <List className="h-3.5 w-3.5" />
+                    รายการ
+                    <span className="rounded-full bg-muted px-1.5 text-[10px] tabular-nums">
+                      {filteredOrders.length}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPaneView('map')}
+                    className={cn(
+                      'flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition',
+                      paneView === 'map'
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    aria-pressed={paneView === 'map'}
+                  >
+                    <MapPin className="h-3.5 w-3.5" />
+                    แผนที่
+                    {selectedOrder && (
+                      <span className="rounded-full bg-info/15 px-1.5 text-[10px] tabular-nums text-info">
+                        1
+                      </span>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </CardHeader>
-          <CardContent className="flex-1 space-y-2 overflow-auto">
-            {filteredOrders.map((order, index) => (
-              <QueueOrderCard
-                key={order.id}
-                order={order}
-                selected={selectedOrderId === order.id}
-                onClick={() => {
-                  setSelectedOrderId(order.id);
-                  setMobileDetailOpen(true);
-                }}
-                statusText={statusLabel[order.status]}
-                rank={activeTab === 'ready' ? index + 1 : undefined}
-              />
-            ))}
-            {filteredOrders.length === 0 && <EmptyState />}
+          <CardContent className="flex-1 overflow-hidden">
+            {paneView === 'map' ? (
+              <section className="flex h-full min-h-0 flex-col" aria-labelledby="queue-map-title">
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <div
+                      id="queue-map-title"
+                      className="flex items-center gap-1.5 text-xs font-medium"
+                    >
+                      <MapPin className="h-3.5 w-3.5 text-info" />
+                      {selectedOrder
+                        ? routePreview?.geometry.length || routePreviewLoading
+                          ? 'พรีวิวเส้นทางตามถนน'
+                          : 'ปลายทางของ order ที่เลือก'
+                        : 'ตรวจสอบจุดส่งบนแผนที่'}
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                      {selectedOrder
+                        ? `${selectedOrder.code} · ${selectedOrder.customer.address}`
+                        : 'เลือก order จากรายการหรือแตะหมุดเพื่อคำนวณเส้นทาง'}
+                    </p>
+                  </div>
+                  {mapPreviewOrders.length > 0 && (
+                    <Badge variant="info" className="shrink-0">
+                      {mapPreviewOrders.length} จุด
+                    </Badge>
+                  )}
+                </div>
+                <div className="min-h-[320px] flex-1">
+                  <PlanningMap
+                    orders={mapPreviewOrders}
+                    selectedIds={selectedOrderSet}
+                    onToggle={(orderId) => {
+                      setSelectedOrderId(orderId);
+                      setMobileDetailOpen(false);
+                    }}
+                    route={
+                      selectedOrder && (routePreview?.geometry.length || routePreviewLoading)
+                        ? {
+                            preview: true,
+                            loading: routePreviewLoading && !routePreview?.geometry.length,
+                            distanceMeters: routePreview?.distanceMeters,
+                            geometry: routePreview?.geometry ?? [],
+                          }
+                        : null
+                    }
+                    emptyLabel="เลือก order จากรายการเพื่อดูปลายทาง"
+                    selectedLabel="กำลังพรีวิวเส้นทางของ order นี้"
+                    unselectedLabel="แตะเพื่อพรีวิวเส้นทางของ order นี้"
+                    routePreviewTitle="พรีวิวเส้นทางก่อนส่งด่วน"
+                  />
+                </div>
+              </section>
+            ) : (
+              <div className="h-full space-y-2 overflow-auto pr-1">
+                {filteredOrders.map((order, index) => (
+                  <div key={order.id} className="relative">
+                    <QueueOrderCard
+                      order={order}
+                      selected={selectedOrderId === order.id}
+                      onClick={() => {
+                        setSelectedOrderId(order.id);
+                        setMobileDetailOpen(true);
+                      }}
+                      statusText={statusLabel[order.status]}
+                      rank={activeTab === 'ready' ? index + 1 : undefined}
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-3 top-12 inline-flex h-8 items-center justify-center gap-1.5 rounded-full border bg-background/95 px-2.5 text-xs font-medium text-info shadow-sm transition hover:bg-info/10"
+                      aria-label={`ดูแผนที่ของ ${order.code}`}
+                      title="ดูแผนที่"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedOrderId(order.id);
+                        setMobileDetailOpen(false);
+                        setPaneView('map');
+                      }}
+                    >
+                      <MapPin className="h-4 w-4" />
+                      ดูแผนที่
+                    </button>
+                  </div>
+                ))}
+                {filteredOrders.length === 0 && <EmptyState />}
+              </div>
+            )}
           </CardContent>
         </Card>
 

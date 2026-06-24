@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
+import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import { Button } from '@/components/ui/button';
 import { useRetailStore } from '@/state/retailStore';
 import { statusLabel } from '@/data/mock';
@@ -14,53 +14,58 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
-import { RIDER_JOB_STATUSES, RIDER_TABS, type RiderTab } from './riderTabs';
+import { MESSENGER_JOB_STATUSES, MESSENGER_TABS, type MessengerTab } from './messengerTabs';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
-import { useRiderTab } from './hooks/useRiderTab';
+import { useMessengerTab } from './hooks/useMessengerTab';
 import {
-  clearRiderAppBadge,
+  clearMessengerAppBadge,
   currentPermission,
-  DEFAULT_RIDER_CODE,
+  DEFAULT_MESSENGER_CODE,
   isPushSupported,
   subscribeToPush,
 } from './push';
-import { RiderHeader } from './components/RiderHeader';
+import { MessengerHeader } from './components/MessengerHeader';
 import { JobCard } from './components/JobCard';
-import { getRiderJobOverdueMinutes, getRiderJobScheduledAt } from './riderSchedule';
-import { RiderTabBar } from './components/RiderTabBar';
-import { RiderCompletedList } from './components/RiderCompletedList';
-import { RiderProfileSheet } from './components/RiderProfileSheet';
-import { RiderPushSetupBanner } from './components/RiderPushSetupBanner';
-import { RiderRouteMap } from './components/RiderRouteMap';
+import { getMessengerJobOverdueMinutes, getMessengerJobScheduledAt } from './messengerSchedule';
+import { MessengerTabBar } from './components/MessengerTabBar';
+import { MessengerCompletedList } from './components/MessengerCompletedList';
+import { MessengerProfileSheet } from './components/MessengerProfileSheet';
+import { MessengerPushSetupBanner } from './components/MessengerPushSetupBanner';
+import { MessengerRouteMap } from './components/MessengerRouteMap';
+import { MessengerOrderMapPage } from './components/MessengerOrderMapPage';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
 import type { Order } from '@/data/mock';
 import {
-  hasRiderSession,
-  isRiderAuthError,
-  logoutRider,
-  RIDER_AUTH_EXPIRED_EVENT,
-  type RiderSession,
+  hasMessengerSession,
+  isMessengerAuthError,
+  logoutMessenger,
+  MESSENGER_AUTH_EXPIRED_EVENT,
+  type MessengerSession,
 } from '@/lib/retailApi';
-import { RiderLogin } from './components/RiderLogin';
+import { MessengerLogin } from './components/MessengerLogin';
 import { TestRouteDialog } from './components/TestRouteDialog';
-import { useRiderTracking } from './hooks/useRiderTracking';
-import { useRiderLocation } from './hooks/useRiderLocation';
+import { useMessengerTracking } from './hooks/useMessengerTracking';
+import { useMessengerLocation } from './hooks/useMessengerLocation';
 
-const RIDER_STORAGE_KEY = 'movevai:rider-code';
+const MESSENGER_STORAGE_KEY = 'movevai:messenger-code';
 
-function resolveRiderCode() {
-  const fromUrl = new URLSearchParams(window.location.search).get('rider')?.trim();
-  if (fromUrl && import.meta.env.DEV && import.meta.env.VITE_ALLOW_LEGACY_RIDER_QUERY === 'true') {
-    localStorage.setItem(RIDER_STORAGE_KEY, fromUrl);
+function resolveMessengerCode() {
+  const fromUrl = new URLSearchParams(window.location.search).get('messenger')?.trim();
+  if (
+    fromUrl &&
+    import.meta.env.DEV &&
+    import.meta.env.VITE_ALLOW_LEGACY_MESSENGER_QUERY === 'true'
+  ) {
+    localStorage.setItem(MESSENGER_STORAGE_KEY, fromUrl);
     return fromUrl;
   }
-  return localStorage.getItem(RIDER_STORAGE_KEY) || DEFAULT_RIDER_CODE;
+  return localStorage.getItem(MESSENGER_STORAGE_KEY) || DEFAULT_MESSENGER_CODE;
 }
 
-export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
-  const [authenticated, setAuthenticated] = useState(hasRiderSession);
-  const { orders, drivers, startDelivery, submitDelivery, refreshRiderJobs } = useRetailStore();
+export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
+  const [authenticated, setAuthenticated] = useState(hasMessengerSession);
+  const { orders, drivers, startDelivery, submitDelivery, refreshMessengerJobs } = useRetailStore();
   const [closeTargetId, setCloseTargetId] = useState<string | null>(null);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -73,28 +78,28 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
   const install = useInstallPrompt();
-  const { activeTab, setTab } = useRiderTab();
-  const [riderCode, setRiderCode] = useState(resolveRiderCode);
-  const tracking = useRiderTracking(authenticated);
+  const { activeTab, mapOrderId, setTab, openOrderMap, backToPending } = useMessengerTab();
+  const [messengerCode, setMessengerCode] = useState(resolveMessengerCode);
+  const tracking = useMessengerTracking(authenticated);
   // ถ้า backend เริ่ม tracking session ไม่สำเร็จ ยังอ่าน GPS บนอุปกรณ์เพื่อแสดงแผนที่
   // และแนบพิกัดจริงตอนปิดงานได้ โดยไม่สร้างตำแหน่งจำลอง
-  const fallbackLocation = useRiderLocation(
+  const fallbackLocation = useMessengerLocation(
     authenticated && activeTab === 'in_transit' && !tracking.session,
   );
   const autoOpenedSessionId = useRef<string | null>(null);
 
-  const rider = drivers.find((driver) => driver.id === riderCode) ?? null;
+  const messenger = drivers.find((driver) => driver.id === messengerCode) ?? null;
 
   const myJobs = useMemo(
     () =>
       orders.filter(
         (order) =>
-          order.assignedDriverId === riderCode && RIDER_JOB_STATUSES.includes(order.status),
+          order.assignedDriverId === messengerCode && MESSENGER_JOB_STATUSES.includes(order.status),
       ),
-    [orders, riderCode],
+    [orders, messengerCode],
   );
 
-  const counts: Record<RiderTab, number> = {
+  const counts: Record<MessengerTab, number> = {
     assigned: myJobs.filter((o) => o.status === 'assigned').length,
     // Test Route ไม่มี Order แต่ถือเป็นกิจกรรมที่กำลังส่งหนึ่งรายการใน UI
     in_transit:
@@ -104,12 +109,12 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     delivered: myJobs.filter((o) => o.status === 'delivered').length,
   };
 
-  // auto-select เฉพาะตอน /rider เปล่า (ยังไม่ได้เลือก tab) → เด้งไป tab แรกที่มีงาน
-  // ใช้ replace เพื่อไม่ให้ /rider ค้างใน history (back/forward ยังถูก)
+  // auto-select เฉพาะตอน /messenger เปล่า (ยังไม่ได้เลือก tab) → เด้งไป tab แรกที่มีงาน
+  // ใช้ replace เพื่อไม่ให้ /messenger ค้างใน history (back/forward ยังถูก)
   // ไม่เด้งตอน tab ปัจจุบันว่าง — ผู้ใช้ต้องกดดู tab ว่างได้ (เห็น empty state)
   useEffect(() => {
     if (activeTab !== null) return;
-    const firstWithJobs = RIDER_TABS.find((tab) => counts[tab.key] > 0)?.key;
+    const firstWithJobs = MESSENGER_TABS.find((tab) => counts[tab.key] > 0)?.key;
     setTab(firstWithJobs ?? 'assigned', { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -122,11 +127,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
 
   useEffect(() => {
     if (activeTab !== 'assigned') return;
-    void clearRiderAppBadge();
+    void clearMessengerAppBadge();
   }, [activeTab]);
 
   // เมื่อพบ active session จาก backend (รวม session ที่เริ่มจาก Web/PWA อีกตัว)
-  // เปิดหน้ากำลังส่งหนึ่งครั้ง แล้วปล่อยให้ rider เปลี่ยนแท็บเองได้ตามปกติ
+  // เปิดหน้ากำลังส่งหนึ่งครั้ง แล้วปล่อยให้ messenger เปลี่ยนแท็บเองได้ตามปกติ
   useEffect(() => {
     if (!tracking.session || autoOpenedSessionId.current === tracking.session.id) return;
     autoOpenedSessionId.current = tracking.session.id;
@@ -136,14 +141,14 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   // คง subscription ของเครื่องนี้ให้สดเมื่อเคยอนุญาต Push แล้ว
   // ใช้ได้ทั้ง PWA และ Desktop Web ที่เปิดผ่าน HTTPS/localhost
   useEffect(() => {
-    if (!rider || !isPushSupported() || currentPermission() !== 'granted') {
+    if (!messenger || !isPushSupported() || currentPermission() !== 'granted') {
       return;
     }
-    void subscribeToPush(rider.id);
-  }, [rider]);
+    void subscribeToPush(messenger.id);
+  }, [messenger]);
 
-  // เริ่มส่งงาน = จังหวะ rider ออกไปส่งของจริง → ถ้ายังไม่ได้บันทึก Route ของรอบนี้
-  // ให้ start tracking อัตโนมัติ เพื่อให้ "ทุกรอบถูกบันทึก" โดยไม่ต้องพึ่งความจำ rider
+  // เริ่มส่งงาน = จังหวะ messenger ออกไปส่งของจริง → ถ้ายังไม่ได้บันทึก Route ของรอบนี้
+  // ให้ start tracking อัตโนมัติ เพื่อให้ "ทุกรอบถูกบันทึก" โดยไม่ต้องพึ่งความจำ messenger
   const handleStartJob = useCallback(
     async (order: Order) => {
       try {
@@ -154,13 +159,13 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
           try {
             await tracking.start(routeId);
           } catch (error) {
-            if (isRiderAuthError(error)) return;
-            /* ปล่อยให้ rider ส่งงานต่อได้ แม้บันทึกเส้นทางไม่เริ่ม */
+            if (isMessengerAuthError(error)) return;
+            /* ปล่อยให้ messenger ส่งงานต่อได้ แม้บันทึกเส้นทางไม่เริ่ม */
           }
         }
         setTab('in_transit');
       } catch (error) {
-        if (isRiderAuthError(error)) return;
+        if (isMessengerAuthError(error)) return;
         setJobsError(error instanceof Error ? error.message : 'เริ่มงานไม่สำเร็จ');
       }
     },
@@ -171,10 +176,10 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     async (background = false) => {
       if (!background) setJobsLoading(true);
       try {
-        await refreshRiderJobs(riderCode);
+        await refreshMessengerJobs(messengerCode);
         setJobsError(null);
       } catch (error) {
-        if (isRiderAuthError(error)) {
+        if (isMessengerAuthError(error)) {
           setJobsError(null);
           setAuthenticated(false);
           return;
@@ -184,7 +189,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         if (!background) setJobsLoading(false);
       }
     },
-    [refreshRiderJobs, riderCode],
+    [refreshMessengerJobs, messengerCode],
   );
 
   useEffect(() => {
@@ -195,13 +200,13 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
       setCloseTargetId(null);
       setProfileOpen(false);
     };
-    window.addEventListener(RIDER_AUTH_EXPIRED_EVENT, onAuthExpired);
-    return () => window.removeEventListener(RIDER_AUTH_EXPIRED_EVENT, onAuthExpired);
+    window.addEventListener(MESSENGER_AUTH_EXPIRED_EVENT, onAuthExpired);
+    return () => window.removeEventListener(MESSENGER_AUTH_EXPIRED_EVENT, onAuthExpired);
   }, []);
 
   useEffect(() => {
     // อย่ายิง fetch ก่อน login — ตอนยังไม่มี bearer token backend จะตอบ
-    // "Missing rider bearer token" แล้ว error ค้างทับหน้าจอหลัง login เสร็จ
+    // "Missing messenger bearer token" แล้ว error ค้างทับหน้าจอหลัง login เสร็จ
     if (!authenticated) return;
 
     void refreshJobs();
@@ -212,7 +217,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
       if (document.visibilityState === 'visible') void refreshJobs(true);
     };
     const onServiceWorkerMessage = (event: MessageEvent) => {
-      if ((event.data as { type?: string } | undefined)?.type === 'movevai:rider-push-job-added') {
+      if (
+        (event.data as { type?: string } | undefined)?.type === 'movevai:messenger-push-job-added'
+      ) {
         void refreshJobs(true);
       }
     };
@@ -235,7 +242,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
   }, []);
 
   const overdueCount = myJobs.filter(
-    (order) => getRiderJobOverdueMinutes(order, nowMs) != null,
+    (order) => getMessengerJobOverdueMinutes(order, nowMs) != null,
   ).length;
 
   const tabJobs = useMemo(
@@ -244,11 +251,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         ? myJobs
             .filter((order) => order.status === activeTab)
             .sort((a, b) => {
-              const aOverdue = getRiderJobOverdueMinutes(a, nowMs) != null;
-              const bOverdue = getRiderJobOverdueMinutes(b, nowMs) != null;
+              const aOverdue = getMessengerJobOverdueMinutes(a, nowMs) != null;
+              const bOverdue = getMessengerJobOverdueMinutes(b, nowMs) != null;
               if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
               if (aOverdue && bOverdue) {
-                return (getRiderJobScheduledAt(a) ?? 0) - (getRiderJobScheduledAt(b) ?? 0);
+                return (getMessengerJobScheduledAt(a) ?? 0) - (getMessengerJobScheduledAt(b) ?? 0);
               }
               const dateCompare = (a.deliveryPlan?.plannedDate ?? '').localeCompare(
                 b.deliveryPlan?.plannedDate ?? '',
@@ -296,7 +303,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     ? (tabJobs.find((order) => order.id === mapFocusOrderId) ?? null)
     : null;
 
-  // หน้ากำลังส่งต้องแสดงเฉพาะจุดหมายของงานที่ rider กำลังนำส่งอยู่ ไม่รวมงาน assigned
+  // หน้ากำลังส่งต้องแสดงเฉพาะจุดหมายของงานที่ messenger กำลังนำส่งอยู่ ไม่รวมงาน assigned
   // ที่ยังรอรับใน route เดียวกัน มิฉะนั้นผู้ใช้จะเห็นหลายจุดและไม่รู้ว่าต้องไปจุดไหนก่อน
   const activeDeliveryJob = myJobs
     .filter((order) => order.status === 'in_transit')
@@ -332,31 +339,36 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
     setAssignedView('map');
   }, []);
   const activeRouteId = myJobs.find((order) => order.deliveryRoute)?.deliveryRoute?.id;
+  const mapOrder = mapOrderId ? (myJobs.find((order) => order.id === mapOrderId) ?? null) : null;
 
   if (!authenticated) {
     return (
-      <RiderLogin
-        onLogin={(session: RiderSession) => {
-          setRiderCode(session.rider.code);
+      <MessengerLogin
+        onLogin={(session: MessengerSession) => {
+          setMessengerCode(session.rider.code);
           setAuthenticated(true);
         }}
       />
     );
   }
 
+  if (mapOrderId) {
+    return <MessengerOrderMapPage order={mapOrder} orderId={mapOrderId} onBack={backToPending} />;
+  }
+
   return (
     <div className="flex min-h-dvh w-full justify-center bg-muted/40">
       {/* surface เต็มจอ mobile-first — บน desktop จำกัดความกว้างให้เหมือนมือถือ */}
-      <div className="relative flex min-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
-        <RiderHeader
-          rider={rider}
+      <div className="relative flex h-dvh max-h-dvh w-full max-w-md flex-col overflow-hidden bg-background shadow-xs">
+        <MessengerHeader
+          messenger={messenger}
           // สถานะ badge ต้องตามกิจกรรมจริงเท่านั้น ไม่เชื่อค่า static ใน driver record
           // (ที่ค้างได้ทั้งเป็น available ทั้งที่กำลังส่ง และค้างเป็น on_delivery ทั้งที่ส่งเสร็จแล้ว):
-          //  - off_duty = rider กดหยุดเอง → คงไว้
+          //  - off_duty = messenger กดหยุดเอง → คงไว้
           //  - กำลังบันทึก GPS หรือมีงานสถานะ in_transit → "กำลังส่ง"
           //  - นอกนั้น (มีแต่งาน assigned/รอตรวจ/เสร็จ) → "ว่าง"
           effectiveStatus={
-            rider?.status === 'off_duty'
+            messenger?.status === 'off_duty'
               ? 'off_duty'
               : tracking.session || counts.in_transit > 0
                 ? 'on_delivery'
@@ -383,28 +395,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                   }`
                 : 'ระบบจะเริ่มบันทึกเส้นทางเมื่อกดรับงาน'}
             </span>
-            {/* บันทึกเริ่มอัตโนมัติตอนกดรับงาน — เหลือแค่ปุ่ม "จบ Route" ระหว่างบันทึก */}
-            {tracking.session && tracking.isOwner && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  // Test Route ไม่ผูกกับงานลูกค้า → จบได้เลยไม่ต้องถามเหตุผล
-                  if (tracking.session?.type === 'test') {
-                    void tracking.end();
-                    return;
-                  }
-                  const openStops = myJobs.some(
-                    (order) => !['delivered', 'failed', 'cancelled'].includes(order.status),
-                  );
-                  const reason = openStops
-                    ? window.prompt('ยังมีงานค้าง กรุณาระบุเหตุผลที่จบ Route')?.trim()
-                    : undefined;
-                  if (openStops && !reason) return;
-                  void tracking.end(reason);
-                }}
-              >
-                จบ Route
+            {tracking.session?.type === 'test' && tracking.isOwner && (
+              <Button size="sm" variant="outline" onClick={() => void tracking.end()}>
+                หยุดทดสอบ
               </Button>
             )}
           </div>
@@ -423,9 +416,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
             </Button>
           </div>
         )}
-        {rider && <RiderPushSetupBanner installed={install.installed} riderCode={rider.id} />}
+        {messenger && (
+          <MessengerPushSetupBanner installed={install.installed} messengerCode={messenger.id} />
+        )}
 
-        {/* toggle รายการ/แผนที่ — เฉพาะ tab งานใหม่ ที่ rider ดูเส้นทางก่อนออกงาน */}
+        {/* toggle รายการ/แผนที่ — เฉพาะ tab งานใหม่ ที่ messenger ดูเส้นทางก่อนออกงาน */}
         {activeTab === 'assigned' && tabJobs.length > 0 && (
           <div className="flex gap-1.5 border-b bg-background p-2">
             {(
@@ -457,7 +452,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         )}
 
         {showAssignedMap || showTrackingMap ? (
-          <div className="relative flex flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1 flex-col">
             {showAssignedMap &&
               (focusOrder ? (
                 /* โฟกัสปลายทางเดียว: บอกชัดว่ากำลังดูงานไหน + กลับไปดูทั้ง Route ได้ */
@@ -523,9 +518,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                   </div>
                 )
               ))}
-            <div className="relative flex-1">
+            <div className="relative min-h-0 flex-1">
               {!suspendMap && (
-                <RiderRouteMap
+                <MessengerRouteMap
                   stops={routeStops}
                   nowMs={nowMs}
                   locationSource={showTrackingMap ? liveLocationSource : undefined}
@@ -534,7 +529,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
               )}
             </div>
             {showTrackingMap && activeDeliveryJob && (
-              <div className="max-h-[46dvh] shrink-0 overflow-auto border-t bg-background p-3 pb-4">
+              <div className="app-scroll max-h-[46dvh] shrink-0 overflow-auto border-t bg-background p-3 pb-4">
                 <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5 text-info" />
                   ปลายทางที่กำลังส่ง
@@ -550,7 +545,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
           </div>
         ) : (
           /* job list */
-          <div className="flex-1 space-y-2.5 overflow-auto p-3 pb-safe">
+          <div className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3">
             {jobsLoading && myJobs.length === 0 && (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -599,9 +594,9 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                 </Button>
               </div>
             )}
-            {!jobsLoading && activeTab === 'delivered' && rider ? (
+            {!jobsLoading && activeTab === 'delivered' && messenger ? (
               // tab สำเร็จ: ดึงรายการที่ส่งสำเร็จจาก backend โดยตรง (privacy-minimal, ไม่มี PII ลูกค้า)
-              <RiderCompletedList riderCode={rider.id} />
+              <MessengerCompletedList messengerCode={messenger.id} />
             ) : (
               <>
                 {tabJobs.map((order, index) => {
@@ -625,7 +620,11 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
                         onStart={() => void handleStartJob(order)}
                         onClose={() => setCloseTargetId(order.id)}
                         onViewMap={
-                          activeTab === 'assigned' ? () => handleViewOrderMap(order) : undefined
+                          activeTab === 'assigned'
+                            ? () => handleViewOrderMap(order)
+                            : activeTab === 'pending_confirmation'
+                              ? () => openOrderMap(order.id)
+                              : undefined
                         }
                       />
                     </div>
@@ -642,7 +641,7 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
           </div>
         )}
 
-        <RiderTabBar activeTab={activeTab} counts={counts} onSelect={(tab) => setTab(tab)} />
+        <MessengerTabBar activeTab={activeTab} counts={counts} onSelect={(tab) => setTab(tab)} />
 
         <TestRouteDialog
           open={testDialogOpen}
@@ -653,13 +652,13 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
           }}
         />
 
-        {rider && profileOpen && (
-          <RiderProfileSheet
-            rider={rider}
+        {messenger && profileOpen && (
+          <MessengerProfileSheet
+            messenger={messenger}
             install={install}
             onClose={() => setProfileOpen(false)}
             onExit={() => {
-              void logoutRider().finally(() => {
+              void logoutMessenger().finally(() => {
                 setAuthenticated(false);
                 onExit?.();
               });
@@ -668,14 +667,33 @@ export function RiderConsolePage({ onExit }: { onExit?: () => void }) {
         )}
       </div>
 
-      <RiderCloseJobDialog
+      <MessengerCloseJobDialog
         open={!!closeTargetId}
         order={orders.find((order) => order.id === closeTargetId) ?? null}
         location={liveLocation}
         onCancel={() => setCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!closeTargetId) return;
+          const shouldStopTracking =
+            tracking.session?.type === 'delivery' &&
+            tracking.isOwner &&
+            !myJobs.some(
+              (order) =>
+                order.id !== closeTargetId && ['assigned', 'in_transit'].includes(order.status),
+            );
           await submitDelivery(closeTargetId, input);
+          if (shouldStopTracking) {
+            try {
+              await tracking.end();
+            } catch (error) {
+              if (isMessengerAuthError(error)) return;
+              setJobsError(
+                error instanceof Error
+                  ? `ปิดงานสำเร็จ แต่หยุด GPS ไม่สำเร็จ — ${error.message}`
+                  : 'ปิดงานสำเร็จ แต่หยุด GPS ไม่สำเร็จ',
+              );
+            }
+          }
           setCloseTargetId(null);
         }}
       />

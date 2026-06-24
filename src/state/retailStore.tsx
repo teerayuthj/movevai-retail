@@ -42,19 +42,19 @@ import {
   confirmAppDelivery,
   fetchAppDrivers,
   fetchAppOrders,
-  fetchRiderOrders,
+  fetchMessengerOrders,
   publishPlanningRoute,
   publishUrgentPlanningRoute,
   reassignPlanningRoute,
   savePlanning,
-  startRiderOrder,
-  submitRiderOrder,
+  startMessengerOrder,
+  submitMessengerOrder,
   syncAppOrder,
   syncAndAssignOrder,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
 
-const RIDER_JOB_STATUSES = ['assigned', 'in_transit', 'pending_confirmation', 'delivered'];
+const MESSENGER_JOB_STATUSES = ['assigned', 'in_transit', 'pending_confirmation', 'delivered'];
 const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
 
 function replaceOrder(orders: RetailState['orders'], canonical: RetailState['orders'][number]) {
@@ -98,10 +98,10 @@ export function RetailProvider({
   mode = 'web',
 }: {
   children: React.ReactNode;
-  mode?: 'web' | 'rider';
+  mode?: 'web' | 'messenger';
 }) {
   const [state, setState] = useState<RetailState>(() =>
-    mode === 'rider' ? { orders: [], drivers: defaultState.drivers } : loadState(),
+    mode === 'messenger' ? { orders: [], drivers: defaultState.drivers } : loadState(),
   );
 
   const commit = useCallback(
@@ -137,15 +137,16 @@ export function RetailProvider({
     [commit],
   );
 
-  const refreshRiderJobs = useCallback(
+  const refreshMessengerJobs = useCallback(
     async (driverCode: string) => {
-      const remote = await fetchRiderOrders(driverCode);
+      const remote = await fetchMessengerOrders(driverCode);
       commit((current) => ({
         ...current,
         orders: [
           ...current.orders.filter(
             (order) =>
-              order.assignedDriverId !== driverCode || !RIDER_JOB_STATUSES.includes(order.status),
+              order.assignedDriverId !== driverCode ||
+              !MESSENGER_JOB_STATUSES.includes(order.status),
           ),
           ...remote.orders.map((order) => preservePendingReview(current, order)),
         ],
@@ -254,7 +255,7 @@ export function RetailProvider({
     async (orderId: string) => {
       const order = state.orders.find((item) => item.id === orderId);
       if (!order?.assignedDriverId) return;
-      const canonical = await startRiderOrder(orderId, order.assignedDriverId);
+      const canonical = await startMessengerOrder(orderId, order.assignedDriverId);
       commit((current) => {
         const started = startDeliveryState(current, orderId);
         return { ...started, orders: replaceOrder(started.orders, canonical) };
@@ -267,7 +268,7 @@ export function RetailProvider({
     async (orderId: string, input: SubmitDeliveryInput) => {
       const order = state.orders.find((item) => item.id === orderId);
       if (!order?.assignedDriverId) return;
-      const canonical = await submitRiderOrder(orderId, order.assignedDriverId, input);
+      const canonical = await submitMessengerOrder(orderId, order.assignedDriverId, input);
       commit((current) => {
         const submitted = submitDeliveryState(current, orderId, input);
         const submittedOrder = submitted.orders.find(
@@ -422,8 +423,8 @@ export function RetailProvider({
       // backend ลบ stops ทิ้งตอน cancel (เพื่อปล่อย unique orderId) แล้ว restore order
       // กลับเป็น releaseState='planned' พร้อม plannedDate/Time เดิมให้เรียบร้อย ดังนั้น
       // response.stops จึง "ว่างเสมอ" — ไม่ใช่สัญญาณว่าดึงกลับไม่สำเร็จ จึงห้าม throw
-      // ที่ backend ไม่ได้คงไว้คือ plannedDriverId (Rider) เลย savePlanning ซ้ำด้วย
-      // ข้อมูล route เดิมจาก frontend (restore) เพื่อคง Rider ตามแผนเดิมไว้
+      // ที่ backend ไม่ได้คงไว้คือ plannedDriverId (Messenger) เลย savePlanning ซ้ำด้วย
+      // ข้อมูล route เดิมจาก frontend (restore) เพื่อคง Messenger ตามแผนเดิมไว้
       const plan =
         restore && restore.orderIds.length > 0
           ? restore
@@ -465,7 +466,7 @@ export function RetailProvider({
       const plannedTime = first?.deliveryPlan?.plannedTime;
       const driverCode = first?.deliveryPlan?.plannedDriverId;
       if (!plannedDate || !driverCode) {
-        throw new Error('กรุณาบันทึกวันส่งและ Rider ก่อน Publish');
+        throw new Error('กรุณาบันทึกวันส่งและ Messenger ก่อน Publish');
       }
       if (
         selected.some(
@@ -474,7 +475,7 @@ export function RetailProvider({
             order.deliveryPlan?.plannedDriverId !== driverCode,
         )
       ) {
-        throw new Error('orders ใน Route ต้องเป็นวันส่งและ Rider เดียวกัน');
+        throw new Error('orders ใน Route ต้องเป็นวันส่งและ Messenger เดียวกัน');
       }
       const route = await publishPlanningRoute({
         orderIds,
@@ -537,7 +538,7 @@ export function RetailProvider({
     () => ({
       ...state,
       createInternalChatOrder,
-      refreshRiderJobs,
+      refreshMessengerJobs,
       syncFromBackend,
       updateOrder,
       updateOrderCustomer,
@@ -572,7 +573,7 @@ export function RetailProvider({
     [
       state,
       createInternalChatOrder,
-      refreshRiderJobs,
+      refreshMessengerJobs,
       syncFromBackend,
       updateOrder,
       updateOrderCustomer,

@@ -9,7 +9,7 @@ import { useRetailStore } from '@/state/retailStore';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { DriverCard } from './components/DriverCard';
 import { Button } from '@/components/ui/button';
-import { upsertRiderAccount } from '@/lib/retailApi';
+import { upsertMessengerAccount } from '@/lib/retailApi';
 
 const FAIL_REASONS: { value: FailReason; label: string }[] = (
   Object.keys(failReasonLabel) as FailReason[]
@@ -58,17 +58,17 @@ export function DriversPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  const phone = window.prompt('เบอร์โทรสำหรับ Rider Login', d.phone)?.trim();
+                  const phone = window.prompt('เบอร์โทรสำหรับ Messenger Login', d.phone)?.trim();
                   if (!phone) return;
                   const pin = temporaryPin();
-                  void upsertRiderAccount(d.id, { phone, pin }).then(() => {
+                  void upsertMessengerAccount(d.id, { phone, pin }).then(() => {
                     window.alert(
                       `PIN ชั่วคราวของ ${d.name}: ${pin}\nกรุณาบันทึกตอนนี้ ระบบจะไม่แสดงซ้ำ`,
                     );
                   });
                 }}
               >
-                สร้าง / รีเซ็ต Rider PIN
+                สร้าง / รีเซ็ต Messenger PIN
               </Button>
             </div>
           );

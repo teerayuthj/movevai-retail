@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { SuccessToast } from '@/components/ui/SuccessToast';
-import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
+import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import {
   planningCancelReasonLabel,
   type FailNextAction,
@@ -30,7 +30,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Loader2,
+  Map as MapIcon,
   PackageCheck,
+  PenLine,
   RefreshCw,
   Truck,
   Undo2,
@@ -42,7 +44,8 @@ import { TrackingViewTabs, type TrackingTab } from './components/TrackingViewTab
 import { TrackingCard } from './components/TrackingCard';
 import { TrackingDetailDrawer } from './components/TrackingDetailDrawer';
 import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './utils/trackingSearch';
-import { LiveRiderMap } from './components/LiveRiderMap';
+import { LiveMessengerMap } from './components/LiveMessengerMap';
+import { MessengerOrderMapPage } from '@/features/messenger/components/MessengerOrderMapPage';
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
@@ -83,7 +86,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     reassignRoute,
   } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
-  const [riderCloseTargetId, setRiderCloseTargetId] = useState<string | null>(null);
+  const [messengerCloseTargetId, setMessengerCloseTargetId] = useState<string | null>(null);
+  const [routeHistoryOrderId, setRouteHistoryOrderId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -119,6 +123,10 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     null;
   const selectedDriver =
     drivers.find((driver) => driver.id === selectedOrder?.assignedDriverId) ?? null;
+  const routeHistoryOrder =
+    trackingOrders.find((order) => order.id === routeHistoryOrderId) ??
+    orders.find((order) => order.id === routeHistoryOrderId) ??
+    null;
 
   const totalPages = Math.max(1, Math.ceil(trackingTotal / PAGE_SIZE));
 
@@ -306,9 +314,9 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     if (order.status === 'in_transit') {
       return (
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={() => setRiderCloseTargetId(order.id)}>
+          <Button className="flex-1" onClick={() => setMessengerCloseTargetId(order.id)}>
             <Truck className="h-4 w-4" />
-            rider ปิดงาน
+            messenger ปิดงาน
           </Button>
           <Button variant="outline" className="flex-1" onClick={() => setFailTargetId(order.id)}>
             <XCircle className="h-4 w-4" />
@@ -320,9 +328,17 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
 
     if (order.status === 'pending_confirmation') {
       return (
-        <div className="flex gap-2">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <Button
-            className="flex-1"
+            variant="outline"
+            className="w-full"
+            onClick={() => setRouteHistoryOrderId(order.id)}
+          >
+            <MapIcon className="h-4 w-4" />
+            เส้นทาง
+          </Button>
+          <Button
+            className="w-full"
             onClick={async () => {
               await confirmDelivery(order.id);
               setSelectedOrderId(null);
@@ -332,7 +348,15 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             <CheckCircle2 className="h-4 w-4" />
             ยืนยันปิดงาน
           </Button>
-          <Button variant="outline" className="flex-1" onClick={() => setFailTargetId(order.id)}>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => setMessengerCloseTargetId(order.id)}
+          >
+            <PenLine className="h-4 w-4" />
+            แก้ไขหลักฐาน
+          </Button>
+          <Button variant="outline" className="w-full" onClick={() => setFailTargetId(order.id)}>
             <XCircle className="h-4 w-4" />
             ตีกลับ
           </Button>
@@ -376,19 +400,25 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     { view: 'in_transit', label: 'กำลังจัดส่ง', icon: Truck, count: trackingCounts.in_transit },
     { view: 'pending', label: 'รอยืนยัน', icon: CheckCircle2, count: trackingCounts.pending },
     { view: 'returning', label: 'ส่งกลับ', icon: Undo2, count: trackingCounts.returning },
-    { view: 'closed', label: 'ปิดงานแล้ว', icon: PackageCheck, count: trackingCounts.closed },
+    { view: 'closed', label: 'ปิดล่าสุด', icon: PackageCheck, count: trackingCounts.closed },
   ];
+  const currentTabLabel = tabs.find((tab) => tab.view === view)?.label ?? 'ต้องดำเนินการ';
+  const currentViewDescription =
+    view === 'closed'
+      ? 'แสดงงานที่ปิดใน 24 ชั่วโมงล่าสุด — รายการเก่าย้ายไปดูที่ Tracking History'
+      : 'งานที่ยังไม่ปิดจะแสดงค้างไว้จนกว่าจะจัดการเสร็จ แม้เป็นงานต่างจังหวัดหรือค้างหลายวัน';
 
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">ติดตามการจัดส่ง</h1>
         <p className="text-sm text-muted-foreground">
-          สายพานงานตามสถานะจริง — งานที่ต้องลงมืออยู่บนสุด จัดการได้ในที่เดียว
+          งานสดและงานค้างที่ยังต้องจัดการ — ค้างไว้จนกว่าจะปิดงาน ส่วนงานย้อนหลังดูที่ Tracking
+          History
         </p>
       </div>
 
-      <LiveRiderMap />
+      <LiveMessengerMap />
 
       <ResolutionDialog
         open={!!failTargetId}
@@ -429,19 +459,19 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         }}
       />
 
-      <RiderCloseJobDialog
-        open={!!riderCloseTargetId}
+      <MessengerCloseJobDialog
+        open={!!messengerCloseTargetId}
         order={
-          trackingOrders.find((o) => o.id === riderCloseTargetId) ??
-          orders.find((o) => o.id === riderCloseTargetId) ??
+          trackingOrders.find((o) => o.id === messengerCloseTargetId) ??
+          orders.find((o) => o.id === messengerCloseTargetId) ??
           null
         }
-        onCancel={() => setRiderCloseTargetId(null)}
+        onCancel={() => setMessengerCloseTargetId(null)}
         onSubmit={async (input) => {
-          if (!riderCloseTargetId) return;
-          await submitDelivery(riderCloseTargetId, input);
+          if (!messengerCloseTargetId) return;
+          await submitDelivery(messengerCloseTargetId, input);
           setSelectedOrderId(null);
-          setRiderCloseTargetId(null);
+          setMessengerCloseTargetId(null);
           changeView('needs_action');
           refreshTracking();
         }}
@@ -451,7 +481,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         <ResolutionDialog
           open
           title={`ดึง Route ${routeAction.order.deliveryRoute.code} กลับเข้า Planning`}
-          description={`ดึงทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Rider ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
+          description={`ดึงทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={PLANNING_CANCEL_REASONS}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
@@ -485,13 +515,12 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       <Card className="flex min-h-[calc(100vh-16rem)] flex-col overflow-hidden">
         <CardHeader className="gap-3 pb-3">
           <div className="flex items-center justify-between gap-2">
-            <CardTitle className="text-sm">
-              {tabs.find((tab) => tab.view === view)?.label ?? 'ต้องดำเนินการ'}
-            </CardTitle>
+            <CardTitle className="text-sm">{currentTabLabel}</CardTitle>
             <span className="text-[11px] text-muted-foreground">
               {trackingTotal.toLocaleString('th-TH')} รายการ
             </span>
           </div>
+          <div className="text-xs text-muted-foreground">{currentViewDescription}</div>
           <div className="relative w-full max-w-xl">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -519,8 +548,10 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             <div className="py-16 text-center text-sm text-muted-foreground">
               <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
               {view === 'needs_action'
-                ? 'เคลียร์งานหมดแล้ว ไม่มีอะไรค้าง 🎉'
-                : 'ไม่มีรายการในสถานะนี้'}
+                ? 'เคลียร์งานหมดแล้ว ไม่มีอะไรค้าง'
+                : view === 'closed'
+                  ? 'ยังไม่มีงานที่ปิดใน 24 ชั่วโมงล่าสุด'
+                  : 'ไม่มีรายการในสถานะนี้'}
             </div>
           )}
 
@@ -585,6 +616,16 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         onClose={() => setSelectedOrderId(null)}
         actions={selectedOrder ? renderActions(selectedOrder) : undefined}
       />
+
+      {routeHistoryOrderId && (
+        <div className="fixed inset-0 z-[70] bg-background">
+          <MessengerOrderMapPage
+            order={routeHistoryOrder}
+            orderId={routeHistoryOrderId}
+            onBack={() => setRouteHistoryOrderId(null)}
+          />
+        </div>
+      )}
     </div>
   );
 }

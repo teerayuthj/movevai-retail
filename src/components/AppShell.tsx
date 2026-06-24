@@ -1,34 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import {
-  LayoutDashboard,
-  Inbox,
-  Truck,
-  Users,
-  Settings,
-  Search,
-  Bell,
-  MessageCircle,
-  Mailbox,
-  PanelLeftClose,
-  PanelLeftOpen,
-  CalendarClock,
-  Route,
-  History,
-  FileSpreadsheet,
-  Smartphone,
-  Menu,
-  ChevronsUpDown,
-} from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getPathForPage, type PageKey } from '@/lib/routes';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { useRetailStore } from '@/state/retailStore';
 import { canPlanOrder, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { getDeliveryTrackingTab, getDriverQueueTab } from '@/lib/deliveryExecution';
+import { NAV_SECTIONS } from '@/components/app-shell/navConfig';
+import { CollapsedSidebarTooltip } from '@/components/app-shell/CollapsedSidebarTooltip';
+import { SidebarUserMenu } from '@/components/app-shell/SidebarUserMenu';
+import { Topbar } from '@/components/app-shell/Topbar';
 
 type Props = {
   page: PageKey;
@@ -36,29 +18,8 @@ type Props = {
   children: React.ReactNode;
 };
 
-type CollapsedSidebarTooltipProps = {
-  label: string;
-  enabled: boolean;
-  children: React.ReactElement;
-};
-
-function CollapsedSidebarTooltip({ label, enabled, children }: CollapsedSidebarTooltipProps) {
-  if (!enabled) return children;
-
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side="right" align="center" sideOffset={12}>
-        {label}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
 export function AppShell({ page, onChangePage, children }: Props) {
-  const [q, setQ] = useState('');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
 
@@ -73,51 +34,34 @@ export function AppShell({ page, onChangePage, children }: Props) {
   );
   // สถานะพับใช้เฉพาะบนเดสก์ท็อป — บนมือถือ drawer แสดงเต็มความกว้างเสมอ
   const collapsed = isDesktop && isSidebarCollapsed;
-  const { orders, resetDemoData } = useRetailStore();
-  const inboxCount = orders.filter((o) =>
-    ['new', 'parsing', 'needs_review', 'ready'].includes(o.status),
-  ).length;
-  const chatCount = orders.filter(
-    (o) => o.source === 'internal_chat' && ['new', 'needs_review'].includes(o.status),
-  ).length;
-  const queueCount = orders.filter(
-    (o) =>
-      getDriverQueueTab(o) &&
-      (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-      !isUnreleasedPlannedOrder(o),
-  ).length;
-  const trackingCount = orders.filter(
-    (o) =>
-      getDeliveryTrackingTab(o) &&
-      (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-      !isUnreleasedPlannedOrder(o),
-  ).length;
-  const planningCount = orders.filter((o) => canPlanOrder(o) && isUnreleasedPlannedOrder(o)).length;
-  const riderJobCount = orders.filter((o) =>
-    ['assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
-  ).length;
-  const postalCount = orders.filter(
-    (o) => o.shippingMethod === 'thai_post' && o.status === 'ready',
-  ).length;
+  const { orders } = useRetailStore();
 
-  const nav: { key: PageKey; label: string; icon: React.ElementType; badge?: string }[] = [
-    { key: 'overview', label: 'ภาพรวม', icon: LayoutDashboard },
-    { key: 'chat', label: 'Chat Intake', icon: MessageCircle, badge: String(chatCount) },
-    { key: 'script_transform', label: 'Script Transform', icon: FileSpreadsheet },
-    { key: 'inbox', label: 'Order Inbox', icon: Inbox, badge: String(inboxCount) },
-    { key: 'queue', label: 'จ่ายงานวันนี้', icon: Truck, badge: String(queueCount) },
-    {
-      key: 'delivery_tracking',
-      label: 'ติดตามการจัดส่ง',
-      icon: Route,
-      badge: String(trackingCount),
-    },
-    { key: 'tracking_history', label: 'ประวัติการติดตาม', icon: History },
-    { key: 'planning', label: 'Planning', icon: CalendarClock, badge: String(planningCount) },
-    { key: 'postal', label: 'ไปรษณีย์ไทย', icon: Mailbox, badge: String(postalCount) },
-    { key: 'drivers', label: 'คนขับ', icon: Users },
-    { key: 'rider', label: 'เปิดแอป Rider', icon: Smartphone, badge: String(riderJobCount) },
-  ];
+  // จำนวนงานค้างต่อเมนู (อ้างอิงด้วย PageKey ให้ตรงกับ navConfig)
+  const badgeCounts: Partial<Record<PageKey, number>> = {
+    chat: orders.filter(
+      (o) => o.source === 'internal_chat' && ['new', 'needs_review'].includes(o.status),
+    ).length,
+    inbox: orders.filter((o) => ['new', 'parsing', 'needs_review', 'ready'].includes(o.status))
+      .length,
+    queue: orders.filter(
+      (o) =>
+        getDriverQueueTab(o) &&
+        (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
+        !isUnreleasedPlannedOrder(o),
+    ).length,
+    delivery_tracking: orders.filter(
+      (o) =>
+        getDeliveryTrackingTab(o) &&
+        (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
+        !isUnreleasedPlannedOrder(o),
+    ).length,
+    planning: orders.filter((o) => canPlanOrder(o) && isUnreleasedPlannedOrder(o)).length,
+    postal: orders.filter((o) => o.shippingMethod === 'thai_post' && o.status === 'ready').length,
+    messenger: orders.filter((o) =>
+      ['assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
+    ).length,
+  };
+
   const SidebarToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
 
   useEffect(() => {
@@ -212,97 +156,57 @@ export function AppShell({ page, onChangePage, children }: Props) {
               </CollapsedSidebarTooltip>
             </div>
           </div>
-          <nav className={cn('flex-1 space-y-1', collapsed ? 'p-1.5' : 'p-3')}>
-            {nav.map((item) => {
-              const Icon = item.icon;
-              const active = page === item.key;
-              return (
-                <CollapsedSidebarTooltip key={item.key} label={item.label} enabled={collapsed}>
-                  <a
-                    href={getPathForPage(item.key)}
-                    onClick={(event) => handleNavigate(event, item.key)}
-                    aria-label={item.label}
-                    className={cn(
-                      'relative flex items-center rounded-lg text-sm transition-colors',
-                      collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-3 px-3 py-2',
-                      active
-                        ? 'bg-primary/10 text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                    )}
-                  >
-                    <Icon className="h-[18px] w-[18px]" strokeWidth={2.15} />
-                    {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
-                    {!collapsed && item.badge && (
-                      <Badge
-                        variant={active ? 'default' : 'secondary'}
-                        className="h-5 px-1.5 text-[10px]"
+          <nav className={cn('flex-1 overflow-y-auto', collapsed ? 'p-1.5' : 'p-3')}>
+            {NAV_SECTIONS.map((section, sectionIndex) => (
+              <div
+                key={section.id}
+                className={cn(
+                  sectionIndex > 0 && (collapsed ? 'mt-2 border-t pt-2' : 'mt-4'),
+                  'space-y-1',
+                )}
+              >
+                {!collapsed && section.label && (
+                  <div className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                    {section.label}
+                  </div>
+                )}
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = page === item.key;
+                  const badgeCount = item.showBadge ? badgeCounts[item.key] : undefined;
+                  return (
+                    <CollapsedSidebarTooltip key={item.key} label={item.label} enabled={collapsed}>
+                      <a
+                        href={getPathForPage(item.key)}
+                        onClick={(event) => handleNavigate(event, item.key)}
+                        aria-label={item.label}
+                        className={cn(
+                          'relative flex items-center rounded-lg text-sm transition-colors',
+                          collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-3 px-3 py-2',
+                          active
+                            ? 'bg-primary/10 text-primary font-medium'
+                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                        )}
                       >
-                        {item.badge}
-                      </Badge>
-                    )}
-                  </a>
-                </CollapsedSidebarTooltip>
-              );
-            })}
+                        <Icon className="h-[18px] w-[18px]" strokeWidth={2.15} />
+                        {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
+                        {!collapsed && badgeCount !== undefined && (
+                          <Badge
+                            variant={active ? 'default' : 'secondary'}
+                            className="h-5 px-1.5 text-[10px]"
+                          >
+                            {badgeCount}
+                          </Badge>
+                        )}
+                      </a>
+                    </CollapsedSidebarTooltip>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
           <div className={cn('border-t', collapsed ? 'p-1.5' : 'p-3')}>
-            <Popover open={isUserMenuOpen} onOpenChange={setIsUserMenuOpen}>
-              <CollapsedSidebarTooltip
-                label="James Teerayuth"
-                enabled={collapsed && !isUserMenuOpen}
-              >
-                <PopoverTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="เมนูผู้ใช้"
-                    className={cn(
-                      'flex items-center rounded-lg transition-colors hover:bg-accent',
-                      collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-2.5 px-2 py-1.5',
-                    )}
-                  >
-                    <Avatar className="h-8 w-8 shrink-0">
-                      <AvatarFallback>JT</AvatarFallback>
-                    </Avatar>
-                    {!collapsed && (
-                      <>
-                        <div className="min-w-0 flex-1 text-left leading-tight">
-                          <div className="truncate text-sm font-medium">James Teerayuth</div>
-                          <div className="truncate text-[11px] text-muted-foreground">
-                            teerayuth.james@gmail.com
-                          </div>
-                        </div>
-                        <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                      </>
-                    )}
-                  </button>
-                </PopoverTrigger>
-              </CollapsedSidebarTooltip>
-              <PopoverContent
-                side={collapsed ? 'right' : 'top'}
-                align={collapsed ? 'end' : 'start'}
-                sideOffset={collapsed ? 12 : 8}
-                className="w-56 p-1"
-              >
-                <div className="px-2 py-1.5">
-                  <div className="truncate text-sm font-medium">James Teerayuth</div>
-                  <div className="truncate text-[11px] text-muted-foreground">
-                    teerayuth.james@gmail.com
-                  </div>
-                </div>
-                <div className="my-1 h-px bg-border" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetDemoData();
-                    setIsUserMenuOpen(false);
-                  }}
-                  className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                >
-                  <Settings className="h-4 w-4 shrink-0" strokeWidth={2.15} />
-                  รีเซ็ตข้อมูลทดสอบ
-                </button>
-              </PopoverContent>
-            </Popover>
+            <SidebarUserMenu collapsed={collapsed} />
           </div>
         </aside>
 
@@ -312,39 +216,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
             collapsed ? 'lg:pl-16' : 'lg:pl-60',
           )}
         >
-          <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur-sm sm:gap-4 sm:px-6">
-            <button
-              type="button"
-              onClick={() => setIsMobileNavOpen(true)}
-              aria-label="เปิดเมนู"
-              className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md hover:bg-accent lg:hidden"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <div className="relative w-full max-w-md sm:w-96">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="ค้นหา order, ลูกค้า, เบอร์โทร..."
-                className="pl-9"
-              />
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <a
-                href={getPathForPage('chat')}
-                onClick={(event) => handleNavigate(event, 'chat')}
-                className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
-              >
-                <MessageCircle className="h-4 w-4" />
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-success" />
-              </a>
-              <button className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent">
-                <Bell className="h-4 w-4" />
-                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />
-              </button>
-            </div>
-          </header>
+          <Topbar onOpenMobileNav={() => setIsMobileNavOpen(true)} onNavigate={handleNavigate} />
           <main className="p-4 sm:p-6">{children}</main>
         </div>
       </div>

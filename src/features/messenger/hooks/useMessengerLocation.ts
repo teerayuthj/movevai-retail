@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { LatLng } from '../geocode';
 
-export type RiderLocation = LatLng & {
+export type MessengerLocation = LatLng & {
   accuracy: number;
   heading: number | null;
   speed: number | null;
   timestamp: number;
 };
 
-export type RiderLocationStatus =
+export type MessengerLocationStatus =
   | 'idle'
   | 'requesting'
   | 'tracking'
@@ -16,9 +16,9 @@ export type RiderLocationStatus =
   | 'unavailable'
   | 'error';
 
-export function useRiderLocation(enabled: boolean) {
-  const [location, setLocation] = useState<RiderLocation | null>(null);
-  const [status, setStatus] = useState<RiderLocationStatus>('idle');
+export function useMessengerLocation(enabled: boolean) {
+  const [location, setLocation] = useState<MessengerLocation | null>(null);
+  const [status, setStatus] = useState<MessengerLocationStatus>('idle');
   const [error, setError] = useState('');
   const [attempt, setAttempt] = useState(0);
 

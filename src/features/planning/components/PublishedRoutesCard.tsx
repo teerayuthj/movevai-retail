@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { planningCancelReasonLabel } from '@/data/mock';
+import { planningCancelReasonLabel, statusLabel } from '@/data/mock';
 import {
   formatOverdueDuration,
   formatPlanningDate,
@@ -12,6 +12,9 @@ import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { formatRouteDistance } from '@/lib/routeDistance';
 import { BellRing, Ban, Clock, Info, RefreshCw, Route, UserCog } from 'lucide-react';
+
+const ACTIVE_ORDER_STATUSES = new Set(['in_transit', 'pending_confirmation', 'returning']);
+const CLOSED_ORDER_STATUSES = new Set(['delivered', 'failed', 'cancelled', 'returned']);
 
 function formatPulledBackAt(value?: string) {
   if (!value) return null;
@@ -44,6 +47,32 @@ function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
   return Math.floor((nowMs - scheduledAt) / 60_000);
 }
 
+function canEditPublishedRoute(route: PlanningRoute) {
+  return (
+    route.status === 'published' &&
+    route.stops.length > 0 &&
+    route.stops.every((stop) => stop.order.status === 'assigned')
+  );
+}
+
+function getRouteStatusBadge(route: PlanningRoute) {
+  if (route.status === 'cancelled') return null;
+  if (route.status === 'completed') return { variant: 'success' as const, label: 'ส่งครบแล้ว' };
+  if (route.stops.some((stop) => stop.order.status === 'pending_confirmation')) {
+    return { variant: 'warning' as const, label: 'รอตรวจสอบ' };
+  }
+  if (route.stops.some((stop) => ACTIVE_ORDER_STATUSES.has(stop.order.status))) {
+    return { variant: 'info' as const, label: 'เริ่มจัดส่งแล้ว' };
+  }
+  if (
+    route.stops.length > 0 &&
+    route.stops.every((stop) => CLOSED_ORDER_STATUSES.has(stop.order.status))
+  ) {
+    return { variant: 'muted' as const, label: 'ปิดงานแล้ว' };
+  }
+  return { variant: 'secondary' as const, label: 'รอคนขับรับ' };
+}
+
 export function PublishedRoutesCard({
   routes,
   onRetry,
@@ -71,13 +100,15 @@ export function PublishedRoutesCard({
       <CardHeader className="pb-3">
         <CardTitle className="text-sm">Routes ที่ Publish แล้ว</CardTitle>
         <CardDescription>
-          ดูสถานะของวันที่เลือก ยกเลิก/ดึงกลับ หรือเปลี่ยนคนขับของรอบที่ปล่อยแล้ว —
-          งานที่เลยกำหนดแล้วจัดการที่หน้าติดตามการจัดส่ง
+          ดูสถานะของวันที่เลือก เปลี่ยนคนขับหรือดึงกลับได้เฉพาะรอบที่ยังรอคนขับรับ —
+          รอบที่เริ่มจัดส่งแล้วให้จัดการต่อที่หน้าติดตามการจัดส่ง
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {routes.map((route) => {
           const cancelled = route.status === 'cancelled';
+          const editable = canEditPublishedRoute(route);
+          const statusBadge = getRouteStatusBadge(route);
           const overdueMinutes = getRouteOverdueMinutes(route, nowMs);
           return (
             <div
@@ -103,6 +134,8 @@ export function PublishedRoutesCard({
                   <Badge variant="warning">
                     <BellRing className="h-3 w-3" /> แจ้งงานไม่สำเร็จ
                   </Badge>
+                ) : statusBadge ? (
+                  <Badge variant={statusBadge.variant}>{statusBadge.label}</Badge>
                 ) : null}
               </div>
               <div className="mt-2 text-muted-foreground">
@@ -160,6 +193,14 @@ export function PublishedRoutesCard({
               {!cancelled && route.reminderPushError && (
                 <div className="mt-2 text-destructive">{route.reminderPushError}</div>
               )}
+              {route.status !== 'cancelled' && route.status !== 'completed' && !editable && (
+                <div className="mt-2 rounded-lg border border-info/25 bg-info/5 px-3 py-2 text-[11px] text-muted-foreground">
+                  Route นี้เริ่มเข้าขั้นตอนจัดส่งแล้ว ให้จัดการต่อที่หน้าติดตามการจัดส่ง
+                  {route.stops[0]?.order.status
+                    ? ` · สถานะล่าสุด: ${statusLabel[route.stops[0].order.status]}`
+                    : ''}
+                </div>
+              )}
               {route.status !== 'cancelled' && route.status !== 'completed' && (
                 <div className="mt-2 flex flex-wrap gap-2">
                   {route.plannedGeometryJson && route.plannedGeometryJson.length > 1 && (
@@ -172,17 +213,21 @@ export function PublishedRoutesCard({
                       <RefreshCw className="h-3.5 w-3.5" /> Retry Push
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" onClick={() => onReassign(route)}>
-                    <UserCog className="h-3.5 w-3.5" /> เปลี่ยนคนขับ
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-destructive/40 text-destructive hover:bg-destructive/5"
-                    onClick={() => onCancel(route)}
-                  >
-                    <Ban className="h-3.5 w-3.5" /> ดึงกลับเข้า Planning
-                  </Button>
+                  {editable && (
+                    <>
+                      <Button size="sm" variant="outline" onClick={() => onReassign(route)}>
+                        <UserCog className="h-3.5 w-3.5" /> เปลี่ยนคนขับ
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-destructive/40 text-destructive hover:bg-destructive/5"
+                        onClick={() => onCancel(route)}
+                      >
+                        <Ban className="h-3.5 w-3.5" /> ดึงกลับเข้า Planning
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
