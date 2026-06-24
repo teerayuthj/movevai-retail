@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { loginRider, type RiderSession } from '@/lib/retailApi';
+import { loginMessenger, type MessengerSession } from '@/lib/retailApi';
 
 const TEST_PHONE = '0891112233';
 const TEST_PIN = '123456';
 
 function deviceId() {
-  const key = 'movevai:rider-device-id';
+  const key = 'movevai:messenger-device-id';
   const existing = localStorage.getItem(key);
   if (existing) return existing;
   const value = crypto.randomUUID();
@@ -15,7 +15,7 @@ function deviceId() {
   return value;
 }
 
-export function RiderLogin({ onLogin }: { onLogin: (session: RiderSession) => void }) {
+export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSession) => void }) {
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
@@ -28,7 +28,7 @@ export function RiderLogin({ onLogin }: { onLogin: (session: RiderSession) => vo
           event.preventDefault();
           setLoading(true);
           setError('');
-          void loginRider(phone, pin, deviceId())
+          void loginMessenger(phone, pin, deviceId())
             .then(onLogin)
             .catch((reason: unknown) =>
               setError(reason instanceof Error ? reason.message : 'เข้าสู่ระบบไม่สำเร็จ'),
@@ -37,7 +37,7 @@ export function RiderLogin({ onLogin }: { onLogin: (session: RiderSession) => vo
         }}
       >
         <div>
-          <h1 className="text-xl font-semibold">Rider Login</h1>
+          <h1 className="text-xl font-semibold">Messenger Login</h1>
           <p className="text-sm text-muted-foreground">ใช้เบอร์โทรและ PIN ที่ได้รับจากผู้ดูแล</p>
         </div>
         <div className="space-y-2 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">

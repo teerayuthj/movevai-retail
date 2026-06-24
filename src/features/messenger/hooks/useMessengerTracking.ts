@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  endRiderRoute,
-  endRiderTestSession,
-  fetchActiveRiderTracking,
-  sendRiderLocations,
-  startRiderRoute,
-  startRiderTestRoute,
-  type RiderLocationPayload,
+  endMessengerRoute,
+  endMessengerTestSession,
+  fetchActiveMessengerTracking,
+  sendMessengerLocations,
+  startMessengerRoute,
+  startMessengerTestRoute,
+  type MessengerLocationPayload,
 } from '@/lib/retailApi';
-import { useRiderLocation } from './useRiderLocation';
+import { useMessengerLocation } from './useMessengerLocation';
 
-const QUEUE_KEY = 'movevai:rider-location-queue';
-const SESSION_KEY = 'movevai:rider-tracking-session';
-const DEVICE_KEY = 'movevai:rider-device-id';
+const QUEUE_KEY = 'movevai:messenger-location-queue';
+const SESSION_KEY = 'movevai:messenger-tracking-session';
+const DEVICE_KEY = 'movevai:messenger-device-id';
 // type ว่าง = session เก่าก่อนมี Test Route → ถือเป็น delivery
 type StoredSession = {
   id: string;
@@ -31,18 +31,18 @@ function deviceId() {
   return id;
 }
 
-function readQueue(): RiderLocationPayload[] {
+function readQueue(): MessengerLocationPayload[] {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]') as RiderLocationPayload[];
+    return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]') as MessengerLocationPayload[];
   } catch {
     return [];
   }
 }
-function saveQueue(points: RiderLocationPayload[]) {
+function saveQueue(points: MessengerLocationPayload[]) {
   localStorage.setItem(QUEUE_KEY, JSON.stringify(points.slice(-1000)));
 }
 
-export function useRiderTracking(enabled = true) {
+export function useMessengerTracking(enabled = true) {
   const [session, setSession] = useState<StoredSession | null>(() => {
     try {
       const stored = JSON.parse(
@@ -54,9 +54,9 @@ export function useRiderTracking(enabled = true) {
       return null;
     }
   });
-  const ownLocation = useRiderLocation(enabled && Boolean(session?.isOwner));
+  const ownLocation = useMessengerLocation(enabled && Boolean(session?.isOwner));
   const [remoteLocation, setRemoteLocation] =
-    useState<ReturnType<typeof useRiderLocation>['location']>(null);
+    useState<ReturnType<typeof useMessengerLocation>['location']>(null);
   const [syncError, setSyncError] = useState('');
   const lastQueued = useRef<{ at: number; lat: number; lng: number } | null>(null);
   const flushing = useRef(false);
@@ -66,7 +66,7 @@ export function useRiderTracking(enabled = true) {
     if (!queue.length) return;
     flushing.current = true;
     try {
-      await sendRiderLocations(session.id, deviceId(), queue.slice(0, 50));
+      await sendMessengerLocations(session.id, deviceId(), queue.slice(0, 50));
       saveQueue(queue.slice(50));
     } finally {
       flushing.current = false;
@@ -82,7 +82,7 @@ export function useRiderTracking(enabled = true) {
       ? Math.hypot(location.lat - last.lat, location.lng - last.lng) * 111_000
       : Infinity;
     if (elapsed < 10_000 && moved < 25) return;
-    const point: RiderLocationPayload = {
+    const point: MessengerLocationPayload = {
       clientPointId: crypto.randomUUID(),
       lat: location.lat,
       lng: location.lng,
@@ -108,7 +108,7 @@ export function useRiderTracking(enabled = true) {
   const syncActiveSession = useCallback(async () => {
     if (!enabled) return;
     try {
-      const active = await fetchActiveRiderTracking(deviceId());
+      const active = await fetchActiveMessengerTracking(deviceId());
       setSyncError('');
       if (!active) {
         localStorage.removeItem(SESSION_KEY);
@@ -177,7 +177,7 @@ export function useRiderTracking(enabled = true) {
     retry: session?.isOwner ? ownLocation.retry : syncActiveSession,
     isOwner: session?.isOwner ?? false,
     start: async (routeId: string) => {
-      const started = await startRiderRoute(routeId, deviceId());
+      const started = await startMessengerRoute(routeId, deviceId());
       const value: StoredSession = {
         id: started.id,
         type: 'delivery',
@@ -189,7 +189,7 @@ export function useRiderTracking(enabled = true) {
     },
     // Test Route: เริ่มบันทึกเส้นทางโดยไม่ผูกกับงานลูกค้า (ทดสอบ GPS ตอนไปกินข้าว ฯลฯ)
     startTest: async (label?: string) => {
-      const started = await startRiderTestRoute(deviceId(), label);
+      const started = await startMessengerTestRoute(deviceId(), label);
       const value: StoredSession = {
         id: started.id,
         type: 'test',
@@ -202,8 +202,8 @@ export function useRiderTracking(enabled = true) {
     end: async (reason?: string) => {
       if (!session) return;
       await flush();
-      if (session.type === 'test') await endRiderTestSession(session.id, reason);
-      else if (session.routeId) await endRiderRoute(session.routeId, reason);
+      if (session.type === 'test') await endMessengerTestSession(session.id, reason);
+      else if (session.routeId) await endMessengerRoute(session.routeId, reason);
       localStorage.removeItem(SESSION_KEY);
       setSession(null);
     },

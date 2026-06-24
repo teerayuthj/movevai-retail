@@ -469,7 +469,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
       <div className="flex items-center justify-between font-medium text-success">
         <span className="flex items-center gap-1.5">
           <ShieldCheck className="h-3.5 w-3.5" />
-          หลักฐานปิดงานจาก rider
+          หลักฐานปิดงานจาก messenger
         </span>
         <span className="text-[10px] opacity-75">
           {new Date(pod.capturedAt).toLocaleString('th', {

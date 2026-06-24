@@ -364,7 +364,7 @@ const CLOSE_STEPS: { key: CloseStep; label: string }[] = [
   { key: 'review', label: 'ตรวจสอบ' },
 ];
 
-export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit }: Props) {
+export function MessengerCloseJobDialog({ open, order, location, onCancel, onSubmit }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -441,7 +441,7 @@ export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit 
         <div className="flex items-start justify-between border-b px-5 pb-4 pt-safe">
           <div>
             <h2 className="text-base font-semibold">
-              {order.status === 'pending_confirmation' ? 'แก้ไขหลักฐาน' : 'ปิดงาน (rider)'}
+              {order.status === 'pending_confirmation' ? 'แก้ไขหลักฐาน' : 'ปิดงาน (messenger)'}
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {order.code} · {order.customer.name} · {formatTHB(order.totalValue)}
@@ -514,7 +514,7 @@ export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit 
                   ถ่ายรูปส่งมอบ
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ให้ rider ถ่ายพัสดุและจุดส่งมอบก่อนส่งมือถือให้ลูกค้าเซ็น
+                  ให้ messenger ถ่ายพัสดุและจุดส่งมอบก่อนส่งมือถือให้ลูกค้าเซ็น
                 </p>
               </div>
 
@@ -557,7 +557,7 @@ export function RiderCloseJobDialog({ open, order, location, onCancel, onSubmit 
                   ลูกค้าเซ็นรับ
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ส่งมือถือให้ลูกค้าเซ็นในกรอบนี้ หลังจากเซ็นเสร็จ rider
+                  ส่งมือถือให้ลูกค้าเซ็นในกรอบนี้ หลังจากเซ็นเสร็จ messenger
                   รับมือถือกลับมาตรวจและปิดงาน
                 </p>
               </div>

@@ -4,7 +4,7 @@ import L from 'leaflet';
 import { Info, Loader2, MapPin, Route } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
-import { BANGKOK_CENTER } from '@/features/rider/geocode';
+import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { formatRouteDistance } from '@/lib/routeDistance';
 import { useOrdersGeo } from '../hooks/useOrdersGeo';
@@ -73,7 +73,7 @@ function AutoResize() {
 }
 
 /**
- * แผนที่จุดส่งทั้งหมดของวัน (ฝั่ง admin) — ให้เห็นการกระจายปลายทางก่อนจัดกลุ่ม/มอบ Rider
+ * แผนที่จุดส่งทั้งหมดของวัน (ฝั่ง admin) — ให้เห็นการกระจายปลายทางก่อนจัดกลุ่ม/มอบ Messenger
  * แตะหมุดเพื่อเลือก/นำออกจากกลุ่มที่กำลังวางแผน หมุดที่เลือกอยู่จะไฮไลต์สีเด่น
  */
 export function PlanningMap({

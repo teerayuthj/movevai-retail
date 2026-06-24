@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { AlertCircle, BellRing, Loader2 } from 'lucide-react';
 import { currentPermission, isPushSupported, subscribeToPush, type NotifPermission } from '../push';
 
-export function RiderPushSetupBanner({
+export function MessengerPushSetupBanner({
   installed,
-  riderCode,
+  messengerCode,
 }: {
   installed: boolean;
-  riderCode: string;
+  messengerCode: string;
 }) {
   const supported = isPushSupported();
   const requiresInstallation =
@@ -21,7 +21,7 @@ export function RiderPushSetupBanner({
     if (requiresInstallation || !supported || permission !== 'granted') return;
 
     let cancelled = false;
-    void subscribeToPush(riderCode).then((result) => {
+    void subscribeToPush(messengerCode).then((result) => {
       if (cancelled) return;
       if (result.ok) {
         setRegistered(true);
@@ -36,13 +36,13 @@ export function RiderPushSetupBanner({
     return () => {
       cancelled = true;
     };
-  }, [permission, requiresInstallation, riderCode, supported]);
+  }, [permission, requiresInstallation, messengerCode, supported]);
 
   const handleEnable = async () => {
     setBusy(true);
     setError(null);
     try {
-      const result = await subscribeToPush(riderCode);
+      const result = await subscribeToPush(messengerCode);
       if (result.ok) {
         setPermission('granted');
         setRegistered(true);
@@ -100,7 +100,7 @@ export function RiderPushSetupBanner({
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium text-success">เปิดแจ้งเตือนรับงาน</div>
           <div className="text-[11px] leading-snug text-success">
-            อนุญาตเครื่องนี้ให้รับ Push ของ {riderCode} แม้ไม่ได้ติดตั้ง PWA
+            อนุญาตเครื่องนี้ให้รับ Push ของ {messengerCode} แม้ไม่ได้ติดตั้ง PWA
           </div>
           {error && <div className="mt-1 text-[11px] text-destructive">{error}</div>}
         </div>

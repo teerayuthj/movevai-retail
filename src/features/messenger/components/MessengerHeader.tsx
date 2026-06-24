@@ -9,30 +9,30 @@ const statusLabel: Record<Driver['status'], string> = {
   off_duty: 'หยุด',
 };
 
-export function RiderHeader({
-  rider,
+export function MessengerHeader({
+  messenger,
   effectiveStatus,
   onOpenProfile,
 }: {
-  rider: Driver | null;
+  messenger: Driver | null;
   /** สถานะที่สะท้อนกิจกรรมจริง (เช่น กำลังส่ง GPS) — override ค่า static ใน driver record */
   effectiveStatus?: Driver['status'];
   onOpenProfile?: () => void;
 }) {
-  const status = effectiveStatus ?? rider?.status;
+  const status = effectiveStatus ?? messenger?.status;
   return (
     <header className="sticky top-0 z-10 border-b bg-primary/5 backdrop-blur-sm">
       <button
         type="button"
         onClick={onOpenProfile}
-        disabled={!rider}
+        disabled={!messenger}
         className="flex w-full items-center gap-3 px-4 pb-3 pt-safe text-left disabled:cursor-default"
       >
-        {rider && <DriverAvatar driver={rider} className="h-10 w-10" />}
+        {messenger && <DriverAvatar driver={messenger} className="h-10 w-10" />}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{rider?.name ?? '—'}</div>
+          <div className="truncate text-sm font-semibold">{messenger?.name ?? '—'}</div>
           <div className="text-[11px] text-muted-foreground">
-            {rider?.zone} · งานวันนี้ {rider?.activeOrders}/{rider?.capacity}
+            {messenger?.zone} · งานวันนี้ {messenger?.activeOrders}/{messenger?.capacity}
           </div>
         </div>
         <Badge
@@ -41,7 +41,7 @@ export function RiderHeader({
         >
           {status ? statusLabel[status] : '—'}
         </Badge>
-        {rider && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        {messenger && <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />}
       </button>
     </header>
   );

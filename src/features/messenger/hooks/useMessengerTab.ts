@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
-  getRiderOrderMapId,
-  getRiderOrderMapPath,
-  getRiderTabFromPath,
-  getRiderTabPath,
-  type RiderTab,
-} from '../riderTabs';
+  getMessengerOrderMapId,
+  getMessengerOrderMapPath,
+  getMessengerTabFromPath,
+  getMessengerTabPath,
+  type MessengerTab,
+} from '../messengerTabs';
 
 type NavigateOptions = {
   /** ใช้ replaceState แทน pushState — สำหรับ auto-select/redirect ที่ไม่ควรค้างใน history */
@@ -13,15 +13,15 @@ type NavigateOptions = {
 };
 
 /**
- * ผูก active tab กับ URL pathname (/rider/<segment>).
+ * ผูก active tab กับ URL pathname (/messenger/<segment>).
  * - กด tab → push เข้า history (back/forward ใช้ได้)
  * - back/forward → popstate sync activeTab กลับ
- * - /rider เปล่า หรือ segment ไม่รู้จัก → activeTab = null (ให้ caller redirect เอง)
+ * - /messenger เปล่า หรือ segment ไม่รู้จัก → activeTab = null (ให้ caller redirect เอง)
  *
  * หมายเหตุ: App.tsx มี popstate listener ของตัวเอง (sync PageKey) — ตัวนี้แยกอิสระ
- * เพราะ /rider/* map เป็น page 'rider' ตัวเดียว App จึงไม่ re-render เวลาเปลี่ยน tab
+ * เพราะ /messenger/* map เป็น page 'messenger' ตัวเดียว App จึงไม่ re-render เวลาเปลี่ยน tab
  */
-export function useRiderTab() {
+export function useMessengerTab() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
 
   useEffect(() => {
@@ -30,31 +30,31 @@ export function useRiderTab() {
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
 
-  const activeTab = getRiderTabFromPath(pathname);
-  const mapOrderId = getRiderOrderMapId(pathname);
+  const activeTab = getMessengerTabFromPath(pathname);
+  const mapOrderId = getMessengerOrderMapId(pathname);
 
-  const setTab = useCallback((tab: RiderTab, options?: NavigateOptions) => {
-    const nextPath = getRiderTabPath(tab);
+  const setTab = useCallback((tab: MessengerTab, options?: NavigateOptions) => {
+    const nextPath = getMessengerTabPath(tab);
     if (window.location.pathname === nextPath) return;
 
     if (options?.replace) {
       window.history.replaceState(window.history.state, '', nextPath);
     } else {
-      window.history.pushState({ page: 'rider' }, '', nextPath);
+      window.history.pushState({ page: 'messenger' }, '', nextPath);
     }
     setPathname(nextPath);
   }, []);
 
   const openOrderMap = useCallback((orderId: string) => {
-    const nextPath = getRiderOrderMapPath(orderId);
+    const nextPath = getMessengerOrderMapPath(orderId);
     if (window.location.pathname === nextPath) return;
-    window.history.pushState({ page: 'rider' }, '', nextPath);
+    window.history.pushState({ page: 'messenger' }, '', nextPath);
     setPathname(nextPath);
   }, []);
 
   const backToPending = useCallback(() => {
-    const nextPath = getRiderTabPath('pending_confirmation');
-    window.history.replaceState({ page: 'rider' }, '', nextPath);
+    const nextPath = getMessengerTabPath('pending_confirmation');
+    window.history.replaceState({ page: 'messenger' }, '', nextPath);
     setPathname(nextPath);
   }, []);
 

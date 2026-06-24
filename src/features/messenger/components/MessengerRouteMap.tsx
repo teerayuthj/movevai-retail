@@ -4,19 +4,19 @@ import L from 'leaflet';
 import { AlertCircle, Loader2, LocateFixed, Navigation, Radio } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
-import { getRiderJobOverdueMinutes } from '../riderSchedule';
+import { getMessengerJobOverdueMinutes } from '../messengerSchedule';
 import { BANGKOK_CENTER, navigationUrl } from '../geocode';
 import type { RouteStop } from '../hooks/useRouteStops';
 import { useRoadRoute } from '../hooks/useRoadRoute';
 import {
-  useRiderLocation,
-  type RiderLocation,
-  type RiderLocationStatus,
-} from '../hooks/useRiderLocation';
+  useMessengerLocation,
+  type MessengerLocation,
+  type MessengerLocationStatus,
+} from '../hooks/useMessengerLocation';
 
-export type RiderLocationSource = {
-  location: RiderLocation | null;
-  status: RiderLocationStatus;
+export type MessengerLocationSource = {
+  location: MessengerLocation | null;
+  status: MessengerLocationStatus;
   error: string;
   retry: () => void;
   remote?: boolean;
@@ -57,7 +57,7 @@ function numberedIcon(label: number, overdue: boolean) {
   });
 }
 
-const riderIcon = L.divIcon({
+const messengerIcon = L.divIcon({
   className: '',
   iconSize: [30, 30],
   iconAnchor: [15, 15],
@@ -71,37 +71,37 @@ const riderIcon = L.divIcon({
  */
 function FitBounds({
   points,
-  riderPoint,
+  messengerPoint,
 }: {
   points: [number, number][];
-  riderPoint: [number, number] | null;
+  messengerPoint: [number, number] | null;
 }) {
   const map = useMap();
   const previousPointsKey = useRef<string | null>(null);
-  const hasFitInitialRider = useRef(false);
+  const hasFitInitialMessenger = useRef(false);
 
   useEffect(() => {
     const pointsKey = points.map(([lat, lng]) => `${lat},${lng}`).join('|');
     const deliveryPointsChanged = previousPointsKey.current !== pointsKey;
-    const riderBecameAvailable = riderPoint != null && !hasFitInitialRider.current;
+    const messengerBecameAvailable = messengerPoint != null && !hasFitInitialMessenger.current;
 
-    if (!deliveryPointsChanged && !riderBecameAvailable) return;
+    if (!deliveryPointsChanged && !messengerBecameAvailable) return;
 
     previousPointsKey.current = pointsKey;
-    if (riderPoint) hasFitInitialRider.current = true;
+    if (messengerPoint) hasFitInitialMessenger.current = true;
 
-    const viewportPoints = riderPoint ? [...points, riderPoint] : points;
+    const viewportPoints = messengerPoint ? [...points, messengerPoint] : points;
     if (viewportPoints.length === 0) return;
     if (viewportPoints.length === 1) {
       map.setView(viewportPoints[0], 14);
       return;
     }
     map.fitBounds(L.latLngBounds(viewportPoints), { padding: [40, 40], maxZoom: 15 });
-  }, [map, points, riderPoint]);
+  }, [map, points, messengerPoint]);
   return null;
 }
 
-export function RiderRouteMap({
+export function MessengerRouteMap({
   stops,
   nowMs,
   onFocusOrder,
@@ -111,12 +111,12 @@ export function RiderRouteMap({
   stops: RouteStop[];
   nowMs: number;
   onFocusOrder?: (order: Order) => void;
-  locationSource?: RiderLocationSource;
+  locationSource?: MessengerLocationSource;
   showRemainingDistance?: boolean;
 }) {
   // หน้าเตรียม Route อ่าน GPS เอง ส่วนหน้ากำลังส่งใช้ stream เดียวกับ tracking
   // เพื่อไม่เปิด watchPosition ซ้ำและให้หมุดตรงกับข้อมูลที่ส่ง backend จริง
-  const ownLocation = useRiderLocation(!locationSource);
+  const ownLocation = useMessengerLocation(!locationSource);
   const {
     location,
     status: locationStatus,
@@ -128,18 +128,18 @@ export function RiderRouteMap({
     () => located.map((stop) => [stop.coords!.lat, stop.coords!.lng]),
     [located],
   );
-  const riderPoint = useMemo<[number, number] | null>(
+  const messengerPoint = useMemo<[number, number] | null>(
     () => (location ? [location.lat, location.lng] : null),
     [location],
   );
   const routePoints = useMemo(
-    () => (riderPoint ? [riderPoint, ...points] : points),
-    [points, riderPoint],
+    () => (messengerPoint ? [messengerPoint, ...points] : points),
+    [points, messengerPoint],
   );
   const pendingCount = stops.filter((stop) => stop.pending).length;
   const destination = located[0] ?? null;
 
-  // เส้นทางตามถนน (OSRM) จากตำแหน่ง rider → จุดส่งที่เหลือ — แทนเส้นตรงเดิม
+  // เส้นทางตามถนน (OSRM) จากตำแหน่ง messenger → จุดส่งที่เหลือ — แทนเส้นตรงเดิม
   const stopCoords = useMemo(() => located.map((stop) => stop.coords!), [located]);
   const {
     route: roadRoute,
@@ -200,10 +200,10 @@ export function RiderRouteMap({
             pathOptions={{ color: 'hsl(var(--info))', weight: 3, opacity: 0.7, dashArray: '6 6' }}
           />
         ) : null}
-        {location && riderPoint && (
+        {location && messengerPoint && (
           <>
             <Circle
-              center={riderPoint}
+              center={messengerPoint}
               radius={location.accuracy}
               pathOptions={{
                 color: '#2563eb',
@@ -212,10 +212,10 @@ export function RiderRouteMap({
                 weight: 1,
               }}
             />
-            <Marker position={riderPoint} icon={riderIcon} zIndexOffset={1000}>
+            <Marker position={messengerPoint} icon={messengerIcon} zIndexOffset={1000}>
               <Popup>
                 <div className="space-y-1 text-[13px]">
-                  <div className="font-semibold">ตำแหน่ง Rider ปัจจุบัน</div>
+                  <div className="font-semibold">ตำแหน่ง Messenger ปัจจุบัน</div>
                   <div>ความแม่นยำประมาณ ±{Math.round(location.accuracy)} เมตร</div>
                 </div>
               </Popup>
@@ -223,7 +223,7 @@ export function RiderRouteMap({
           </>
         )}
         {located.map((stop) => {
-          const overdue = getRiderJobOverdueMinutes(stop.order, nowMs) != null;
+          const overdue = getMessengerJobOverdueMinutes(stop.order, nowMs) != null;
           return (
             <Marker
               key={stop.order.id}
@@ -250,7 +250,7 @@ export function RiderRouteMap({
             </Marker>
           );
         })}
-        <FitBounds points={points} riderPoint={riderPoint} />
+        <FitBounds points={points} messengerPoint={messengerPoint} />
       </MapContainer>
 
       <div className="absolute left-2 top-2 z-[1000] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-2.5 py-2 text-xs shadow-sm backdrop-blur">

@@ -195,10 +195,10 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
       if (order.id !== orderId) return order;
 
       const driver = current.drivers.find((item) => item.id === order.assignedDriverId);
-      const riderActor = operatorActor({
+      const messengerActor = operatorActor({
         name: driver?.name ?? 'คนขับ',
         department: 'จัดส่งภายใน',
-        role: 'Rider',
+        role: 'Messenger',
       });
 
       return appendEvent(
@@ -206,8 +206,8 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
         {
           type: 'delivery_started',
           at: nowIso(),
-          actor: riderActor,
-          summary: driver ? `rider รับงาน — ${driver.name}` : 'rider รับงานและเริ่มจัดส่ง',
+          actor: messengerActor,
+          summary: driver ? `messenger รับงาน — ${driver.name}` : 'messenger รับงานและเริ่มจัดส่ง',
         },
       );
     }),
@@ -220,7 +220,7 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
 }
 
 /**
- * rider ปิดงาน: บันทึกหลักฐาน (POD) แล้ว
+ * messenger ปิดงาน: บันทึกหลักฐาน (POD) แล้ว
  * - ทุกงานต้องเข้ารอตรวจสอบก่อน เพื่อให้ CS/admin ยืนยันหลักฐานก่อนปิดจริง
  * - capacity คนขับยังถูกถือไว้จนกว่า CS/admin จะยืนยันปิดงาน
  */
@@ -236,10 +236,10 @@ export function submitDeliveryState(
 
   const at = nowIso();
   const driver = current.drivers.find((item) => item.id === order.assignedDriverId);
-  const riderActor = operatorActor({
+  const messengerActor = operatorActor({
     name: driver?.name ?? 'คนขับ',
     department: 'จัดส่งภายใน',
-    role: 'Rider',
+    role: 'Messenger',
   });
 
   const proof: ProofOfDelivery = {
@@ -263,8 +263,10 @@ export function submitDeliveryState(
       return appendEvent(next, {
         type: isRevision ? 'delivery_proof_revised' : 'delivery_submitted',
         at,
-        actor: riderActor,
-        summary: isRevision ? 'rider แก้ไขและส่งหลักฐานใหม่' : 'rider ส่งมอบแล้ว — รอตรวจสอบ',
+        actor: messengerActor,
+        summary: isRevision
+          ? 'messenger แก้ไขและส่งหลักฐานใหม่'
+          : 'messenger ส่งมอบแล้ว — รอตรวจสอบ',
         details: proofDetails || undefined,
       });
     }),

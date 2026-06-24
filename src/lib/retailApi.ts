@@ -2,42 +2,42 @@ import type { Driver, Order, PlanningCancelReason } from '@/data/mock';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 
-const RIDER_API_BASE =
-  (import.meta.env.VITE_RIDER_API_BASE_URL as string | undefined) ?? '/api/rider';
+const MESSENGER_API_BASE =
+  (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
 const APP_API_BASE = (import.meta.env.VITE_APP_API_BASE_URL as string | undefined) ?? '/api/app';
-const RIDER_TOKEN_KEY = 'movevai:rider-token';
-export const RIDER_AUTH_EXPIRED_EVENT = 'movevai:rider-auth-expired';
+const MESSENGER_TOKEN_KEY = 'movevai:messenger-token';
+export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
 
 export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
 type ApiOrder = Order & { assignedDriver?: ApiDriver };
 
-export class RiderAuthError extends Error {
+export class MessengerAuthError extends Error {
   constructor(message = 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่') {
     super(message);
-    this.name = 'RiderAuthError';
+    this.name = 'MessengerAuthError';
   }
 }
 
-export function isRiderAuthError(error: unknown): error is RiderAuthError {
-  return error instanceof RiderAuthError;
+export function isMessengerAuthError(error: unknown): error is MessengerAuthError {
+  return error instanceof MessengerAuthError;
 }
 
-function clearLocalRiderSession(notify = false) {
-  localStorage.removeItem(RIDER_TOKEN_KEY);
-  localStorage.removeItem('movevai:rider-code');
+function clearLocalMessengerSession(notify = false) {
+  localStorage.removeItem(MESSENGER_TOKEN_KEY);
+  localStorage.removeItem('movevai:messenger-code');
   if (notify && typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent(RIDER_AUTH_EXPIRED_EVENT));
+    window.dispatchEvent(new CustomEvent(MESSENGER_AUTH_EXPIRED_EVENT));
   }
 }
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body != null) headers.set('content-type', 'application/json');
-  const isRiderRequest = url.startsWith(RIDER_API_BASE);
-  let riderToken: string | null = null;
-  if (isRiderRequest) {
-    riderToken = localStorage.getItem(RIDER_TOKEN_KEY);
-    if (riderToken) headers.set('authorization', `Bearer ${riderToken}`);
+  const isMessengerRequest = url.startsWith(MESSENGER_API_BASE);
+  let messengerToken: string | null = null;
+  if (isMessengerRequest) {
+    messengerToken = localStorage.getItem(MESSENGER_TOKEN_KEY);
+    if (messengerToken) headers.set('authorization', `Bearer ${messengerToken}`);
   }
   const response = await fetch(url, { ...init, headers });
   if (!response.ok) {
@@ -48,13 +48,13 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     } catch {
       // response ไม่ใช่ JSON
     }
-    const riderTokenExpired =
-      isRiderRequest &&
-      riderToken &&
-      (response.status === 401 || /invalid or expired rider token/i.test(message));
-    if (riderTokenExpired) {
-      clearLocalRiderSession(true);
-      throw new RiderAuthError(message);
+    const messengerTokenExpired =
+      isMessengerRequest &&
+      messengerToken &&
+      (response.status === 401 || /invalid or expired messenger token/i.test(message));
+    if (messengerTokenExpired) {
+      clearLocalMessengerSession(true);
+      throw new MessengerAuthError(message);
     }
     throw new Error(message);
   }
@@ -195,9 +195,9 @@ export function fetchDeliveryTrackingCounts() {
   return request<DeliveryTrackingCounts>(`${APP_API_BASE}/tracking/counts`);
 }
 
-// ปลายทางของ route ที่กำลังส่ง — มาจาก backend (geocode ฝั่ง server) เพื่อให้ทั้ง rider
+// ปลายทางของ route ที่กำลังส่ง — มาจาก backend (geocode ฝั่ง server) เพื่อให้ทั้ง messenger
 // และ admin อ้างพิกัดชุดเดียวกัน ไม่ต้องต่างคน geocode เอง
-export type RiderDestination = {
+export type MessengerDestination = {
   orderId?: string;
   /** ชื่อลูกค้า/ป้ายกำกับสั้นๆ */
   label?: string | null;
@@ -210,7 +210,7 @@ export type RiderDestination = {
   sequence?: number;
 };
 
-export type LiveRiderTracking = {
+export type LiveMessengerTracking = {
   id: string;
   routeId: string | null;
   sessionType: string;
@@ -227,10 +227,10 @@ export type LiveRiderTracking = {
     offRoute: boolean;
   };
   /** หมุดปลายทางของรอบนี้ — backend ส่งมาเมื่อพร้อม (ยังไม่มีก็ไม่วาด) */
-  destinations?: RiderDestination[];
+  destinations?: MessengerDestination[];
 };
 
-export type RiderTrackingHistory = LiveRiderTracking & {
+export type MessengerTrackingHistory = LiveMessengerTracking & {
   endedAt?: string | null;
   endReason?: string | null;
   status: string;
@@ -246,7 +246,7 @@ export type RiderTrackingHistory = LiveRiderTracking & {
 };
 
 // สรุป session ย้อนหลัง (ไม่มี points) สำหรับหน้า Tracking History
-export type RiderTrackingSessionSummary = {
+export type MessengerTrackingSessionSummary = {
   id: string;
   routeId: string | null;
   sessionType: string;
@@ -262,12 +262,12 @@ export type RiderTrackingSessionSummary = {
   route: { code: string } | null;
 };
 
-export function fetchLiveRiders() {
-  return request<LiveRiderTracking[]>(`${APP_API_BASE}/tracking/riders/latest`);
+export function fetchLiveMessengers() {
+  return request<LiveMessengerTracking[]>(`${APP_API_BASE}/tracking/messengers/latest`);
 }
 
-export function fetchRiderTrackingHistory(sessionId: string) {
-  return request<RiderTrackingHistory>(
+export function fetchMessengerTrackingHistory(sessionId: string) {
+  return request<MessengerTrackingHistory>(
     `${APP_API_BASE}/tracking/sessions/${encodeURIComponent(sessionId)}`,
   );
 }
@@ -277,7 +277,7 @@ export function fetchTrackingSessions(params?: { date?: string; driverCode?: str
   if (params?.date) search.set('date', params.date);
   if (params?.driverCode) search.set('driverCode', params.driverCode);
   const query = search.toString();
-  return request<RiderTrackingSessionSummary[]>(
+  return request<MessengerTrackingSessionSummary[]>(
     `${APP_API_BASE}/tracking/sessions${query ? `?${query}` : ''}`,
   );
 }
@@ -292,12 +292,12 @@ export async function fetchAppDrivers() {
   return result.map(normalizeDriver);
 }
 
-export function upsertRiderAccount(
+export function upsertMessengerAccount(
   driverCode: string,
   input: { phone: string; pin: string; isActive?: boolean },
 ) {
   return request<{ id: string; driverCode: string; phone: string; isActive: boolean }>(
-    `${APP_API_BASE}/drivers/${encodeURIComponent(driverCode)}/rider-account`,
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverCode)}/messenger-account`,
     { method: 'POST', body: JSON.stringify(input) },
   );
 }
@@ -423,10 +423,10 @@ export async function reassignPlanningRoute(
   return normalizeRoute(route);
 }
 
-export type RiderRoadRoute = {
+export type MessengerRoadRoute = {
   geometry: { lat: number; lng: number }[];
   distanceMeters: number | null;
-  /** ระยะรายช่วง: legs[0] = จากจุดเริ่ม (ตำแหน่ง rider) → จุดส่งถัดไป */
+  /** ระยะรายช่วง: legs[0] = จากจุดเริ่ม (ตำแหน่ง messenger) → จุดส่งถัดไป */
   legs: number[];
 };
 
@@ -452,29 +452,29 @@ async function fetchPublicOsrmRoadRoute(points: { lat: number; lng: number }[]) 
     geometry,
     distanceMeters: route?.distance ?? null,
     legs: route?.legs?.map((leg) => leg.distance ?? 0) ?? [],
-  } satisfies RiderRoadRoute;
+  } satisfies MessengerRoadRoute;
 }
 
 /**
- * เส้นทางตามถนนระหว่างกำลังส่ง — points[0] = ตำแหน่ง rider, ที่เหลือ = จุดส่ง
+ * เส้นทางตามถนนระหว่างกำลังส่ง — points[0] = ตำแหน่ง messenger, ที่เหลือ = จุดส่ง
  * backend คำนวณผ่าน OSRM คืน geometry (วาดเส้นตามถนน) + legs (ระยะถึงจุดถัดไป)
  */
-export async function fetchRiderRoadRoute(points: { lat: number; lng: number }[]) {
+export async function fetchMessengerRoadRoute(points: { lat: number; lng: number }[]) {
   try {
-    const route = await request<RiderRoadRoute>(`${RIDER_API_BASE}/route`, {
+    const route = await request<MessengerRoadRoute>(`${MESSENGER_API_BASE}/route`, {
       method: 'POST',
       body: JSON.stringify({ points }),
     });
     if (route.geometry.length >= 2 && route.legs.length > 0) return route;
   } catch {
-    // fallback ด้านล่าง: ถ้า backend/OSRM ภายในล้มเหลว หน้า rider ยังใช้ระยะตามถนนได้
+    // fallback ด้านล่าง: ถ้า backend/OSRM ภายในล้มเหลว หน้า messenger ยังใช้ระยะตามถนนได้
   }
   return fetchPublicOsrmRoadRoute(points);
 }
 
-export async function fetchRiderOrders(_driverCode: string) {
+export async function fetchMessengerOrders(_driverCode: string) {
   const result = await request<{ driver: ApiDriver; items: ApiOrder[] }>(
-    `${RIDER_API_BASE}/orders`,
+    `${MESSENGER_API_BASE}/orders`,
   );
   return {
     driver: normalizeDriver(result.driver),
@@ -483,10 +483,10 @@ export async function fetchRiderOrders(_driverCode: string) {
 }
 
 /**
- * รายการที่ rider ส่งสำเร็จแล้ว — projection แบบ privacy-minimal
+ * รายการที่ messenger ส่งสำเร็จแล้ว — projection แบบ privacy-minimal
  * (ไม่มีชื่อ/เบอร์/ที่อยู่ลูกค้า, ไม่มีมูลค่าสินค้า, ไม่มีระดับความเสี่ยง)
  */
-export type RiderCompletedDelivery = {
+export type MessengerCompletedDelivery = {
   id: string;
   code: string;
   deliveredAt: string;
@@ -495,28 +495,28 @@ export type RiderCompletedDelivery = {
   proof?: { photoCount: number; signatureCaptured: boolean; otpVerified: boolean };
 };
 
-export type RiderCompletedPage = {
+export type MessengerCompletedPage = {
   driver: ApiDriver;
   /** ส่งกลับเฉพาะหน้าแรก (cursor ว่าง) เพื่อลดภาระ count ฝั่ง DB */
   total?: number;
-  items: RiderCompletedDelivery[];
+  items: MessengerCompletedDelivery[];
   /** null = ไม่มีหน้าถัดไป */
   nextCursor: string | null;
 };
 
-export async function fetchRiderCompletedDeliveries(
+export async function fetchMessengerCompletedDeliveries(
   _driverCode: string,
   params?: { limit?: number; cursor?: string },
 ) {
   const search = new URLSearchParams();
   search.set('limit', String(params?.limit ?? 20));
   if (params?.cursor) search.set('cursor', params.cursor);
-  return request<RiderCompletedPage>(`${RIDER_API_BASE}/completed?${search.toString()}`);
+  return request<MessengerCompletedPage>(`${MESSENGER_API_BASE}/completed?${search.toString()}`);
 }
 
-export async function startRiderOrder(orderId: string, _driverCode: string) {
+export async function startMessengerOrder(orderId: string, _driverCode: string) {
   const result = await request<ApiOrder>(
-    `${RIDER_API_BASE}/orders/${encodeURIComponent(orderId)}/start`,
+    `${MESSENGER_API_BASE}/orders/${encodeURIComponent(orderId)}/start`,
     {
       method: 'POST',
       body: JSON.stringify({}),
@@ -525,13 +525,13 @@ export async function startRiderOrder(orderId: string, _driverCode: string) {
   return normalizeOrder(result);
 }
 
-export async function submitRiderOrder(
+export async function submitMessengerOrder(
   orderId: string,
   _driverCode: string,
   proof: SubmitDeliveryInput,
 ) {
   const result = await request<ApiOrder>(
-    `${RIDER_API_BASE}/orders/${encodeURIComponent(orderId)}/submit`,
+    `${MESSENGER_API_BASE}/orders/${encodeURIComponent(orderId)}/submit`,
     {
       method: 'POST',
       body: JSON.stringify({ proof }),
@@ -540,35 +540,35 @@ export async function submitRiderOrder(
   return normalizeOrder(result);
 }
 
-export type RiderSession = {
+export type MessengerSession = {
   token: string;
-  rider: { id: string; code: string; name: string; phone: string };
+  messenger: { id: string; code: string; name: string; phone: string };
 };
 
-export async function loginRider(phone: string, pin: string, deviceId: string) {
-  const session = await request<RiderSession>(`${RIDER_API_BASE}/auth/login`, {
+export async function loginMessenger(phone: string, pin: string, deviceId: string) {
+  const session = await request<MessengerSession>(`${MESSENGER_API_BASE}/auth/login`, {
     method: 'POST',
     body: JSON.stringify({ phone, pin, deviceId }),
   });
-  localStorage.setItem(RIDER_TOKEN_KEY, session.token);
-  localStorage.setItem('movevai:rider-code', session.rider.code);
+  localStorage.setItem(MESSENGER_TOKEN_KEY, session.token);
+  localStorage.setItem('movevai:messenger-code', session.messenger.code);
   return session;
 }
 
-export function hasRiderSession() {
-  return Boolean(localStorage.getItem(RIDER_TOKEN_KEY));
+export function hasMessengerSession() {
+  return Boolean(localStorage.getItem(MESSENGER_TOKEN_KEY));
 }
 
-export async function logoutRider() {
+export async function logoutMessenger() {
   try {
-    await request<{ ok: boolean }>(`${RIDER_API_BASE}/auth/logout`, { method: 'POST' });
+    await request<{ ok: boolean }>(`${MESSENGER_API_BASE}/auth/logout`, { method: 'POST' });
   } catch {
     /* clear local session even when offline/expired */
   }
-  clearLocalRiderSession();
+  clearLocalMessengerSession();
 }
 
-export type RiderTrackingSession = {
+export type MessengerTrackingSession = {
   id: string;
   routeId?: string | null;
   sessionType?: 'delivery' | 'test';
@@ -578,7 +578,7 @@ export type RiderTrackingSession = {
   isOwner?: boolean;
 };
 
-export type ActiveRiderTrackingSession = RiderTrackingSession & {
+export type ActiveMessengerTrackingSession = MessengerTrackingSession & {
   route: { code: string } | null;
   isOwner: boolean;
   latest: null | {
@@ -591,13 +591,13 @@ export type ActiveRiderTrackingSession = RiderTrackingSession & {
   };
 };
 
-export function fetchActiveRiderTracking(deviceId: string) {
-  return request<ActiveRiderTrackingSession | null>(
-    `${RIDER_API_BASE}/tracking/active?deviceId=${encodeURIComponent(deviceId)}`,
+export function fetchActiveMessengerTracking(deviceId: string) {
+  return request<ActiveMessengerTrackingSession | null>(
+    `${MESSENGER_API_BASE}/tracking/active?deviceId=${encodeURIComponent(deviceId)}`,
   );
 }
 
-export type RiderOrderRouteHistory = {
+export type MessengerOrderRouteHistory = {
   order: {
     id: string;
     code: string;
@@ -616,19 +616,19 @@ export type RiderOrderRouteHistory = {
     label?: string | null;
     capturedAt: string;
   } | null;
-  /** เส้นทาง GPS ที่ rider วิ่งจริง snap ให้เกาะถนนแล้ว (map matching) — null ถ้า match ไม่ได้ */
+  /** เส้นทาง GPS ที่ messenger วิ่งจริง snap ให้เกาะถนนแล้ว (map matching) — null ถ้า match ไม่ได้ */
   matchedGeometryJson?: { lat: number | string; lng: number | string }[] | null;
-  session: RiderTrackingHistory | null;
+  session: MessengerTrackingHistory | null;
 };
 
-export function fetchRiderOrderRouteHistory(orderId: string) {
-  return request<RiderOrderRouteHistory>(
-    `${RIDER_API_BASE}/orders/${encodeURIComponent(orderId)}/route-history`,
+export function fetchMessengerOrderRouteHistory(orderId: string) {
+  return request<MessengerOrderRouteHistory>(
+    `${MESSENGER_API_BASE}/orders/${encodeURIComponent(orderId)}/route-history`,
   );
 }
-export function startRiderRoute(routeId: string, deviceId: string) {
-  return request<RiderTrackingSession>(
-    `${RIDER_API_BASE}/routes/${encodeURIComponent(routeId)}/start`,
+export function startMessengerRoute(routeId: string, deviceId: string) {
+  return request<MessengerTrackingSession>(
+    `${MESSENGER_API_BASE}/routes/${encodeURIComponent(routeId)}/start`,
     {
       method: 'POST',
       body: JSON.stringify({ deviceId }),
@@ -636,20 +636,23 @@ export function startRiderRoute(routeId: string, deviceId: string) {
   );
 }
 
-export function sendRiderLocations(
+export function sendMessengerLocations(
   sessionId: string,
   deviceId: string,
-  points: RiderLocationPayload[],
+  points: MessengerLocationPayload[],
 ) {
-  return request<{ accepted: number; received: number }>(`${RIDER_API_BASE}/tracking/locations`, {
-    method: 'POST',
-    body: JSON.stringify({ sessionId, deviceId, points }),
-  });
+  return request<{ accepted: number; received: number }>(
+    `${MESSENGER_API_BASE}/tracking/locations`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ sessionId, deviceId, points }),
+    },
+  );
 }
 
-export function endRiderRoute(routeId: string, reason?: string) {
-  return request<RiderTrackingSession>(
-    `${RIDER_API_BASE}/routes/${encodeURIComponent(routeId)}/end`,
+export function endMessengerRoute(routeId: string, reason?: string) {
+  return request<MessengerTrackingSession>(
+    `${MESSENGER_API_BASE}/routes/${encodeURIComponent(routeId)}/end`,
     {
       method: 'POST',
       body: JSON.stringify({ reason }),
@@ -658,16 +661,16 @@ export function endRiderRoute(routeId: string, reason?: string) {
 }
 
 // Test Route: เริ่ม/จบ การบันทึกเส้นทางโดยไม่ผูกกับงานลูกค้า (ทดสอบ GPS)
-export function startRiderTestRoute(deviceId: string, label?: string) {
-  return request<RiderTrackingSession>(`${RIDER_API_BASE}/tracking/test/start`, {
+export function startMessengerTestRoute(deviceId: string, label?: string) {
+  return request<MessengerTrackingSession>(`${MESSENGER_API_BASE}/tracking/test/start`, {
     method: 'POST',
     body: JSON.stringify({ deviceId, label }),
   });
 }
 
-export function endRiderTestSession(sessionId: string, reason?: string) {
-  return request<RiderTrackingSession>(
-    `${RIDER_API_BASE}/tracking/test/${encodeURIComponent(sessionId)}/end`,
+export function endMessengerTestSession(sessionId: string, reason?: string) {
+  return request<MessengerTrackingSession>(
+    `${MESSENGER_API_BASE}/tracking/test/${encodeURIComponent(sessionId)}/end`,
     {
       method: 'POST',
       body: JSON.stringify({ reason }),
@@ -675,7 +678,7 @@ export function endRiderTestSession(sessionId: string, reason?: string) {
   );
 }
 
-export type RiderLocationPayload = {
+export type MessengerLocationPayload = {
   clientPointId: string;
   lat: number;
   lng: number;

@@ -1,4 +1,4 @@
-// แปลง address → พิกัด สำหรับวาดหมุดบนแผนที่ rider
+// แปลง address → พิกัด สำหรับวาดหมุดบนแผนที่ messenger
 //
 // ลำดับการ resolve:
 //   1) order.customer.geo  → ใช้เลย (มาจาก backend ในอนาคต)

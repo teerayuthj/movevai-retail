@@ -4,10 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useRetailStore } from '@/state/retailStore';
 import {
-  fetchRiderTrackingHistory,
+  fetchMessengerTrackingHistory,
   fetchTrackingSessions,
-  type RiderTrackingHistory,
-  type RiderTrackingSessionSummary,
+  type MessengerTrackingHistory,
+  type MessengerTrackingSessionSummary,
 } from '@/lib/retailApi';
 import { TrackingReplayMap } from '@/features/delivery-tracking/components/TrackingReplayMap';
 import { AlertCircle, Loader2, MapPin, RefreshCw, Route as RouteIcon } from 'lucide-react';
@@ -39,9 +39,9 @@ export function TrackingHistoryPage() {
   const { drivers } = useRetailStore();
   const [date, setDate] = useState(todayKey);
   const [driverCode, setDriverCode] = useState('');
-  const [sessions, setSessions] = useState<RiderTrackingSessionSummary[]>([]);
+  const [sessions, setSessions] = useState<MessengerTrackingSessionSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [selected, setSelected] = useState<RiderTrackingHistory | null>(null);
+  const [selected, setSelected] = useState<MessengerTrackingHistory | null>(null);
   const [isListLoading, setIsListLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +75,7 @@ export function TrackingHistoryPage() {
     }
     let active = true;
     setIsDetailLoading(true);
-    void fetchRiderTrackingHistory(selectedId)
+    void fetchMessengerTrackingHistory(selectedId)
       .then((row) => {
         if (active) setSelected(row);
       })

@@ -34,8 +34,8 @@ const badgeCount = badgeCountArg === undefined ? undefined : Number(badgeCountAr
 const payload = JSON.stringify({
   title: titleArg || 'มีงานใหม่เข้ามา 🛵',
   body: bodyArg || 'ORD-2048 · คุณสมชาย ใจดี · แตะเพื่อเปิดดูงาน',
-  url: '/rider/assigned',
-  tag: 'rider-new-job',
+  url: '/messenger/assigned',
+  tag: 'messenger-new-job',
   ...(Number.isFinite(badgeCount) ? { badgeCount } : {}),
 });
 

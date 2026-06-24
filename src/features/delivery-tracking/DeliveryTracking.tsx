@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { SuccessToast } from '@/components/ui/SuccessToast';
-import { RiderCloseJobDialog } from '@/components/delivery/RiderCloseJobDialog';
+import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import {
   planningCancelReasonLabel,
   type FailNextAction,
@@ -44,8 +44,8 @@ import { TrackingViewTabs, type TrackingTab } from './components/TrackingViewTab
 import { TrackingCard } from './components/TrackingCard';
 import { TrackingDetailDrawer } from './components/TrackingDetailDrawer';
 import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './utils/trackingSearch';
-import { LiveRiderMap } from './components/LiveRiderMap';
-import { RiderOrderMapPage } from '@/features/rider/components/RiderOrderMapPage';
+import { LiveMessengerMap } from './components/LiveMessengerMap';
+import { MessengerOrderMapPage } from '@/features/messenger/components/MessengerOrderMapPage';
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
@@ -86,7 +86,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     reassignRoute,
   } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
-  const [riderCloseTargetId, setRiderCloseTargetId] = useState<string | null>(null);
+  const [messengerCloseTargetId, setMessengerCloseTargetId] = useState<string | null>(null);
   const [routeHistoryOrderId, setRouteHistoryOrderId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -314,9 +314,9 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     if (order.status === 'in_transit') {
       return (
         <div className="flex gap-2">
-          <Button className="flex-1" onClick={() => setRiderCloseTargetId(order.id)}>
+          <Button className="flex-1" onClick={() => setMessengerCloseTargetId(order.id)}>
             <Truck className="h-4 w-4" />
-            rider ปิดงาน
+            messenger ปิดงาน
           </Button>
           <Button variant="outline" className="flex-1" onClick={() => setFailTargetId(order.id)}>
             <XCircle className="h-4 w-4" />
@@ -351,7 +351,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => setRiderCloseTargetId(order.id)}
+            onClick={() => setMessengerCloseTargetId(order.id)}
           >
             <PenLine className="h-4 w-4" />
             แก้ไขหลักฐาน
@@ -412,7 +412,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         </p>
       </div>
 
-      <LiveRiderMap />
+      <LiveMessengerMap />
 
       <ResolutionDialog
         open={!!failTargetId}
@@ -453,19 +453,19 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         }}
       />
 
-      <RiderCloseJobDialog
-        open={!!riderCloseTargetId}
+      <MessengerCloseJobDialog
+        open={!!messengerCloseTargetId}
         order={
-          trackingOrders.find((o) => o.id === riderCloseTargetId) ??
-          orders.find((o) => o.id === riderCloseTargetId) ??
+          trackingOrders.find((o) => o.id === messengerCloseTargetId) ??
+          orders.find((o) => o.id === messengerCloseTargetId) ??
           null
         }
-        onCancel={() => setRiderCloseTargetId(null)}
+        onCancel={() => setMessengerCloseTargetId(null)}
         onSubmit={async (input) => {
-          if (!riderCloseTargetId) return;
-          await submitDelivery(riderCloseTargetId, input);
+          if (!messengerCloseTargetId) return;
+          await submitDelivery(messengerCloseTargetId, input);
           setSelectedOrderId(null);
-          setRiderCloseTargetId(null);
+          setMessengerCloseTargetId(null);
           changeView('needs_action');
           refreshTracking();
         }}
@@ -475,7 +475,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         <ResolutionDialog
           open
           title={`ดึง Route ${routeAction.order.deliveryRoute.code} กลับเข้า Planning`}
-          description={`ดึงทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Rider ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
+          description={`ดึงทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={PLANNING_CANCEL_REASONS}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
@@ -612,7 +612,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
 
       {routeHistoryOrderId && (
         <div className="fixed inset-0 z-[70] bg-background">
-          <RiderOrderMapPage
+          <MessengerOrderMapPage
             order={routeHistoryOrder}
             orderId={routeHistoryOrderId}
             onBack={() => setRouteHistoryOrderId(null)}

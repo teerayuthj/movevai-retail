@@ -151,7 +151,7 @@ export function TrackingCard({
           <div className="mt-2 flex flex-wrap gap-1 text-[10px] text-success">
             <span className="inline-flex items-center gap-1 rounded-md bg-success/10 px-1.5 py-0.5">
               <CheckCircle2 className="h-2.5 w-2.5" />
-              หลักฐานครบจาก rider
+              หลักฐานครบจาก messenger
             </span>
           </div>
         )}

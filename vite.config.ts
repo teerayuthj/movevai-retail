@@ -20,13 +20,13 @@ function readBackendInternalKey() {
 
 const internalApiKey = process.env.INTERNAL_API_KEY ?? readBackendInternalKey();
 
-const riderManifest = {
-  name: 'MoveVai Rider',
-  short_name: 'Rider',
-  description: 'แอปสำหรับ rider — รับงาน ส่งของ และปิดงานของตัวเอง',
+const messengerManifest = {
+  name: 'MoveVai Messenger',
+  short_name: 'Messenger',
+  description: 'แอปสำหรับ messenger — รับงาน ส่งของ และปิดงานของตัวเอง',
   lang: 'th',
-  // เปิดจากหน้าจอ home แล้วเข้า surface ของ rider ตรงๆ
-  start_url: '/rider',
+  // เปิดจากหน้าจอ home แล้วเข้า surface ของ messenger ตรงๆ
+  start_url: '/messenger',
   scope: '/',
   display: 'standalone' as const,
   orientation: 'portrait' as const,
@@ -83,7 +83,7 @@ function devPushSubscriptionSink() {
           return;
         }
         res.setHeader('content-type', 'application/manifest+json');
-        res.end(JSON.stringify(riderManifest));
+        res.end(JSON.stringify(messengerManifest));
       });
 
       server.middlewares.use('/__dev/push-subscription', (req, res) => {
@@ -148,8 +148,8 @@ export default defineConfig({
   plugins: [
     react(),
     devPushSubscriptionSink(),
-    // PWA: ทำให้ "เปิดแอป Rider" ติดตั้งลงหน้าจอมือถือได้ + offline app-shell
-    // (ระยะ 2 ส่วนที่ไม่ต้องมี backend — ดู CLAUDE.md / rider architecture)
+    // PWA: ทำให้ "เปิดแอป Messenger" ติดตั้งลงหน้าจอมือถือได้ + offline app-shell
+    // (ระยะ 2 ส่วนที่ไม่ต้องมี backend — ดู CLAUDE.md / messenger architecture)
     VitePWA({
       // injectManifest: ใช้ custom service worker (src/sw.ts) เพื่อรองรับ push/notificationclick
       strategies: 'injectManifest',
@@ -157,8 +157,8 @@ export default defineConfig({
       filename: 'sw.ts',
       injectRegister: false,
       registerType: 'autoUpdate',
-      includeAssets: ['apple-touch-icon.png', 'rider-icon.svg'],
-      manifest: riderManifest,
+      includeAssets: ['apple-touch-icon.png', 'messenger-icon.svg'],
+      manifest: messengerManifest,
       injectManifest: {
         // precache app-shell + assets ที่ Vite build (hashed) เพื่อให้เปิดได้ตอนเน็ตหลุด
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
@@ -184,10 +184,10 @@ export default defineConfig({
     // อนุญาตให้เปิดผ่าน ngrok (สำหรับทดสอบ PWA บนมือถือจริงผ่าน HTTPS)
     allowedHosts: ['.ngrok-free.app', '.ngrok.app', '.ngrok.io'],
     proxy: {
-      '/api/rider': {
+      '/api/messenger': {
         target: 'http://localhost:4000',
         changeOrigin: true,
-        rewrite: (requestPath) => requestPath.replace(/^\/api\/rider/, '/v1/rider'),
+        rewrite: (requestPath) => requestPath.replace(/^\/api\/messenger/, '/v1/messenger'),
         headers: internalApiKey ? { 'x-internal-key': internalApiKey } : undefined,
       },
       '/api/app': {

@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { formatTHB } from '@/data/mock';
-import { fetchRiderCompletedDeliveries, type RiderCompletedDelivery } from '@/lib/retailApi';
+import {
+  fetchMessengerCompletedDeliveries,
+  type MessengerCompletedDelivery,
+} from '@/lib/retailApi';
 import {
   Banknote,
   Camera,
@@ -23,8 +26,8 @@ function formatDeliveredAt(iso: string): string {
   });
 }
 
-export function RiderCompletedList({ riderCode }: { riderCode: string }) {
-  const [items, setItems] = useState<RiderCompletedDelivery[]>([]);
+export function MessengerCompletedList({ messengerCode }: { messengerCode: string }) {
+  const [items, setItems] = useState<MessengerCompletedDelivery[]>([]);
   const [total, setTotal] = useState<number | null>(null);
   const [done, setDone] = useState(false);
   // 'initial' = โหลดหน้าแรก, 'more' = โหลดหน้าถัดไป, 'idle' = ว่าง
@@ -44,7 +47,7 @@ export function RiderCompletedList({ riderCode }: { riderCode: string }) {
     setPhase(isInitial ? 'initial' : 'more');
     setError(null);
     try {
-      const res = await fetchRiderCompletedDeliveries(riderCode, {
+      const res = await fetchMessengerCompletedDeliveries(messengerCode, {
         limit: PAGE_SIZE,
         cursor: cursorRef.current ?? undefined,
       });
@@ -65,9 +68,9 @@ export function RiderCompletedList({ riderCode }: { riderCode: string }) {
       loadingRef.current = false;
       setPhase('idle');
     }
-  }, [riderCode]);
+  }, [messengerCode]);
 
-  // reset + โหลดหน้าแรกเมื่อเปลี่ยน rider
+  // reset + โหลดหน้าแรกเมื่อเปลี่ยน messenger
   useEffect(() => {
     setItems([]);
     setTotal(null);
@@ -78,7 +81,7 @@ export function RiderCompletedList({ riderCode }: { riderCode: string }) {
     doneRef.current = false;
     loadingRef.current = false;
     void loadPage();
-  }, [riderCode, loadPage]);
+  }, [messengerCode, loadPage]);
 
   // โหลดหน้าถัดไปเมื่อ sentinel เลื่อนเข้ามาในจอ (โหลดล่วงหน้า 200px)
   useEffect(() => {

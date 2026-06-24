@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
-import { getRiderJobOverdueMinutes, getRiderJobTiming } from '../riderSchedule';
+import { getMessengerJobOverdueMinutes, getMessengerJobTiming } from '../messengerSchedule';
 import { navigationUrl } from '../geocode';
 
 export function JobCard({
@@ -40,9 +40,9 @@ export function JobCard({
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
   const isFutureJob =
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
-  const overdueMinutes = getRiderJobOverdueMinutes(order, nowMs);
+  const overdueMinutes = getMessengerJobOverdueMinutes(order, nowMs);
   const isOverdue = overdueMinutes != null;
-  const timing = getRiderJobTiming(order, nowMs);
+  const timing = getMessengerJobTiming(order, nowMs);
   const isPendingReview = order.status === 'pending_confirmation';
 
   return (

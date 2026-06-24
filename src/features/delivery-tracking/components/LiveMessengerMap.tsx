@@ -4,13 +4,13 @@ import L from 'leaflet';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import {
   fetchDeliveryTrackingOrders,
-  fetchLiveRiders,
-  fetchRiderTrackingHistory,
-  type LiveRiderTracking,
-  type RiderTrackingHistory,
+  fetchLiveMessengers,
+  fetchMessengerTrackingHistory,
+  type LiveMessengerTracking,
+  type MessengerTrackingHistory,
 } from '@/lib/retailApi';
-import { BANGKOK_CENTER } from '@/features/rider/geocode';
-import { useRouteStops } from '@/features/rider/hooks/useRouteStops';
+import { BANGKOK_CENTER } from '@/features/messenger/geocode';
+import { useRouteStops } from '@/features/messenger/hooks/useRouteStops';
 import type { Order } from '@/data/mock';
 
 const icon = L.divIcon({
@@ -20,7 +20,7 @@ const icon = L.divIcon({
   html: '<div style="width:24px;height:24px;border-radius:50%;background:#16a34a;border:4px solid white;box-shadow:0 1px 6px #0006"></div>',
 });
 
-// หมุดปลายทาง — รูปหยดน้ำสีแดง แยกชัดจากหมุด rider (วงกลมเขียว); จางลงเมื่อ stop ส่งแล้ว
+// หมุดปลายทาง — รูปหยดน้ำสีแดง แยกชัดจากหมุด messenger (วงกลมเขียว); จางลงเมื่อ stop ส่งแล้ว
 const destinationIcon = (delivered: boolean) =>
   L.divIcon({
     className: '',
@@ -51,19 +51,19 @@ function currentDestination<T extends { status?: string | null; sequence?: numbe
     )[0];
 }
 
-export function LiveRiderMap() {
-  const [riders, setRiders] = useState<LiveRiderTracking[]>([]);
+export function LiveMessengerMap() {
+  const [messengers, setMessengers] = useState<LiveMessengerTracking[]>([]);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
-  const [selected, setSelected] = useState<RiderTrackingHistory | null>(null);
+  const [selected, setSelected] = useState<MessengerTrackingHistory | null>(null);
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   useEffect(() => {
     let active = true;
     const load = () => {
       // แยก request เพื่อให้ GPS realtime ยังอัปเดตได้ แม้ endpoint รายการงานล้มเหลวชั่วคราว
-      void fetchLiveRiders()
+      void fetchLiveMessengers()
         .then((rows) => {
-          if (active) setRiders(rows);
+          if (active) setMessengers(rows);
         })
         .catch(() => undefined);
       void fetchDeliveryTrackingOrders({ tab: 'in_transit', take: 100, skip: 0 })
@@ -110,13 +110,13 @@ export function LiveRiderMap() {
   );
   const currentDestinations = useMemo(
     () =>
-      riders.flatMap((rider) => {
-        const fromLiveFeed = currentDestination(rider.destinations ?? []);
-        if (fromLiveFeed) return [{ riderId: rider.id, destination: fromLiveFeed }];
+      messengers.flatMap((messenger) => {
+        const fromLiveFeed = currentDestination(messenger.destinations ?? []);
+        if (fromLiveFeed) return [{ messengerId: messenger.id, destination: fromLiveFeed }];
 
         const fromOrder = currentDestination(
           activeOrderStops
-            .filter((stop) => stop.order.assignedDriverId === rider.driver.code && stop.coords)
+            .filter((stop) => stop.order.assignedDriverId === messenger.driver.code && stop.coords)
             .map((stop) => ({
               orderId: stop.order.id,
               label: stop.order.customer.name,
@@ -127,43 +127,43 @@ export function LiveRiderMap() {
               sequence: stop.order.deliveryRoute?.sequence,
             })),
         );
-        return fromOrder ? [{ riderId: rider.id, destination: fromOrder }] : [];
+        return fromOrder ? [{ messengerId: messenger.id, destination: fromOrder }] : [];
       }),
-    [activeOrderStops, riders],
+    [activeOrderStops, messengers],
   );
   const viewportPoints = useMemo<[number, number][]>(() => {
     if (path.length > 0) {
       const selectedDestination = currentDestinations.find(
-        (item) => item.riderId === selected?.id,
+        (item) => item.messengerId === selected?.id,
       )?.destination;
       return selectedDestination
         ? [...path, [Number(selectedDestination.lat), Number(selectedDestination.lng)]]
         : path;
     }
     return [
-      ...riders.flatMap((rider) =>
-        rider.latest
-          ? [[Number(rider.latest.lat), Number(rider.latest.lng)] as [number, number]]
+      ...messengers.flatMap((messenger) =>
+        messenger.latest
+          ? [[Number(messenger.latest.lat), Number(messenger.latest.lng)] as [number, number]]
           : [],
       ),
       ...currentDestinations.map(
         ({ destination }) => [Number(destination.lat), Number(destination.lng)] as [number, number],
       ),
     ];
-  }, [currentDestinations, path, riders, selected?.id]);
+  }, [currentDestinations, path, messengers, selected?.id]);
   return (
     <section className="overflow-hidden rounded-xl border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div>
-          <h2 className="font-semibold">Live Rider Tracking</h2>
+          <h2 className="font-semibold">Live Messenger Tracking</h2>
           <p className="text-xs text-muted-foreground">
-            อัปเดตทุก 5 วินาที · เลือก Rider เพื่อดูเส้นทางย้อนหลัง
+            อัปเดตทุก 5 วินาที · เลือก Messenger เพื่อดูเส้นทางย้อนหลัง
           </p>
         </div>
         <span className="text-sm font-medium">
           ออนไลน์{' '}
           {
-            riders.filter(
+            messengers.filter(
               (r) => r.latest && Date.now() - new Date(r.latest.recordedAt).getTime() < 30_000,
             ).length
           }
@@ -171,29 +171,29 @@ export function LiveRiderMap() {
       </div>
       <div className="grid md:grid-cols-[220px_1fr]">
         <div className="max-h-80 overflow-auto border-b md:border-b-0 md:border-r">
-          {riders.map((rider) => (
+          {messengers.map((messenger) => (
             <button
-              key={rider.id}
+              key={messenger.id}
               className="block w-full border-b p-3 text-left text-sm hover:bg-muted/50"
-              onClick={() => void fetchRiderTrackingHistory(rider.id).then(setSelected)}
+              onClick={() => void fetchMessengerTrackingHistory(messenger.id).then(setSelected)}
             >
               <div className="font-medium">
-                {rider.driver.name}
-                {rider.sessionType === 'test' && (
+                {messenger.driver.name}
+                {messenger.sessionType === 'test' && (
                   <span className="ml-1.5 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
                     TEST
                   </span>
                 )}
               </div>
               <div className="text-xs text-muted-foreground">
-                {rider.route?.code ?? rider.label ?? 'Test Route'} ·{' '}
-                {rider.latest
-                  ? new Date(rider.latest.recordedAt).toLocaleTimeString('th-TH')
+                {messenger.route?.code ?? messenger.label ?? 'Test Route'} ·{' '}
+                {messenger.latest
+                  ? new Date(messenger.latest.recordedAt).toLocaleTimeString('th-TH')
                   : 'ยังไม่มี GPS'}
               </div>
             </button>
           ))}
-          {!riders.length && (
+          {!messengers.length && (
             <p className="p-4 text-sm text-muted-foreground">ยังไม่มี Route ที่กำลังติดตาม</p>
           )}
         </div>
@@ -203,32 +203,32 @@ export function LiveRiderMap() {
           className="h-80 w-full"
         >
           <BaseTileLayer />
-          {riders.flatMap((rider) =>
-            rider.latest ? (
+          {messengers.flatMap((messenger) =>
+            messenger.latest ? (
               <Marker
-                key={rider.id}
+                key={messenger.id}
                 icon={icon}
-                position={[Number(rider.latest.lat), Number(rider.latest.lng)]}
+                position={[Number(messenger.latest.lat), Number(messenger.latest.lng)]}
                 eventHandlers={{
-                  click: () => void fetchRiderTrackingHistory(rider.id).then(setSelected),
+                  click: () => void fetchMessengerTrackingHistory(messenger.id).then(setSelected),
                 }}
               >
                 <Popup>
-                  <b>{rider.driver.name}</b>
+                  <b>{messenger.driver.name}</b>
                   <br />
-                  {rider.route?.code ?? rider.label ?? 'Test Route'}
-                  <br />±{Math.round(rider.latest.accuracy)} ม.
+                  {messenger.route?.code ?? messenger.label ?? 'Test Route'}
+                  <br />±{Math.round(messenger.latest.accuracy)} ม.
                 </Popup>
               </Marker>
             ) : (
               []
             ),
           )}
-          {currentDestinations.map(({ riderId, destination: dest }) => {
+          {currentDestinations.map(({ messengerId, destination: dest }) => {
             const delivered = dest.status === 'delivered';
             return (
               <Marker
-                key={`${riderId}-dest-${dest.orderId ?? 'current'}`}
+                key={`${messengerId}-dest-${dest.orderId ?? 'current'}`}
                 icon={destinationIcon(delivered)}
                 position={[Number(dest.lat), Number(dest.lng)]}
               >

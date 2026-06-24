@@ -811,7 +811,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
         <ResolutionDialog
           open
           title={`ดึง Route ${routeAction.route.code} กลับเข้า Planning`}
-          description={`ดึงทั้ง Route ${routeAction.route.stops.length} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Rider ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
+          description={`ดึงทั้ง Route ${routeAction.route.stops.length} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={planningCancelReasons}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"

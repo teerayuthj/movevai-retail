@@ -63,7 +63,7 @@ movevai-retail/
 │   ├── data/
 │   │   └── mock.ts                  # seed/mock data — ใช้แทน API จริง
 │   └── vite-env.d.ts
-├── vite.config.ts                   # + vite-plugin-pwa (rider PWA)
+├── vite.config.ts                   # + vite-plugin-pwa (messenger PWA)
 ├── postcss.config.js                # @tailwindcss/postcss (Tailwind v4)
 └── tsconfig.json                    # path alias '@/*' → 'src/*'
 ```

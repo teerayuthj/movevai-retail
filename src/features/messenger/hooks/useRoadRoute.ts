@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchRiderRoadRoute, type RiderRoadRoute } from '@/lib/retailApi';
+import { fetchMessengerRoadRoute, type MessengerRoadRoute } from '@/lib/retailApi';
 
 type Coords = { lat: number; lng: number };
 export type RoadRouteStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 const EARTH_RADIUS_METERS = 6_371_000;
-// อย่าเรียก OSRM ถี่เกินไป — รอจน rider ขยับพอสมควรหรือครบเวลาขั้นต่ำ
+// อย่าเรียก OSRM ถี่เกินไป — รอจน messenger ขยับพอสมควรหรือครบเวลาขั้นต่ำ
 const MIN_REFRESH_MS = 12_000;
 const MIN_MOVE_METERS = 50;
 
@@ -20,20 +20,20 @@ function metersBetween(from: Coords, to: Coords) {
 }
 
 /**
- * คำนวณเส้นทางตามถนนจากตำแหน่ง rider → จุดส่งที่เหลือ (ผ่าน backend/OSRM)
- * รีเฟรชเมื่อชุดจุดส่งเปลี่ยน หรือ rider ขยับเกิน MIN_MOVE_METERS (กันยิงถี่ด้วย MIN_REFRESH_MS)
+ * คำนวณเส้นทางตามถนนจากตำแหน่ง messenger → จุดส่งที่เหลือ (ผ่าน backend/OSRM)
+ * รีเฟรชเมื่อชุดจุดส่งเปลี่ยน หรือ messenger ขยับเกิน MIN_MOVE_METERS (กันยิงถี่ด้วย MIN_REFRESH_MS)
  * ส่ง status กลับไปให้ผู้เรียกแสดงสถานะระหว่างรอ/ล้มเหลวโดยไม่ต้องโชว์ระยะเส้นตรงเป็นคำตอบหลัก
  */
-export function useRoadRoute(rider: Coords | null, stops: Coords[], enabled: boolean) {
-  const [route, setRoute] = useState<RiderRoadRoute | null>(null);
+export function useRoadRoute(messenger: Coords | null, stops: Coords[], enabled: boolean) {
+  const [route, setRoute] = useState<MessengerRoadRoute | null>(null);
   const [status, setStatus] = useState<RoadRouteStatus>('idle');
   const [error, setError] = useState('');
-  const lastFetch = useRef<{ at: number; rider: Coords; stopsKey: string } | null>(null);
+  const lastFetch = useRef<{ at: number; messenger: Coords; stopsKey: string } | null>(null);
 
   const stopsKey = stops.map((stop) => `${stop.lat.toFixed(5)},${stop.lng.toFixed(5)}`).join('|');
 
   useEffect(() => {
-    if (!enabled || !rider || stops.length === 0) {
+    if (!enabled || !messenger || stops.length === 0) {
       setRoute(null);
       setStatus('idle');
       setError('');
@@ -43,16 +43,16 @@ export function useRoadRoute(rider: Coords | null, stops: Coords[], enabled: boo
 
     const prev = lastFetch.current;
     const stopsChanged = !prev || prev.stopsKey !== stopsKey;
-    const movedFar = !prev || metersBetween(prev.rider, rider) >= MIN_MOVE_METERS;
+    const movedFar = !prev || metersBetween(prev.messenger, messenger) >= MIN_MOVE_METERS;
     const cooldownPassed = !prev || Date.now() - prev.at >= MIN_REFRESH_MS;
     if (!stopsChanged && !(movedFar && cooldownPassed)) return;
 
     let cancelled = false;
-    const points = [rider, ...stops];
-    lastFetch.current = { at: Date.now(), rider, stopsKey };
+    const points = [messenger, ...stops];
+    lastFetch.current = { at: Date.now(), messenger, stopsKey };
     setStatus((current) => (current === 'ready' ? current : 'loading'));
     setError('');
-    void fetchRiderRoadRoute(points)
+    void fetchMessengerRoadRoute(points)
       .then((result) => {
         if (cancelled) return;
         if (result.geometry.length >= 2 && result.legs.length > 0) {
@@ -75,9 +75,9 @@ export function useRoadRoute(rider: Coords | null, stops: Coords[], enabled: boo
     return () => {
       cancelled = true;
     };
-    // rider.lat/lng ผ่าน dependency ด้านล่างเพื่อ trigger เมื่อขยับ; gating จริงอยู่ในตัว effect
+    // messenger.lat/lng ผ่าน dependency ด้านล่างเพื่อ trigger เมื่อขยับ; gating จริงอยู่ในตัว effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, rider?.lat, rider?.lng, stopsKey]);
+  }, [enabled, messenger?.lat, messenger?.lng, stopsKey]);
 
   return { route, status, error };
 }

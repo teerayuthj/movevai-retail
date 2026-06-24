@@ -3,7 +3,7 @@ import { AppShell } from '@/components/AppShell';
 import { RetailProvider } from '@/state/retailStore';
 import { getCanonicalPath, getPageFromPath, getPathForPage, type PageKey } from '@/lib/routes';
 
-// Lazy-load แต่ละหน้าเป็น chunk แยก เพื่อไม่ให้ surface ของ rider ต้องโหลด
+// Lazy-load แต่ละหน้าเป็น chunk แยก เพื่อไม่ให้ surface ของ messenger ต้องโหลด
 // dashboard admin + recharts ทั้งก้อน (เดิม bundle เดียว ~1.4MB → จอขาวตอนเปิดครั้งแรก)
 const OverviewPage = lazy(() =>
   import('@/pages/Overview').then((m) => ({ default: m.OverviewPage })),
@@ -29,8 +29,8 @@ const PostalQueuePage = lazy(() =>
   import('@/pages/PostalQueue').then((m) => ({ default: m.PostalQueuePage })),
 );
 const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default: m.DriversPage })));
-const RiderConsolePage = lazy(() =>
-  import('@/pages/RiderConsole').then((m) => ({ default: m.RiderConsolePage })),
+const MessengerConsolePage = lazy(() =>
+  import('@/pages/MessengerConsole').then((m) => ({ default: m.MessengerConsolePage })),
 );
 
 // อยู่ "ใน" Suspense → จะ mount ก็ต่อเมื่อ chunk ของหน้าโหลดเสร็จแล้ว
@@ -78,14 +78,14 @@ export default function App() {
     setLocationSearch(options?.search ?? '');
   };
 
-  // Rider เป็น "surface แยก" (mobile-first) — render นอก AppShell ของ admin
+  // Messenger เป็น "surface แยก" (mobile-first) — render นอก AppShell ของ admin
   // ไม่มี sidebar/topbar ของ admin มาครอบ เพื่อจำลองประสบการณ์เปิดบนมือถือจริง
-  if (page === 'rider') {
+  if (page === 'messenger') {
     return (
-      <RetailProvider mode="rider">
+      <RetailProvider mode="messenger">
         <Suspense fallback={null}>
           <SplashGate />
-          <RiderConsolePage onExit={() => navigateToPage('overview')} />
+          <MessengerConsolePage onExit={() => navigateToPage('overview')} />
         </Suspense>
       </RetailProvider>
     );

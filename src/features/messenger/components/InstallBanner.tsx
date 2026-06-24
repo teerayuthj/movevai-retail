@@ -23,7 +23,7 @@ export function InstallBanner({ install }: { install: InstallState }) {
             <Download className="h-4 w-4" />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block text-sm font-medium">ติดตั้งแอป MoveVai Rider</span>
+            <span className="block text-sm font-medium">ติดตั้งแอป MoveVai Messenger</span>
             <span className="block text-[11px] text-muted-foreground">
               เพิ่มลงหน้าจอโฮม เปิดเร็วขึ้น ใช้แบบเต็มจอ
             </span>
@@ -58,7 +58,7 @@ export function InstallBanner({ install }: { install: InstallState }) {
                 1. แตะปุ่ม <Share className="inline h-3.5 w-3.5" /> (Share) ใน Safari
               </li>
               <li>2. เลือก “เพิ่มไปยังหน้าจอโฮม” (Add to Home Screen)</li>
-              <li>3. แตะ “เพิ่ม” — จะได้ไอคอน MoveVai Rider บนหน้าจอ</li>
+              <li>3. แตะ “เพิ่ม” — จะได้ไอคอน MoveVai Messenger บนหน้าจอ</li>
             </ol>
           )}
         </div>

@@ -57,7 +57,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
     ).length,
     planning: orders.filter((o) => canPlanOrder(o) && isUnreleasedPlannedOrder(o)).length,
     postal: orders.filter((o) => o.shippingMethod === 'thai_post' && o.status === 'ready').length,
-    rider: orders.filter((o) =>
+    messenger: orders.filter((o) =>
       ['assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
     ).length,
   };

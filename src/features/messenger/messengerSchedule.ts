@@ -6,11 +6,11 @@ import {
 
 export const SCHEDULED_DELIVERY_REMINDER_MINUTES = 15;
 
-export type RiderJobTiming =
+export type MessengerJobTiming =
   | { phase: 'upcoming'; minutes: number }
   | { phase: 'grace'; minutes: number };
 
-export function getRiderJobScheduledAt(order: Order): number | null {
+export function getMessengerJobScheduledAt(order: Order): number | null {
   const plan = order.deliveryPlan;
   if (!plan?.plannedDate || !plan.plannedTime) return null;
 
@@ -18,10 +18,10 @@ export function getRiderJobScheduledAt(order: Order): number | null {
   return Number.isNaN(scheduledAt) ? null : scheduledAt;
 }
 
-export function getRiderJobTiming(order: Order, nowMs: number): RiderJobTiming | null {
+export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJobTiming | null {
   if (order.status !== 'assigned' || order.deliveryRoute?.dispatchMode === 'urgent') return null;
 
-  const scheduledAt = getRiderJobScheduledAt(order);
+  const scheduledAt = getMessengerJobScheduledAt(order);
   if (scheduledAt == null) return null;
 
   const reminderAt = scheduledAt - SCHEDULED_DELIVERY_REMINDER_MINUTES * 60_000;
@@ -37,6 +37,6 @@ export function getRiderJobTiming(order: Order, nowMs: number): RiderJobTiming |
   return null;
 }
 
-export function getRiderJobOverdueMinutes(order: Order, nowMs: number): number | null {
+export function getMessengerJobOverdueMinutes(order: Order, nowMs: number): number | null {
   return getAssignedOrderOverdueMinutes(order, nowMs);
 }

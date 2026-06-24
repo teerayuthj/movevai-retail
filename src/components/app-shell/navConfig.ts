@@ -60,7 +60,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'ทีมงาน',
     items: [
       { key: 'drivers', label: 'คนขับ', icon: Users },
-      { key: 'rider', label: 'เปิดแอป Rider', icon: Smartphone, showBadge: true },
+      { key: 'messenger', label: 'เปิดแอป Messenger', icon: Smartphone, showBadge: true },
     ],
   },
 ];

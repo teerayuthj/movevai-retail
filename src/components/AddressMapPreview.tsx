@@ -3,7 +3,7 @@ import { MapContainer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { AlertCircle, Loader2, MapPin } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
-import { BANGKOK_CENTER, type LatLng } from '@/features/rider/geocode';
+import { BANGKOK_CENTER, type LatLng } from '@/features/messenger/geocode';
 import { geocodeAddress } from '@/lib/retailApi';
 
 const pinIcon = L.divIcon({

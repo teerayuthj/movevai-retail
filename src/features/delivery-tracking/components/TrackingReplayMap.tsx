@@ -3,8 +3,8 @@ import { MapContainer, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Pause, Play } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
-import type { RiderTrackingHistory } from '@/lib/retailApi';
-import { BANGKOK_CENTER } from '@/features/rider/geocode';
+import type { MessengerTrackingHistory } from '@/lib/retailApi';
+import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 
 const icon = L.divIcon({
   className: '',
@@ -49,7 +49,7 @@ function FitBounds({ points }: { points: [number, number][] }) {
 }
 
 // แผนที่เล่นเส้นทางย้อนหลังของ session ที่จบแล้ว — เส้นวางแผน (ประ) เทียบเส้นจริง (ทึบ)
-export function TrackingReplayMap({ session }: { session: RiderTrackingHistory }) {
+export function TrackingReplayMap({ session }: { session: MessengerTrackingHistory }) {
   const [index, setIndex] = useState(() => Math.max(0, session.points.length - 1));
   const [playing, setPlaying] = useState(false);
 

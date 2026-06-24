@@ -6,7 +6,7 @@ import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Order } from '@/data/mock';
-import { fetchRiderOrderRouteHistory, type RiderOrderRouteHistory } from '@/lib/retailApi';
+import { fetchMessengerOrderRouteHistory, type MessengerOrderRouteHistory } from '@/lib/retailApi';
 import { BANGKOK_CENTER } from '../geocode';
 import { useRouteStops } from '../hooks/useRouteStops';
 
@@ -73,7 +73,7 @@ function formatDistance(distance?: number | null) {
   return `${Math.round(distance)} ม.`;
 }
 
-export function RiderOrderMapPage({
+export function MessengerOrderMapPage({
   order,
   orderId,
   onBack,
@@ -82,7 +82,7 @@ export function RiderOrderMapPage({
   orderId: string;
   onBack: () => void;
 }) {
-  const [history, setHistory] = useState<RiderOrderRouteHistory | null>(null);
+  const [history, setHistory] = useState<MessengerOrderRouteHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const stopOrders = useMemo(() => (order ? [order] : []), [order]);
@@ -97,7 +97,7 @@ export function RiderOrderMapPage({
     setLoading(true);
     setError(null);
 
-    void fetchRiderOrderRouteHistory(orderId)
+    void fetchMessengerOrderRouteHistory(orderId)
       .then((result) => {
         if (!cancelled) setHistory(result);
       })
@@ -273,7 +273,7 @@ export function RiderOrderMapPage({
             <div className="space-y-1">
               <div className="flex items-center gap-1.5 font-medium text-info">
                 <MapPin className="h-3.5 w-3.5" />
-                เส้นทางที่ rider วิ่งจริง
+                เส้นทางที่ messenger วิ่งจริง
               </div>
               <div className="text-muted-foreground">
                 {actualPoints.length > 0

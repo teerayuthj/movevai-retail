@@ -113,7 +113,7 @@ export function DaySummaryCard({
         <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
           {isToday
             ? 'งานวันนี้จะเริ่มได้ทันทีหลัง Publish'
-            : `Rider จะเห็นงานวันที่ ${formatPlanningDate(selectedDate)} ล่วงหน้า แต่เริ่มงานก่อนวันไม่ได้`}
+            : `Messenger จะเห็นงานวันที่ ${formatPlanningDate(selectedDate)} ล่วงหน้า แต่เริ่มงานก่อนวันไม่ได้`}
         </div>
       </CardContent>
     </Card>

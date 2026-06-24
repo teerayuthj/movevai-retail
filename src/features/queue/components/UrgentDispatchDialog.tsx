@@ -40,7 +40,7 @@ export function UrgentDispatchDialog({
               <AlertTriangle className="h-4 w-4 text-destructive" /> ส่งด่วนทันที
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              สร้าง Route และ Push ไปหา Rider ทันที
+              สร้าง Route และ Push ไปหา Messenger ทันที
             </p>
           </div>
           <button
@@ -63,13 +63,13 @@ export function UrgentDispatchDialog({
           <div className="rounded-lg border bg-muted/20 p-3 text-sm">
             <div className="font-mono text-xs font-medium">{order.code}</div>
             <div className="mt-1 font-medium">{order.customer.name}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Rider: {driver.name}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Messenger: {driver.name}</div>
           </div>
           <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
             <div className="flex items-start gap-2">
               <BellRing className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                Rider ต้องกดรับงานเองภายใน 5 นาที หากยังไม่รับ ระบบจะย้ายไปสถานะ “เลยกำหนด”
+                Messenger ต้องกดรับงานเองภายใน 5 นาที หากยังไม่รับ ระบบจะย้ายไปสถานะ “เลยกำหนด”
               </span>
             </div>
           </div>
