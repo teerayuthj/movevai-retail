@@ -345,7 +345,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     return (
       <MessengerLogin
         onLogin={(session: MessengerSession) => {
-          setMessengerCode(session.messenger.code);
+          setMessengerCode(session.rider.code);
           setAuthenticated(true);
         }}
       />

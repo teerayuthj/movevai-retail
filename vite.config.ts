@@ -187,7 +187,8 @@ export default defineConfig({
       '/api/messenger': {
         target: 'http://localhost:4000',
         changeOrigin: true,
-        rewrite: (requestPath) => requestPath.replace(/^\/api\/messenger/, '/v1/messenger'),
+        // backend ยังเสิร์ฟที่ /v1/rider — proxy alias /api/messenger → /v1/rider
+        rewrite: (requestPath) => requestPath.replace(/^\/api\/messenger/, '/v1/rider'),
         headers: internalApiKey ? { 'x-internal-key': internalApiKey } : undefined,
       },
       '/api/app': {

@@ -51,7 +51,8 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     const messengerTokenExpired =
       isMessengerRequest &&
       messengerToken &&
-      (response.status === 401 || /invalid or expired messenger token/i.test(message));
+      // backend ยังใช้ path /v1/rider — ข้อความ error ฝั่ง server ยังเป็น "rider token"
+      (response.status === 401 || /invalid or expired rider token/i.test(message));
     if (messengerTokenExpired) {
       clearLocalMessengerSession(true);
       throw new MessengerAuthError(message);
@@ -263,7 +264,8 @@ export type MessengerTrackingSessionSummary = {
 };
 
 export function fetchLiveMessengers() {
-  return request<LiveMessengerTracking[]>(`${APP_API_BASE}/tracking/messengers/latest`);
+  // backend endpoint ยังเป็น /tracking/riders/latest
+  return request<LiveMessengerTracking[]>(`${APP_API_BASE}/tracking/riders/latest`);
 }
 
 export function fetchMessengerTrackingHistory(sessionId: string) {
@@ -297,7 +299,8 @@ export function upsertMessengerAccount(
   input: { phone: string; pin: string; isActive?: boolean },
 ) {
   return request<{ id: string; driverCode: string; phone: string; isActive: boolean }>(
-    `${APP_API_BASE}/drivers/${encodeURIComponent(driverCode)}/messenger-account`,
+    // backend endpoint ยังเป็น .../rider-account
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverCode)}/rider-account`,
     { method: 'POST', body: JSON.stringify(input) },
   );
 }
@@ -542,7 +545,8 @@ export async function submitMessengerOrder(
 
 export type MessengerSession = {
   token: string;
-  messenger: { id: string; code: string; name: string; phone: string };
+  // backend response field ยังเป็น "rider"
+  rider: { id: string; code: string; name: string; phone: string };
 };
 
 export async function loginMessenger(phone: string, pin: string, deviceId: string) {
@@ -551,7 +555,7 @@ export async function loginMessenger(phone: string, pin: string, deviceId: strin
     body: JSON.stringify({ phone, pin, deviceId }),
   });
   localStorage.setItem(MESSENGER_TOKEN_KEY, session.token);
-  localStorage.setItem('movevai:messenger-code', session.messenger.code);
+  localStorage.setItem('movevai:messenger-code', session.rider.code);
   return session;
 }
 
