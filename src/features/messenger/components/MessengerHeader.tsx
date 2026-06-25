@@ -12,14 +12,21 @@ const statusLabel: Record<Driver['status'], string> = {
 export function MessengerHeader({
   messenger,
   effectiveStatus,
+  activeOrders,
   onOpenProfile,
 }: {
   messenger: Driver | null;
   /** สถานะที่สะท้อนกิจกรรมจริง (เช่น กำลังส่ง GPS) — override ค่า static ใน driver record */
   effectiveStatus?: Driver['status'];
+  /** จำนวนงานที่คำนวณจาก order สดในหน้านี้ แทน driver metadata ที่อาจค้าง */
+  activeOrders?: number;
   onOpenProfile?: () => void;
 }) {
   const status = effectiveStatus ?? messenger?.status;
+  const displayedActiveOrders = activeOrders ?? messenger?.activeOrders;
+  const workSummary = `${messenger?.zone ?? '—'} · งานวันนี้ ${displayedActiveOrders ?? '—'}/${
+    messenger?.capacity ?? '—'
+  }`;
   return (
     <header className="sticky top-0 z-10 border-b bg-primary/5 backdrop-blur-sm">
       <button
@@ -31,9 +38,7 @@ export function MessengerHeader({
         {messenger && <DriverAvatar driver={messenger} className="h-10 w-10" />}
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{messenger?.name ?? '—'}</div>
-          <div className="text-[11px] text-muted-foreground">
-            {messenger?.zone} · งานวันนี้ {messenger?.activeOrders}/{messenger?.capacity}
-          </div>
+          <div className="text-[11px] text-muted-foreground">{workSummary}</div>
         </div>
         <Badge
           variant={status === 'on_delivery' ? 'info' : status === 'available' ? 'success' : 'muted'}

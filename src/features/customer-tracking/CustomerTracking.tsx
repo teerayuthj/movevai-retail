@@ -36,12 +36,12 @@ import {
 import { formatPlanningDateTime } from '@/lib/deliveryPlanning';
 import {
   formatApproxDistance,
+  getCustomerPublicStatusLabel,
   getCustomerTrackingOrderId,
   getPlannedDelivery,
   getPublicTimelineEvents,
   haversineMeters,
   isOrderScheduled,
-  maskAddress,
   maskPhone,
   type CustomerProofEvidence,
 } from '@/lib/customerTracking';
@@ -75,6 +75,10 @@ const DELIVERY_STEPS: {
 ];
 
 function getStepState(order: Order, index: number): 'done' | 'current' | 'upcoming' | 'problem' {
+  if (order.status === 'pending_confirmation' || order.status === 'delivered') {
+    return index < DELIVERY_STEPS.length ? 'done' : 'upcoming';
+  }
+
   if (['failed', 'cancelled', 'returning', 'returned'].includes(order.status)) {
     return index < 4 ? 'done' : 'problem';
   }
@@ -103,10 +107,9 @@ function getMapsUrl(order: Order) {
 function getStatusVariant(
   status: OrderStatus,
 ): 'success' | 'warning' | 'info' | 'muted' | 'destructive' {
-  if (status === 'delivered') return 'success';
+  if (status === 'pending_confirmation' || status === 'delivered') return 'success';
   if (status === 'failed' || status === 'cancelled') return 'destructive';
-  if (status === 'returning' || status === 'returned' || status === 'pending_confirmation')
-    return 'warning';
+  if (status === 'returning' || status === 'returned') return 'warning';
   if (status === 'in_transit' || status === 'assigned') return 'info';
   return 'muted';
 }
@@ -388,6 +391,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
   const shippingMethod = order.shippingMethod ?? 'internal_driver';
   const mapsUrl = getMapsUrl(order);
   const plannedDelivery = getPlannedDelivery(order);
+  const publicStatusLabel = getCustomerPublicStatusLabel(order.status);
   const liveDistanceMeters =
     liveTracking?.destination && haversineMeters(liveTracking.position, liveTracking.destination);
   const liveMapsUrl = liveTracking
@@ -404,7 +408,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
               <h1 className="mt-1 truncate font-mono text-xl font-semibold">{order.code}</h1>
             </div>
             <Badge variant={getStatusVariant(order.status)} className="shrink-0">
-              {statusLabel[order.status]}
+              {publicStatusLabel}
             </Badge>
           </div>
           <p className="mt-2 text-sm text-muted-foreground">อัปเดตล่าสุดจากระบบจัดส่งของ Ausiris</p>
@@ -418,7 +422,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-semibold">สถานะสินค้า</div>
-                <div className="mt-1 text-2xl font-semibold">{statusLabel[order.status]}</div>
+                <div className="mt-1 text-2xl font-semibold">{publicStatusLabel}</div>
                 <div className="mt-1 text-xs text-muted-foreground">
                   วิธีจัดส่ง: {shippingMethodLabel[shippingMethod]}
                 </div>
@@ -505,7 +509,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
               <div>
                 <div className="text-sm font-semibold">ปลายทางจัดส่ง</div>
                 <div className="mt-1 text-xs text-muted-foreground">
-                  แสดงแบบย่อเพื่อความเป็นส่วนตัว
+                  แสดงที่อยู่เต็ม เบอร์โทรปกปิดบางส่วน
                 </div>
               </div>
               <Button size="sm" variant="outline" asChild>
@@ -518,7 +522,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
             <div className="mt-3 space-y-2 text-sm">
               <div className="flex gap-2">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                <span>{maskAddress(order.customer.address)}</span>
+                <span>{order.customer.address}</span>
               </div>
               <div className="flex gap-2">
                 <Phone className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />

@@ -37,8 +37,48 @@ export function buildCustomerTrackingUrl(orderId: string, origin = window.locati
 
 export function maskPhone(phone: string) {
   const digits = phone.replace(/\D/g, '');
-  if (digits.length < 4) return phone;
-  return `${phone.slice(0, Math.max(0, phone.length - 4)).replace(/\d/g, 'x')}${digits.slice(-4)}`;
+  if (digits.length < 3) return phone;
+
+  let visibleDigitsRemaining = 3;
+  return phone
+    .split('')
+    .reverse()
+    .map((char) => {
+      if (!/\d/.test(char)) return char;
+      if (visibleDigitsRemaining > 0) {
+        visibleDigitsRemaining -= 1;
+        return char;
+      }
+      return 'x';
+    })
+    .reverse()
+    .join('');
+}
+
+export function getCustomerPublicStatusLabel(status: OrderStatus) {
+  switch (status) {
+    case 'new':
+    case 'parsing':
+    case 'needs_review':
+      return 'รับคำสั่งซื้อแล้ว';
+    case 'ready':
+      return 'เตรียมสินค้าแล้ว';
+    case 'assigned':
+      return 'เตรียมจัดส่ง';
+    case 'in_transit':
+      return 'กำลังจัดส่ง';
+    case 'pending_confirmation':
+    case 'delivered':
+      return 'จัดส่งสำเร็จ';
+    case 'failed':
+      return 'จัดส่งไม่สำเร็จ';
+    case 'cancelled':
+      return 'ยกเลิกแล้ว';
+    case 'returning':
+      return 'อยู่ระหว่างนำสินค้ากลับ';
+    case 'returned':
+      return 'นำสินค้ากลับเรียบร้อย';
+  }
 }
 
 export function maskAddress(address: string) {
@@ -130,7 +170,7 @@ const CUSTOMER_TIMELINE_MILESTONES: Partial<
   delivery_plan_released: { key: 'dispatch_ready', label: 'จัดเข้ารอบจัดส่งแล้ว' },
   delivery_urgent_route_published: { key: 'dispatch_ready', label: 'จัดเข้ารอบจัดส่งแล้ว' },
   delivery_started: { key: 'out_for_delivery', label: 'พนักงานรับสินค้าและออกเดินทางไปส่ง' },
-  delivery_submitted: { key: 'handed_over', label: 'ส่งมอบสินค้าแล้ว กำลังยืนยันการรับ' },
+  delivery_submitted: { key: 'completed', label: 'จัดส่งสำเร็จ', tone: 'success' },
   delivery_confirmed: { key: 'completed', label: 'จัดส่งสำเร็จ', tone: 'success' },
   delivery_completed: { key: 'completed', label: 'จัดส่งสำเร็จ', tone: 'success' },
   postal_handed_over: { key: 'postal_handed', label: 'ส่งมอบพัสดุให้ไปรษณีย์แล้ว' },

@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
-import { SuccessToast } from '@/components/ui/SuccessToast';
+import { toast } from 'sonner';
 import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import {
   planningCancelReasonLabel,
@@ -101,7 +101,6 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   const [refreshKey, setRefreshKey] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [routeActionError, setRouteActionError] = useState('');
-  const [routeActionSuccess, setRouteActionSuccess] = useState('');
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     order: Order;
@@ -112,9 +111,6 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
 
   const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'overdue');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(parsedSearch.orderId);
-
-  const isPaginated = view !== 'needs_action';
-  const needsActionCount = trackingCounts.pending + trackingCounts.returning;
 
   const selectedOrder =
     (selectedOrderDetail?.id === selectedOrderId ? selectedOrderDetail : null) ??
@@ -160,32 +156,12 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     setIsListLoading(true);
     setLoadError(null);
 
-    const load =
-      view === 'needs_action'
-        ? // รวม 2 สถานะที่ต้องลงมือไว้ในมุมมองเดียว — ส่งกลับขึ้นก่อน (ค้างที่สาขานานสุด)
-          Promise.all([
-            fetchDeliveryTrackingOrders({
-              tab: 'returning',
-              query: debouncedQuery,
-              take: PAGE_SIZE,
-              skip: 0,
-            }),
-            fetchDeliveryTrackingOrders({
-              tab: 'pending',
-              query: debouncedQuery,
-              take: PAGE_SIZE,
-              skip: 0,
-            }),
-          ]).then(([returning, pending]) => ({
-            orders: [...returning.orders, ...pending.orders],
-            total: returning.total + pending.total,
-          }))
-        : fetchDeliveryTrackingOrders({
-            tab: view,
-            query: debouncedQuery,
-            take: PAGE_SIZE,
-            skip: (page - 1) * PAGE_SIZE,
-          });
+    const load = fetchDeliveryTrackingOrders({
+      tab: view,
+      query: debouncedQuery,
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+    });
 
     void load
       .then((result) => {
@@ -207,13 +183,6 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       .then(setTrackingCounts)
       .catch(() => undefined);
   }, [refreshKey]);
-
-  // ข้อความแจ้งสำเร็จเป็นแบบชั่วคราว — ล้างเองหลัง 5 วินาที
-  useEffect(() => {
-    if (!routeActionSuccess) return;
-    const timeoutId = window.setTimeout(() => setRouteActionSuccess(''), 5000);
-    return () => window.clearTimeout(timeoutId);
-  }, [routeActionSuccess]);
 
   useEffect(() => {
     if (!selectedOrderId) {
@@ -248,14 +217,14 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     const routeId = routeAction?.order.deliveryRoute?.id;
     if (!routeAction || !routeId) return;
     setRouteActionError('');
+    const routeCode = routeAction.order.deliveryRoute?.code ?? routeId;
     try {
-      const routeCode = routeAction.order.deliveryRoute?.code ?? routeId;
       if (routeAction.type === 'cancel') {
         await cancelRoute(routeId, { reason: value as PlanningCancelReason, note });
       } else {
         await reassignRoute(routeId, { driverCode: value, note });
       }
-      setRouteActionSuccess(
+      toast.success(
         routeAction.type === 'cancel'
           ? `ดึง Route ${routeCode} กลับเข้า Planning แล้ว — แจ้งคนขับเรียบร้อย`
           : `เปลี่ยนคนขับ Route ${routeCode} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
@@ -264,7 +233,9 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       setSelectedOrderId(null);
       refreshTracking();
     } catch (error) {
-      setRouteActionError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setRouteActionError(message);
+      toast.error(`ดำเนินการ Route ${routeCode} ไม่สำเร็จ — ${message}`);
     }
   }
 
@@ -340,9 +311,16 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           <Button
             className="w-full"
             onClick={async () => {
-              await confirmDelivery(order.id);
-              setSelectedOrderId(null);
-              refreshTracking();
+              try {
+                await confirmDelivery(order.id);
+                toast.success(`ปิดงาน ${order.code} เรียบร้อย`);
+                setSelectedOrderId(null);
+                refreshTracking();
+              } catch (error) {
+                toast.error(
+                  `ปิดงานไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
+                );
+              }
             }}
           >
             <CheckCircle2 className="h-4 w-4" />
@@ -370,6 +348,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           className="w-full"
           onClick={() => {
             markReturned(order.id);
+            toast.success(`รับคืน ${order.code} เข้าสาขาแล้ว`);
             setSelectedOrderId(null);
             refreshTracking();
           }}
@@ -396,7 +375,6 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
       icon: Truck,
       count: trackingCounts.awaiting_acceptance,
     },
-    { view: 'needs_action', label: 'ต้องทำ', icon: AlertCircle, count: needsActionCount },
     { view: 'in_transit', label: 'กำลังจัดส่ง', icon: Truck, count: trackingCounts.in_transit },
     { view: 'pending', label: 'รอยืนยัน', icon: CheckCircle2, count: trackingCounts.pending },
     { view: 'returning', label: 'ส่งกลับ', icon: Undo2, count: trackingCounts.returning },
@@ -445,7 +423,18 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         onConfirm={({ reason, note, action }) => {
           if (!failTargetId || !action) return;
 
+          const code =
+            trackingOrders.find((o) => o.id === failTargetId)?.code ??
+            orders.find((o) => o.id === failTargetId)?.code ??
+            '';
           failDelivery(failTargetId, { reason, nextAction: action, note });
+          toast.success(
+            action === 'retry'
+              ? `${code} กลับเข้าคิวให้คนขับเดิมส่งใหม่แล้ว`
+              : action === 'return'
+                ? `${code} ย้ายไปงานส่งกลับแล้ว — รอรับคืนเข้าสาขา`
+                : `ปิดงาน ${code} เป็นส่งไม่สำเร็จแล้ว`,
+          );
 
           if (action === 'retry') {
             onOpenQueue(buildQueueSearch(failTargetId));
@@ -454,7 +443,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
 
           setSelectedOrderId(null);
           setFailTargetId(null);
-          changeView(action === 'return' ? 'needs_action' : 'closed');
+          changeView(action === 'return' ? 'returning' : 'closed');
           refreshTracking();
         }}
       />
@@ -469,10 +458,15 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         onCancel={() => setMessengerCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!messengerCloseTargetId) return;
+          const code =
+            trackingOrders.find((o) => o.id === messengerCloseTargetId)?.code ??
+            orders.find((o) => o.id === messengerCloseTargetId)?.code ??
+            '';
           await submitDelivery(messengerCloseTargetId, input);
+          toast.success(`บันทึกหลักฐานการส่ง ${code} แล้ว — รอยืนยันปิดงาน`);
           setSelectedOrderId(null);
           setMessengerCloseTargetId(null);
-          changeView('needs_action');
+          changeView('pending');
           refreshTracking();
         }}
       />
@@ -508,8 +502,6 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         />
       )}
 
-      <SuccessToast message={routeActionSuccess} onClose={() => setRouteActionSuccess('')} />
-
       <TrackingViewTabs tabs={tabs} view={view} onChange={changeView} />
 
       <Card className="flex min-h-[calc(100vh-16rem)] flex-col overflow-hidden">
@@ -532,7 +524,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           </div>
         </CardHeader>
 
-        <CardContent className="relative flex-1 space-y-2 overflow-y-auto overscroll-contain [scrollbar-gutter:stable]">
+        <CardContent className="relative flex-1 space-y-2 overflow-y-auto [scrollbar-gutter:stable]">
           {trackingOrders.map((order) => (
             <TrackingCard
               key={order.id}
@@ -547,11 +539,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           {!isListLoading && !loadError && trackingOrders.length === 0 && (
             <div className="py-16 text-center text-sm text-muted-foreground">
               <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
-              {view === 'needs_action'
-                ? 'เคลียร์งานหมดแล้ว ไม่มีอะไรค้าง'
-                : view === 'closed'
-                  ? 'ยังไม่มีงานที่ปิดใน 24 ชั่วโมงล่าสุด'
-                  : 'ไม่มีรายการในสถานะนี้'}
+              {view === 'closed' ? 'ยังไม่มีงานที่ปิดใน 24 ชั่วโมงล่าสุด' : 'ไม่มีรายการในสถานะนี้'}
             </div>
           )}
 
@@ -572,41 +560,39 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           )}
         </CardContent>
 
-        {isPaginated && (
-          <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
-            <span>
-              {trackingTotal === 0
-                ? '0 รายการ'
-                : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, trackingTotal)} จาก ${trackingTotal.toLocaleString('th-TH')}`}
-              <span className="ml-1 hidden text-[10px] sm:inline">· โหลดครั้งละ {PAGE_SIZE}</span>
+        <div className="flex items-center justify-between border-t px-4 py-3 text-xs text-muted-foreground">
+          <span>
+            {trackingTotal === 0
+              ? '0 รายการ'
+              : `${(page - 1) * PAGE_SIZE + 1}-${Math.min(page * PAGE_SIZE, trackingTotal)} จาก ${trackingTotal.toLocaleString('th-TH')}`}
+            <span className="ml-1 hidden text-[10px] sm:inline">· โหลดครั้งละ {PAGE_SIZE}</span>
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page <= 1 || isListLoading}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              aria-label="หน้าก่อนหน้า"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="min-w-16 text-center tabular-nums">
+              {page}/{totalPages}
             </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                disabled={page <= 1 || isListLoading}
-                onClick={() => setPage((current) => Math.max(1, current - 1))}
-                aria-label="หน้าก่อนหน้า"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-              <span className="min-w-16 text-center tabular-nums">
-                {page}/{totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-8 w-8"
-                disabled={page >= totalPages || isListLoading}
-                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-                aria-label="หน้าถัดไป"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8"
+              disabled={page >= totalPages || isListLoading}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              aria-label="หน้าถัดไป"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
           </div>
-        )}
+        </div>
       </Card>
 
       <TrackingDetailDrawer

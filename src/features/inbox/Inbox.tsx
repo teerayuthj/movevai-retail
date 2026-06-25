@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import { Coins } from 'lucide-react';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { MobileDetailSheet } from '@/components/MobileDetailSheet';
@@ -137,7 +138,9 @@ export function InboxPage() {
         onCancel={() => setCancelTargetId(null)}
         onConfirm={({ reason, note }) => {
           if (cancelTargetId) {
+            const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
             cancelOrder(cancelTargetId, { reason, note });
+            toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
           }
           setCancelTargetId(null);
         }}

@@ -40,7 +40,7 @@ import {
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
-import { SuccessToast } from '@/components/ui/SuccessToast';
+import { toast } from 'sonner';
 
 function scheduledRoutesOnly(routes: PlanningRoute[]) {
   return routes.filter((route) => route.dispatchMode !== 'urgent');
@@ -88,14 +88,6 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     route: PlanningRoute;
   } | null>(null);
   const [routeActionError, setRouteActionError] = useState('');
-  const [operationSuccess, setOperationSuccess] = useState('');
-
-  // ข้อความแจ้งสำเร็จเป็นแบบชั่วคราว — ล้างเองหลัง 5 วินาที
-  useEffect(() => {
-    if (!operationSuccess) return;
-    const timeoutId = window.setTimeout(() => setOperationSuccess(''), 5000);
-    return () => window.clearTimeout(timeoutId);
-  }, [operationSuccess]);
 
   const todayDate = getTodayDateKey();
   const focusedOrderId = new URLSearchParams(locationSearch).get('order');
@@ -349,9 +341,13 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
           });
         }
       }
+      const plannedCount = selectedOrders.length;
       setSelectedDate(planDate);
+      toast.success(`จัดรอบส่ง ${plannedCount} ออเดอร์เรียบร้อย`);
     } catch (error) {
-      setOperationError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setOperationError(message);
+      toast.error(`จัดรอบส่งไม่สำเร็จ — ${message}`);
     } finally {
       setOperationState('idle');
     }
@@ -362,14 +358,18 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setOperationState('saving');
     setOperationError('');
     try {
+      const cancelledCount = selectedPlannedOrders.length;
       await clearPlannedOrders(
         selectedPlannedOrders.map((order) => order.id),
         { reason, note },
       );
       setCancelPlansOpen(false);
       clearSelection();
+      toast.success(`ยกเลิกแผน ${cancelledCount} ออเดอร์แล้ว — กลับเข้าคิว`);
     } catch (error) {
-      setOperationError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setOperationError(message);
+      toast.error(`ยกเลิกแผนไม่สำเร็จ — ${message}`);
     } finally {
       setOperationState('idle');
     }
@@ -395,7 +395,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
         await reassignRoute(routeAction.route.id, { driverCode: value, note });
       }
       const stopCount = routeAction.route.stops.length;
-      setOperationSuccess(
+      toast.success(
         routeAction.type === 'cancel'
           ? `ดึง Route ${routeAction.route.code} (${stopCount} จุด) กลับเข้า Planning แล้ว — แจ้งคนขับเรียบร้อย`
           : `เปลี่ยนคนขับ Route ${routeAction.route.code} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
@@ -403,7 +403,9 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
       setRouteAction(null);
       setRoutes(scheduledRoutesOnly(await fetchPlanningRoutes(selectedDate)));
     } catch (error) {
-      setRouteActionError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setRouteActionError(message);
+      toast.error(`ดำเนินการ Route ${routeAction.route.code} ไม่สำเร็จ — ${message}`);
     }
   };
 
@@ -426,10 +428,14 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setOperationState('publishing');
     setOperationError('');
     try {
+      const count = releasableSelectedOrders.length;
       await publishGroups(releasableSelectedOrders);
       clearSelection();
+      toast.success(`ปล่อยรอบส่ง ${count} ออเดอร์ให้คนขับแล้ว`);
     } catch (error) {
-      setOperationError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setOperationError(message);
+      toast.error(`ปล่อยรอบส่งไม่สำเร็จ — ${message}`);
     } finally {
       setOperationState('idle');
     }
@@ -440,10 +446,14 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setOperationState('publishing');
     setOperationError('');
     try {
+      const count = releasableForSelectedDate.length;
       await publishGroups(releasableForSelectedDate);
       clearSelection();
+      toast.success(`ปล่อยรอบส่งทั้งหมด ${count} ออเดอร์ให้คนขับแล้ว`);
     } catch (error) {
-      setOperationError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setOperationError(message);
+      toast.error(`ปล่อยรอบส่งไม่สำเร็จ — ${message}`);
     } finally {
       setOperationState('idle');
     }
@@ -761,8 +771,6 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               {operationError}
             </div>
           )}
-
-          <SuccessToast message={operationSuccess} onClose={() => setOperationSuccess('')} />
 
           <PublishedRoutesCard
             routes={routes}

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { toDataURL } from 'qrcode';
 import { CalendarClock, Copy, Download, ExternalLink, QrCode, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 import {
   buildCustomerTrackingUrl,
   getPlannedDelivery,
@@ -43,9 +44,14 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
   }, [trackingUrl]);
 
   async function copyLink() {
-    await navigator.clipboard?.writeText(trackingUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+    try {
+      await navigator.clipboard?.writeText(trackingUrl);
+      setCopied(true);
+      toast.success('คัดลอกลิงก์ติดตามแล้ว — ส่งให้ลูกค้าได้เลย');
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error('คัดลอกไม่สำเร็จ — กรุณาคัดลอกลิงก์ด้วยตนเอง');
+    }
   }
 
   // สร้าง QR ความละเอียดสูงตอนกดจริง เพื่อให้คมพอสำหรับพิมพ์/แนบส่ง
@@ -64,6 +70,7 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
     link.href = dataUrl;
     link.download = `tracking-${order.code}.png`;
     link.click();
+    toast.success('บันทึก QR ติดตามแล้ว');
   }
 
   // แชร์ผ่าน Web Share API (มือถือ): แนบรูป QR ได้ถ้า browser รองรับ ไม่งั้นแชร์ลิงก์

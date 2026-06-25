@@ -40,15 +40,22 @@ function InfoRow({
 
 export function MessengerProfileSheet({
   messenger,
+  effectiveStatus,
+  activeOrders,
   install,
   onClose,
   onExit,
 }: {
   messenger: Driver;
+  effectiveStatus?: Driver['status'];
+  activeOrders?: number;
   install: ReturnType<typeof useInstallPrompt>;
   onClose: () => void;
   onExit?: () => void;
 }) {
+  const status = effectiveStatus ?? messenger.status;
+  const displayedActiveOrders = activeOrders ?? messenger.activeOrders;
+
   return (
     <div className="absolute inset-0 z-20 flex flex-col bg-background duration-200 animate-in slide-in-from-right">
       <header className="sticky top-0 flex items-center gap-2 border-b bg-background px-3 pb-3 pt-safe">
@@ -71,8 +78,8 @@ export function MessengerProfileSheet({
             <div className="text-lg font-semibold">{messenger.name}</div>
             <div className="font-mono text-xs text-muted-foreground">{messenger.id}</div>
           </div>
-          <Badge variant={messenger.status === 'available' ? 'success' : 'muted'}>
-            {statusLabel[messenger.status]}
+          <Badge variant={status === 'available' ? 'success' : 'muted'}>
+            {statusLabel[status]}
           </Badge>
         </div>
 
@@ -94,7 +101,7 @@ export function MessengerProfileSheet({
           </InfoRow>
           <InfoRow icon={<Truck className="h-3.5 w-3.5" />} label="งานวันนี้">
             <span className="tabular-nums">
-              {messenger.activeOrders}/{messenger.capacity}
+              {displayedActiveOrders}/{messenger.capacity}
             </span>
           </InfoRow>
           {messenger.highValueCertified && (
