@@ -12,10 +12,13 @@ import type {
   ShippingMethod,
 } from '@/data/mock';
 import type { PlanningRoute } from '@/lib/retailApi';
+import type { CustomerNotification } from '@/lib/notifications';
+import type { SendCustomerNotificationInput } from '@/state/retail/notifications';
 
 export type RetailState = {
   orders: Order[];
   drivers: Driver[];
+  notifications: CustomerNotification[];
 };
 
 export type InternalChatOrderInput = {
@@ -121,5 +124,7 @@ export type RetailStore = RetailState & {
     readiness: DispatchReadiness,
     note?: string,
   ) => Promise<void>;
+  sendCustomerNotification: (orderId: string, input: SendCustomerNotificationInput) => void;
+  sendCustomerNotifications: (orderIds: string[], input: SendCustomerNotificationInput) => number;
   resetDemoData: () => void;
 };

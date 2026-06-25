@@ -6,6 +6,7 @@ export type PageKey =
   | 'queue'
   | 'delivery_tracking'
   | 'tracking_history'
+  | 'notifications'
   | 'planning'
   | 'postal'
   | 'drivers'
@@ -26,6 +27,7 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'queue', path: '/driver-queue' },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
   { page: 'tracking_history', path: '/tracking-history' },
+  { page: 'notifications', path: '/notifications' },
   { page: 'planning', path: '/delivery-planning' },
   { page: 'postal', path: '/thai-post' },
   { page: 'drivers', path: '/drivers' },

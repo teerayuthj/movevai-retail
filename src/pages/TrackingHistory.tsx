@@ -24,12 +24,57 @@ const RANGE_OPTIONS = [
 
 type RangeDays = (typeof RANGE_OPTIONS)[number]['days'];
 
+const DEFAULT_RANGE_DAYS: RangeDays = 7;
+const FILTER_STORAGE_KEY = 'movevai:tracking-history-filters';
+
+type TrackingHistoryFilters = {
+  date: string;
+  rangeDays: RangeDays;
+  driverCode: string;
+};
+
+function isRangeDays(value: number): value is RangeDays {
+  return RANGE_OPTIONS.some((option) => option.days === value);
+}
+
 function dateKeyOf(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
 }
 
 function todayKey() {
   return dateKeyOf(new Date());
+}
+
+function defaultTrackingHistoryFilters(): TrackingHistoryFilters {
+  return {
+    date: todayKey(),
+    rangeDays: DEFAULT_RANGE_DAYS,
+    driverCode: '',
+  };
+}
+
+function loadTrackingHistoryFilters(): TrackingHistoryFilters {
+  const fallback = defaultTrackingHistoryFilters();
+  if (typeof window === 'undefined') return fallback;
+
+  try {
+    const raw = window.localStorage.getItem(FILTER_STORAGE_KEY);
+    if (!raw) return fallback;
+
+    const parsed = JSON.parse(raw) as Partial<TrackingHistoryFilters>;
+    const parsedRangeDays =
+      typeof parsed.rangeDays === 'number' && isRangeDays(parsed.rangeDays)
+        ? parsed.rangeDays
+        : fallback.rangeDays;
+
+    return {
+      date: typeof parsed.date === 'string' && parsed.date ? parsed.date : fallback.date,
+      rangeDays: parsedRangeDays,
+      driverCode: typeof parsed.driverCode === 'string' ? parsed.driverCode : fallback.driverCode,
+    };
+  } catch {
+    return fallback;
+  }
 }
 
 function dateKeysUntil(endDateKey: string, days: RangeDays) {
@@ -106,9 +151,8 @@ async function fetchTrackingSessionsInRange(input: {
 
 export function TrackingHistoryPage() {
   const { drivers } = useRetailStore();
-  const [date, setDate] = useState(todayKey);
-  const [rangeDays, setRangeDays] = useState<RangeDays>(1);
-  const [driverCode, setDriverCode] = useState('');
+  const [filters, setFilters] = useState(loadTrackingHistoryFilters);
+  const { date, rangeDays, driverCode } = filters;
   const [sessions, setSessions] = useState<MessengerTrackingSessionSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selected, setSelected] = useState<MessengerTrackingHistory | null>(null);
@@ -116,6 +160,14 @@ export function TrackingHistoryPage() {
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
+    } catch {
+      // Ignore localStorage failures in restricted environments.
+    }
+  }, [filters]);
 
   useEffect(() => {
     let active = true;
@@ -193,7 +245,7 @@ export function TrackingHistoryPage() {
             type="date"
             value={date}
             onChange={(event) => {
-              setDate(event.target.value);
+              setFilters((current) => ({ ...current, date: event.target.value }));
               setSelectedId(null);
             }}
             className="h-9 w-44"
@@ -204,7 +256,11 @@ export function TrackingHistoryPage() {
           <select
             value={rangeDays}
             onChange={(event) => {
-              setRangeDays(Number(event.target.value) as RangeDays);
+              const nextRangeDays = Number(event.target.value);
+              setFilters((current) => ({
+                ...current,
+                rangeDays: isRangeDays(nextRangeDays) ? nextRangeDays : DEFAULT_RANGE_DAYS,
+              }));
               setSelectedId(null);
             }}
             className="h-9 w-44 rounded-md border border-input bg-background px-3 text-sm"
@@ -221,7 +277,7 @@ export function TrackingHistoryPage() {
           <select
             value={driverCode}
             onChange={(event) => {
-              setDriverCode(event.target.value);
+              setFilters((current) => ({ ...current, driverCode: event.target.value }));
               setSelectedId(null);
             }}
             className="h-9 w-64 rounded-md border border-input bg-background px-3 text-sm"

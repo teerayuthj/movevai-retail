@@ -22,6 +22,9 @@ const DeliveryTrackingPage = lazy(() =>
 const TrackingHistoryPage = lazy(() =>
   import('@/pages/TrackingHistory').then((m) => ({ default: m.TrackingHistoryPage })),
 );
+const NotificationsPage = lazy(() =>
+  import('@/pages/Notifications').then((m) => ({ default: m.NotificationsPage })),
+);
 const PlanningPage = lazy(() =>
   import('@/pages/Planning').then((m) => ({ default: m.PlanningPage })),
 );
@@ -129,6 +132,7 @@ export default function App() {
             />
           )}
           {page === 'tracking_history' && <TrackingHistoryPage />}
+          {page === 'notifications' && <NotificationsPage />}
           {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}

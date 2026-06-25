@@ -99,6 +99,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // งานที่เพิ่งกด action — โชว์การ์ดสีเทาค้างไว้สักครู่ก่อนรีเฟรชให้หายไป
+  const [settlingOrders, setSettlingOrders] = useState<Record<string, string>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [routeActionError, setRouteActionError] = useState('');
   const [routeAction, setRouteAction] = useState<{
@@ -107,6 +109,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   } | null>(null);
   const listRequestId = useRef(0);
   const detailRequestId = useRef(0);
+  const settleTimers = useRef<number[]>([]);
   const parsedSearch = useMemo(() => parseTrackingSearch(locationSearch), [locationSearch]);
 
   const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'overdue');
@@ -213,6 +216,30 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     setRefreshKey((current) => current + 1);
   }
 
+  // เคลียร์ timer ที่ค้างเมื่อออกจากหน้า
+  useEffect(
+    () => () => {
+      settleTimers.current.forEach((id) => window.clearTimeout(id));
+    },
+    [],
+  );
+
+  // กด action แล้วโชว์การ์ดสีเทา (พร้อม label) ค้างไว้ ~1.5 วิ แล้วค่อยรีเฟรชให้หายไป
+  // เพื่อให้ user เห็นว่ารายการนี้ถูกดำเนินการไปแล้วจริง
+  function settleAndRefresh(orderId: string, label: string) {
+    setSelectedOrderId(null);
+    setSettlingOrders((current) => ({ ...current, [orderId]: label }));
+    const timer = window.setTimeout(() => {
+      setSettlingOrders((current) => {
+        const next = { ...current };
+        delete next[orderId];
+        return next;
+      });
+      refreshTracking();
+    }, 1500);
+    settleTimers.current.push(timer);
+  }
+
   async function confirmRouteAction(value: string, note?: string) {
     const routeId = routeAction?.order.deliveryRoute?.id;
     if (!routeAction || !routeId) return;
@@ -314,8 +341,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
               try {
                 await confirmDelivery(order.id);
                 toast.success(`ปิดงาน ${order.code} เรียบร้อย`);
-                setSelectedOrderId(null);
-                refreshTracking();
+                settleAndRefresh(order.id, 'ปิดงานแล้ว');
               } catch (error) {
                 toast.error(
                   `ปิดงานไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
@@ -349,8 +375,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           onClick={() => {
             markReturned(order.id);
             toast.success(`รับคืน ${order.code} เข้าสาขาแล้ว`);
-            setSelectedOrderId(null);
-            refreshTracking();
+            settleAndRefresh(order.id, 'รับคืนเข้าสาขาแล้ว');
           }}
         >
           <PackageCheck className="h-4 w-4" />
@@ -437,14 +462,17 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           );
 
           if (action === 'retry') {
+            setFailTargetId(null);
             onOpenQueue(buildQueueSearch(failTargetId));
             return;
           }
 
-          setSelectedOrderId(null);
+          const settlingId = failTargetId;
           setFailTargetId(null);
-          changeView(action === 'return' ? 'returning' : 'closed');
-          refreshTracking();
+          settleAndRefresh(
+            settlingId,
+            action === 'return' ? 'ตีกลับ — ส่งกลับสาขา' : 'ปิดงานไม่สำเร็จ',
+          );
         }}
       />
 
@@ -464,10 +492,9 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
             '';
           await submitDelivery(messengerCloseTargetId, input);
           toast.success(`บันทึกหลักฐานการส่ง ${code} แล้ว — รอยืนยันปิดงาน`);
-          setSelectedOrderId(null);
+          const settlingId = messengerCloseTargetId;
           setMessengerCloseTargetId(null);
-          changeView('pending');
-          refreshTracking();
+          settleAndRefresh(settlingId, 'บันทึกหลักฐานแล้ว');
         }}
       />
 
@@ -533,6 +560,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
               onSelect={() => setSelectedOrderId(order.id)}
               actions={renderActions(order)}
               overdueMinutes={getAssignedOrderOverdueMinutes(order, nowMs)}
+              settling={!!settlingOrders[order.id]}
+              settledLabel={settlingOrders[order.id]}
             />
           ))}
 

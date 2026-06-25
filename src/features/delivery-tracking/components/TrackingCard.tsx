@@ -29,6 +29,10 @@ type TrackingCardProps = {
   /** ปุ่ม action ตามสถานะ — render เฉพาะงานที่ยัง actionable */
   actions?: ReactNode;
   overdueMinutes?: number | null;
+  /** เพิ่งกด action — โชว์การ์ดสีเทาค้างไว้ก่อนหายไป */
+  settling?: boolean;
+  /** ข้อความสรุป action ที่เพิ่งทำ เช่น "ปิดงานแล้ว" */
+  settledLabel?: string;
 };
 
 /** การ์ดในรายการ: สรุป + หลักฐานย่อ + ปุ่ม action ในตัว */
@@ -38,6 +42,8 @@ export function TrackingCard({
   onSelect,
   actions,
   overdueMinutes,
+  settling = false,
+  settledLabel,
 }: TrackingCardProps) {
   const pod = order.proofOfDelivery;
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
@@ -59,13 +65,21 @@ export function TrackingCard({
   return (
     <div
       className={cn(
-        'rounded-lg border border-l-[3px] bg-card transition-colors',
+        'rounded-lg border border-l-[3px] bg-card transition-all duration-500',
         tone,
         overdueMinutes != null && 'border-destructive/40 bg-destructive/5',
         selected && 'ring-1 ring-primary',
+        // เพิ่งกด action — กลายเป็นการ์ดสีเทาจางลง รอหายไป
+        settling &&
+          'pointer-events-none border-l-muted-foreground/40 bg-muted/40 opacity-60 grayscale',
       )}
     >
-      <button type="button" onClick={onSelect} className="block w-full p-4 pb-3 text-left">
+      <button
+        type="button"
+        onClick={onSelect}
+        disabled={settling}
+        className="block w-full p-4 pb-3 text-left"
+      >
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-xs font-medium">{order.code}</span>
@@ -163,7 +177,14 @@ export function TrackingCard({
         )}
       </button>
 
-      {isActionable && actions && <div className="px-4 pb-4">{actions}</div>}
+      {settling ? (
+        <div className="flex items-center justify-center gap-1.5 px-4 pb-4 text-[11px] font-medium text-muted-foreground">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {settledLabel ?? 'ดำเนินการแล้ว'}
+        </div>
+      ) : (
+        isActionable && actions && <div className="px-4 pb-4">{actions}</div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,10 @@ import {
   submitDeliveryState,
 } from '@/state/retail/delivery';
 import { createInternalChatOrderState } from '@/state/retail/internalChat';
+import {
+  sendCustomerNotificationState,
+  sendCustomerNotificationsState,
+} from '@/state/retail/notifications';
 import { defaultState, loadState, persistState } from '@/state/retail/persistence';
 import {
   cancelOrderState,
@@ -101,7 +105,9 @@ export function RetailProvider({
   mode?: 'web' | 'messenger';
 }) {
   const [state, setState] = useState<RetailState>(() =>
-    mode === 'messenger' ? { orders: [], drivers: defaultState.drivers } : loadState(),
+    mode === 'messenger'
+      ? { orders: [], drivers: defaultState.drivers, notifications: [] }
+      : loadState(),
   );
 
   const commit = useCallback(
@@ -529,6 +535,26 @@ export function RetailProvider({
     [commit, planOrders, state.orders],
   );
 
+  const sendCustomerNotification = useCallback(
+    (orderId: string, input: Parameters<RetailStore['sendCustomerNotification']>[1]) => {
+      commit((current) => sendCustomerNotificationState(current, orderId, input));
+    },
+    [commit],
+  );
+
+  const sendCustomerNotifications = useCallback(
+    (orderIds: string[], input: Parameters<RetailStore['sendCustomerNotifications']>[1]) => {
+      let sentCount = 0;
+      commit((current) => {
+        const next = sendCustomerNotificationsState(current, orderIds, input);
+        sentCount = next.notifications.length - current.notifications.length;
+        return next;
+      });
+      return sentCount;
+    },
+    [commit],
+  );
+
   const resetDemoData = useCallback(() => {
     commit(() => defaultState);
     void syncFromBackend();
@@ -568,6 +594,8 @@ export function RetailProvider({
       cancelRoute,
       reassignRoute,
       setDispatchReadiness,
+      sendCustomerNotification,
+      sendCustomerNotifications,
       resetDemoData,
     }),
     [
@@ -603,6 +631,8 @@ export function RetailProvider({
       cancelRoute,
       reassignRoute,
       setDispatchReadiness,
+      sendCustomerNotification,
+      sendCustomerNotifications,
       resetDemoData,
     ],
   );
