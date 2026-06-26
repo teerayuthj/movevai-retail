@@ -463,6 +463,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
 
   const items = describeProof(pod);
   const capturedBy = driverName || pod.capturedByDriverId || 'คนขับ';
+  const proofHistory = order.proofHistory ?? [];
 
   return (
     <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-xs">
@@ -518,6 +519,74 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
               className="h-16 w-full rounded-md border border-success/30 bg-white object-contain transition hover:opacity-90"
             />
           </button>
+        </div>
+      )}
+
+      {proofHistory.length > 0 && (
+        <div className="mt-3 border-t border-success/20 pt-3">
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-success">
+            <Clock className="h-3 w-3" />
+            ประวัติหลักฐานเดิม {proofHistory.length} รายการ
+          </div>
+          <div className="mt-2 space-y-2">
+            {[...proofHistory].reverse().map((history, index) => (
+              <div key={`${history.capturedAt}-${index}`} className="rounded-md bg-white/60 p-2">
+                <div className="flex items-center justify-between gap-2 text-[10px] text-success/80">
+                  <span>
+                    แก้โดย {history.replacedByRole === 'admin' ? 'admin' : 'messenger'}
+                    {history.replacedByName ? ` · ${history.replacedByName}` : ''}
+                  </span>
+                  <span>
+                    {new Date(history.replacedAt).toLocaleString('th', {
+                      dateStyle: 'short',
+                      timeStyle: 'short',
+                    })}
+                  </span>
+                </div>
+                <div className="mt-1 text-[10px] text-success/70">
+                  หลักฐานเดิมจาก{' '}
+                  {new Date(history.capturedAt).toLocaleString('th', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  {history.photos?.[0] && (
+                    <button
+                      type="button"
+                      onClick={() => setPreview({ src: history.photos![0], alt: 'รูปหลักฐานเดิม' })}
+                      className="aspect-4/3 overflow-hidden rounded border border-success/20"
+                    >
+                      <img
+                        src={history.photos[0]}
+                        alt="รูปหลักฐานเดิม"
+                        className="h-full w-full object-cover"
+                      />
+                    </button>
+                  )}
+                  {history.signatureDataUrl && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPreview({
+                          src: history.signatureDataUrl!,
+                          alt: 'ลายเซ็นเดิม',
+                          onWhite: true,
+                        })
+                      }
+                      className="aspect-4/3 overflow-hidden rounded border border-success/20 bg-white"
+                    >
+                      <img
+                        src={history.signatureDataUrl}
+                        alt="ลายเซ็นเดิม"
+                        className="h-full w-full object-contain"
+                      />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

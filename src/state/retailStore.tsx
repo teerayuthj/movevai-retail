@@ -11,6 +11,7 @@ import {
   retryDeliveryState,
   setDriverStatusState,
   startDeliveryState,
+  canReviseDeliveryProof,
   submitDeliveryState,
 } from '@/state/retail/delivery';
 import { createInternalChatOrderState } from '@/state/retail/internalChat';
@@ -51,6 +52,7 @@ import {
   publishUrgentPlanningRoute,
   reassignPlanningRoute,
   savePlanning,
+  submitAppDeliveryProof,
   startMessengerOrder,
   submitMessengerOrder,
   syncAppOrder,
@@ -89,7 +91,21 @@ function preservePendingReview(
       ...remoteOrder,
       status: local.status,
       proofOfDelivery: local.proofOfDelivery,
+      proofHistory: local.proofHistory,
       activityLog: local.activityLog,
+    };
+  }
+  if (
+    local?.status === 'pending_confirmation' &&
+    remoteOrder.status === 'pending_confirmation' &&
+    local.proofHistory?.length &&
+    !remoteOrder.proofHistory?.length
+  ) {
+    return {
+      ...remoteOrder,
+      proofOfDelivery: local.proofOfDelivery ?? remoteOrder.proofOfDelivery,
+      proofHistory: local.proofHistory,
+      activityLog: local.activityLog ?? remoteOrder.activityLog,
     };
   }
   return remoteOrder;
@@ -267,16 +283,30 @@ export function RetailProvider({
         return { ...started, orders: replaceOrder(started.orders, canonical) };
       });
     },
-    [commit, state.orders],
+    [commit, mode, state.orders],
   );
 
   const submitDelivery = useCallback(
     async (orderId: string, input: SubmitDeliveryInput) => {
       const order = state.orders.find((item) => item.id === orderId);
       if (!order?.assignedDriverId) return;
-      const canonical = await submitMessengerOrder(orderId, order.assignedDriverId, input);
+      const editorRole = input.editorRole ?? (mode === 'web' ? 'admin' : 'messenger');
+      if (order.status === 'pending_confirmation' && !canReviseDeliveryProof(order, editorRole)) {
+        throw new Error(
+          `${editorRole === 'admin' ? 'admin' : 'messenger'} แก้ไขหลักฐานได้ครบจำนวนครั้งแล้ว`,
+        );
+      }
+      const submitInput: SubmitDeliveryInput = {
+        ...input,
+        editorRole,
+        recordedBy: input.recordedBy ?? (editorRole === 'admin' ? order.handledBy : undefined),
+      };
+      const canonical =
+        editorRole === 'admin'
+          ? await submitAppDeliveryProof(orderId, submitInput)
+          : await submitMessengerOrder(orderId, order.assignedDriverId, submitInput);
       commit((current) => {
-        const submitted = submitDeliveryState(current, orderId, input);
+        const submitted = submitDeliveryState(current, orderId, submitInput);
         const submittedOrder = submitted.orders.find(
           (item) => item.id === canonical.id || item.code === canonical.code,
         );
@@ -285,6 +315,7 @@ export function RetailProvider({
               ...canonical,
               status: submittedOrder.status,
               proofOfDelivery: submittedOrder.proofOfDelivery,
+              proofHistory: submittedOrder.proofHistory,
               activityLog: submittedOrder.activityLog,
             }
           : canonical;

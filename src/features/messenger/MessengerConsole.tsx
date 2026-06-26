@@ -713,6 +713,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         open={!!closeTargetId}
         order={orders.find((order) => order.id === closeTargetId) ?? null}
         location={liveLocation}
+        editorRole="messenger"
         onCancel={() => setCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!closeTargetId) return;

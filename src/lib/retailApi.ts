@@ -3,12 +3,21 @@ import type { Driver, Order, PlanningCancelReason } from '@/data/mock';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 
-const MESSENGER_API_BASE =
-  (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
-const APP_API_BASE = (import.meta.env.VITE_APP_API_BASE_URL as string | undefined) ?? '/api/app';
-
 // running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
 const IS_NATIVE_APP = Capacitor.isNativePlatform();
+
+function normalizeApiBase(value: string | undefined, fallback: string) {
+  return (value?.trim() || fallback).replace(/\/+$/, '');
+}
+
+const MESSENGER_API_BASE = normalizeApiBase(
+  import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined,
+  IS_NATIVE_APP ? 'http://localhost:4000/v1/rider' : '/api/messenger',
+);
+const APP_API_BASE = normalizeApiBase(
+  import.meta.env.VITE_APP_API_BASE_URL as string | undefined,
+  IS_NATIVE_APP ? 'http://localhost:4000/v1/app' : '/api/app',
+);
 
 // vite proxy (dev) แนบ x-internal-key ให้ทุก /api/* request; ใน native ไม่มี proxy จึงต้องแนบเองจาก env.
 // ⚠️ การฝัง internal key ลงแอปที่ ship จริงสกัดออกได้ — ใช้กับ build ภายใน/ทดสอบเท่านั้น
@@ -33,6 +42,11 @@ export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
 export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
 type ApiOrder = Order & { assignedDriver?: ApiDriver };
 
+function proofPayload(input: SubmitDeliveryInput) {
+  const { editorRole: _editorRole, recordedBy: _recordedBy, ...proof } = input;
+  return proof;
+}
+
 export class MessengerAuthError extends Error {
   constructor(message = 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่') {
     super(message);
@@ -52,7 +66,26 @@ function clearLocalMessengerSession(notify = false) {
   }
 }
 
+function assertNativeRequestUrl(url: string) {
+  if (!IS_NATIVE_APP || !url.startsWith('/')) return;
+  throw new Error(
+    'ตั้งค่า API สำหรับ iOS native ไม่ถูกต้อง: ต้องใช้ backend URL แบบเต็ม เช่น http://localhost:4000/v1/rider หรือรัน npm run build:cap ก่อน npx cap sync ios',
+  );
+}
+
+function networkErrorMessage(url: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (IS_NATIVE_APP && /expected pattern/i.test(message)) {
+    return 'URL ของ API ไม่ถูกต้องสำหรับ iOS native กรุณา build ใหม่ด้วย backend URL แบบเต็ม';
+  }
+  if (IS_NATIVE_APP && url.startsWith('http://localhost:4000')) {
+    return `เชื่อมต่อ backend ที่ http://localhost:4000 ไม่ได้ — ตรวจว่า backend รันอยู่บนเครื่อง Mac แล้วลองใหม่ (${message})`;
+  }
+  return message;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  assertNativeRequestUrl(url);
   const headers = new Headers(init?.headers);
   if (init?.body != null) headers.set('content-type', 'application/json');
   // native build: แนบ internal key เองแทน vite proxy (web/dev ปล่อยให้ proxy จัดการ)
@@ -65,7 +98,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
     messengerToken = localStorage.getItem(MESSENGER_TOKEN_KEY);
     if (messengerToken) headers.set('authorization', `Bearer ${messengerToken}`);
   }
-  const response = await fetch(url, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers });
+  } catch (error) {
+    throw new Error(networkErrorMessage(url, error));
+  }
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -682,7 +720,21 @@ export async function submitMessengerOrder(
     `${MESSENGER_API_BASE}/orders/${encodeURIComponent(orderId)}/submit`,
     {
       method: 'POST',
-      body: JSON.stringify({ proof }),
+      body: JSON.stringify({ proof: proofPayload(proof) }),
+    },
+  );
+  return normalizeOrder(result);
+}
+
+export async function submitAppDeliveryProof(orderId: string, input: SubmitDeliveryInput) {
+  const result = await request<ApiOrder>(
+    `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/submit-delivery-proof`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        proof: proofPayload(input),
+        recordedBy: input.recordedBy,
+      }),
     },
   );
   return normalizeOrder(result);

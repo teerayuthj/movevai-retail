@@ -16,6 +16,11 @@ import {
 } from '@/data/mock';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import {
+  canReviseDeliveryProof,
+  deliveryProofRevisionLimits,
+  getDeliveryProofRevisionCount,
+} from '@/state/retail/delivery';
+import {
   fetchAppOrder,
   fetchDeliveryTrackingCounts,
   fetchDeliveryTrackingOrders,
@@ -109,6 +114,8 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   } | null>(null);
   const listRequestId = useRef(0);
   const detailRequestId = useRef(0);
+  // order id ที่โหลดรายละเอียดสำเร็จแล้ว — ใช้แยก "เปิดใหม่" (โชว์ loading) ออกจาก "รีเฟรชเบื้องหลัง" (อัปเดตเงียบ)
+  const loadedDetailIdRef = useRef<string | null>(null);
   const settleTimers = useRef<number[]>([]);
   const parsedSearch = useMemo(() => parseTrackingSearch(locationSearch), [locationSearch]);
 
@@ -190,19 +197,28 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
   useEffect(() => {
     if (!selectedOrderId) {
       setSelectedOrderDetail(null);
+      setIsDetailLoading(false);
+      loadedDetailIdRef.current = null;
       return;
     }
     const requestId = ++detailRequestId.current;
-    setIsDetailLoading(true);
+    // โชว์สถานะกำลังโหลดเฉพาะตอนเปิด order ใหม่ ส่วนการรีเฟรชเบื้องหลัง (interval 30 วิ / หลังกด action)
+    // อัปเดตข้อมูลแบบเงียบ ๆ ไม่ซ่อนเนื้อหาหรือโชว์ spinner เพื่อไม่ให้ drawer กระพริบ/ข้อมูลเด้ง
+    const isInitialLoad = loadedDetailIdRef.current !== selectedOrderId;
+    if (isInitialLoad) setIsDetailLoading(true);
     void fetchAppOrder(selectedOrderId)
       .then((order) => {
-        if (requestId === detailRequestId.current) setSelectedOrderDetail(order);
+        if (requestId !== detailRequestId.current) return;
+        setSelectedOrderDetail(order);
+        loadedDetailIdRef.current = selectedOrderId;
       })
       .catch(() => {
-        if (requestId === detailRequestId.current) setSelectedOrderDetail(null);
+        if (requestId !== detailRequestId.current) return;
+        // ล้างข้อมูลเฉพาะตอนเปิดใหม่แล้วโหลดไม่ได้ — ถ้าเป็นรีเฟรชเบื้องหลังล้มเหลว ให้คงข้อมูลเดิมไว้
+        if (isInitialLoad) setSelectedOrderDetail(null);
       })
       .finally(() => {
-        if (requestId === detailRequestId.current) setIsDetailLoading(false);
+        if (requestId === detailRequestId.current && isInitialLoad) setIsDetailLoading(false);
       });
   }, [selectedOrderId, refreshKey]);
 
@@ -325,45 +341,64 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
     }
 
     if (order.status === 'pending_confirmation') {
+      const canAdminEditProof = canReviseDeliveryProof(order, 'admin');
+      const messengerRevisionCount = getDeliveryProofRevisionCount(order, 'messenger');
+      const messengerRevisionLimit = deliveryProofRevisionLimits.messenger;
+      const adminRevisionCount = getDeliveryProofRevisionCount(order, 'admin');
+      const adminRevisionLimit = deliveryProofRevisionLimits.admin;
       return (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => setRouteHistoryOrderId(order.id)}
+        <div className="space-y-2">
+          <div
+            className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+              canAdminEditProof
+                ? 'border-info/30 bg-info/10 text-info'
+                : 'border-destructive/30 bg-destructive/10 text-destructive'
+            }`}
           >
-            <MapIcon className="h-4 w-4" />
-            เส้นทาง
-          </Button>
-          <Button
-            className="w-full"
-            onClick={async () => {
-              try {
-                await confirmDelivery(order.id);
-                toast.success(`ปิดงาน ${order.code} เรียบร้อย`);
-                settleAndRefresh(order.id, 'ปิดงานแล้ว');
-              } catch (error) {
-                toast.error(
-                  `ปิดงานไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-            }}
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            ยืนยันปิดงาน
-          </Button>
-          <Button
-            variant="outline"
-            className="w-full"
-            onClick={() => setMessengerCloseTargetId(order.id)}
-          >
-            <PenLine className="h-4 w-4" />
-            แก้ไขหลักฐาน
-          </Button>
-          <Button variant="outline" className="w-full" onClick={() => setFailTargetId(order.id)}>
-            <XCircle className="h-4 w-4" />
-            ตีกลับ
-          </Button>
+            แก้ไข: M {messengerRevisionCount}/{messengerRevisionLimit} · A {adminRevisionCount}/
+            {adminRevisionLimit}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setRouteHistoryOrderId(order.id)}
+            >
+              <MapIcon className="h-4 w-4" />
+              เส้นทาง
+            </Button>
+            <Button
+              className="w-full"
+              onClick={async () => {
+                try {
+                  await confirmDelivery(order.id);
+                  toast.success(`ปิดงาน ${order.code} เรียบร้อย`);
+                  settleAndRefresh(order.id, 'ปิดงานแล้ว');
+                } catch (error) {
+                  toast.error(
+                    `ปิดงานไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
+                  );
+                }
+              }}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              ยืนยันปิดงาน
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              disabled={!canAdminEditProof}
+              title={canAdminEditProof ? undefined : 'admin แก้ไขหลักฐานได้ครบ 2 ครั้งแล้ว'}
+              onClick={() => setMessengerCloseTargetId(order.id)}
+            >
+              <PenLine className="h-4 w-4" />
+              แก้ไขหลักฐาน
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => setFailTargetId(order.id)}>
+              <XCircle className="h-4 w-4" />
+              ตีกลับ
+            </Button>
+          </div>
         </div>
       );
     }
@@ -483,6 +518,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           orders.find((o) => o.id === messengerCloseTargetId) ??
           null
         }
+        editorRole="admin"
         onCancel={() => setMessengerCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!messengerCloseTargetId) return;

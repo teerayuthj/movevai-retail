@@ -104,6 +104,15 @@ export type ProofOfDelivery = {
   capturedAt: string;
 };
 
+export type DeliveryProofEditorRole = 'messenger' | 'admin';
+
+export type ProofOfDeliveryHistoryEntry = ProofOfDelivery & {
+  replacedAt: string;
+  replacedByRole: DeliveryProofEditorRole;
+  replacedByName?: string;
+  revisionNumber?: number;
+};
+
 export type PostalService = 'ems' | 'registered' | 'cod';
 
 export type PostalBatch = {
@@ -232,6 +241,7 @@ export type Order = {
   deliveryPlan?: DeliveryPlan;
   deliveryRoute?: DeliveryRoute;
   proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก messenger
+  proofHistory?: ProofOfDeliveryHistoryEntry[]; // หลักฐานชุดเก่าที่ถูกแก้ไข เก็บไว้ตรวจสอบย้อนหลัง
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ
   activityLog?: OrderActivityEvent[]; // timeline กิจกรรมของออเดอร์ (newest last)

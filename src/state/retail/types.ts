@@ -3,6 +3,7 @@ import type {
   DispatchReadiness,
   PlanningCancelReason,
   Driver,
+  DeliveryProofEditorRole,
   FailNextAction,
   FailReason,
   Handler,
@@ -51,7 +52,10 @@ export type MarkReturnedInput = {
 };
 
 /** หลักฐานที่ messenger ส่งตอนปิดงาน (action จะเติม capturedAt/capturedByDriverId ให้) */
-export type SubmitDeliveryInput = Omit<ProofOfDelivery, 'capturedAt' | 'capturedByDriverId'>;
+export type SubmitDeliveryInput = Omit<ProofOfDelivery, 'capturedAt' | 'capturedByDriverId'> & {
+  editorRole?: DeliveryProofEditorRole;
+  recordedBy?: Handler;
+};
 
 export type ConfirmDeliveryInput = {
   note?: string;

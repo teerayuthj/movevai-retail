@@ -35,6 +35,7 @@ export function TrackingDetailDrawer({
       subtitle={order ? statusLabel[order.status] : undefined}
       onClose={onClose}
       footer={order ? actions : undefined}
+      widthClassName="lg:w-[600px] xl:w-[720px]"
     >
       {order && (
         <>
