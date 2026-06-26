@@ -5,7 +5,7 @@ import { AlertCircle, Loader2, LocateFixed, Navigation, Radio } from 'lucide-rea
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
 import { getMessengerJobOverdueMinutes } from '../messengerSchedule';
-import { BANGKOK_CENTER, navigationUrl } from '../geocode';
+import { BANGKOK_CENTER, isPlausibleThaiCoord, navigationUrl } from '../geocode';
 import type { RouteStop } from '../hooks/useRouteStops';
 import { useRoadRoute } from '../hooks/useRoadRoute';
 import {
@@ -118,11 +118,19 @@ export function MessengerRouteMap({
   // เพื่อไม่เปิด watchPosition ซ้ำและให้หมุดตรงกับข้อมูลที่ส่ง backend จริง
   const ownLocation = useMessengerLocation(!locationSource);
   const {
-    location,
+    location: rawLocation,
     status: locationStatus,
     error: locationError,
     retry,
   } = locationSource ?? ownLocation;
+  const invalidLocation = rawLocation != null && !isPlausibleThaiCoord(rawLocation);
+  const location = invalidLocation ? null : rawLocation;
+  const displayedLocationStatus: MessengerLocationStatus = invalidLocation
+    ? 'error'
+    : locationStatus;
+  const displayedLocationError = invalidLocation
+    ? 'GPS อยู่นอกพื้นที่ให้บริการในไทย กรุณาตั้ง Location เป็นกรุงเทพฯ'
+    : locationError;
   const located = useMemo(() => stops.filter((stop) => stop.coords), [stops]);
   const points = useMemo<[number, number][]>(
     () => located.map((stop) => [stop.coords!.lat, stop.coords!.lng]),
@@ -157,7 +165,12 @@ export function MessengerRouteMap({
       : null;
   // legs[0] = ระยะตามถนนจากตำแหน่งปัจจุบัน → จุดส่งถัดไป
   const roadDistance = showRemainingDistance ? (roadRoute?.legs?.[0] ?? null) : null;
-  const remainingDistance = roadDistance;
+  // ระยะตามถนนจริงไม่ควรเกิน ~4 เท่าของเส้นตรง — ถ้าเกิน แปลว่า OSRM snap จุดผิด
+  // (เช่น พิกัดเสียไป snap ถนนคนละทวีป) ให้ fallback ไประยะเส้นตรงแทนเลขที่เพี้ยน
+  const roadDistanceTrustworthy =
+    roadDistance != null &&
+    (straightDistance == null || roadDistance <= straightDistance * 4 + 3_000);
+  const remainingDistance = roadDistanceTrustworthy ? roadDistance : straightDistance;
   // การตัดสินว่า "ถึงบริเวณปลายทาง" ยังใช้ระยะเส้นตรง + ความแม่นยำ GPS (ตรงกับ logic ปิดงานจริง)
   const arrived =
     straightDistance != null &&
@@ -254,7 +267,7 @@ export function MessengerRouteMap({
       </MapContainer>
 
       <div className="absolute left-2 top-2 z-[1000] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-2.5 py-2 text-xs shadow-sm backdrop-blur">
-        {locationStatus === 'tracking' && location ? (
+        {displayedLocationStatus === 'tracking' && location ? (
           <div className="space-y-0.5">
             <div className="flex items-center gap-1.5 font-medium text-info">
               <Radio className="h-3.5 w-3.5" />
@@ -265,7 +278,7 @@ export function MessengerRouteMap({
               {locationSource?.remote ? 'อัปเดตจาก backend ทุก 5 วินาที' : 'ทำงานขณะเปิดหน้านี้'}
             </div>
           </div>
-        ) : locationStatus === 'requesting' ? (
+        ) : displayedLocationStatus === 'requesting' ? (
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             {locationSource?.remote ? 'กำลังรอ GPS จากเครื่องที่เริ่ม Route…' : 'กำลังขอ GPS…'}
@@ -274,9 +287,9 @@ export function MessengerRouteMap({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-destructive">
               <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{locationError || 'GPS ยังไม่พร้อมใช้งาน'}</span>
+              <span>{displayedLocationError || 'GPS ยังไม่พร้อมใช้งาน'}</span>
             </div>
-            {(locationStatus === 'error' || locationStatus === 'denied') && (
+            {(displayedLocationStatus === 'error' || displayedLocationStatus === 'denied') && (
               <button
                 type="button"
                 onClick={retry}
@@ -307,7 +320,8 @@ export function MessengerRouteMap({
                   {formatRemainingDistance(remainingDistance)}
                 </div>
                 <div className="truncate text-[10px] text-muted-foreground">
-                  ถึง {destination.order.customer.name} · ระยะตามถนนโดยประมาณ
+                  ถึง {destination.order.customer.name} ·{' '}
+                  {roadDistanceTrustworthy ? 'ระยะตามถนนโดยประมาณ' : 'ระยะเส้นตรงโดยประมาณ'}
                 </div>
               </>
             ) : (

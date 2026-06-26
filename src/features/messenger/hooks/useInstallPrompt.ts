@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isNativeApp } from '@/lib/platform';
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -6,10 +7,12 @@ type BeforeInstallPromptEvent = Event & {
 };
 
 const isStandalone = () =>
-  typeof window !== 'undefined' &&
-  (window.matchMedia('(display-mode: standalone)').matches ||
-    // iOS Safari
-    (window.navigator as { standalone?: boolean }).standalone === true);
+  // native app ถือว่า "ติดตั้งแล้ว" เสมอ — ไม่ต้องชวนเพิ่มลงหน้าจอโฮม
+  isNativeApp ||
+  (typeof window !== 'undefined' &&
+    (window.matchMedia('(display-mode: standalone)').matches ||
+      // iOS Safari
+      (window.navigator as { standalone?: boolean }).standalone === true));
 
 const isIos = () =>
   typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);

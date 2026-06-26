@@ -8,6 +8,7 @@ import {
   startMessengerTestRoute,
   type MessengerLocationPayload,
 } from '@/lib/retailApi';
+import { isPlausibleThaiCoord } from '../geocode';
 import { useMessengerLocation } from './useMessengerLocation';
 
 const QUEUE_KEY = 'movevai:messenger-location-queue';
@@ -76,6 +77,7 @@ export function useMessengerTracking(enabled = true) {
   useEffect(() => {
     if (!session?.isOwner || !ownLocation.location) return;
     const location = ownLocation.location;
+    if (!isPlausibleThaiCoord(location)) return;
     const last = lastQueued.current;
     const elapsed = last ? location.timestamp - last.at : Infinity;
     const moved = last
@@ -125,18 +127,22 @@ export function useMessengerTracking(enabled = true) {
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(value));
       setSession(value);
-      setRemoteLocation(
-        active.latest
-          ? {
-              lat: Number(active.latest.lat),
-              lng: Number(active.latest.lng),
-              accuracy: active.latest.accuracy,
-              speed: active.latest.speed ?? null,
-              heading: active.latest.heading ?? null,
-              timestamp: new Date(active.latest.recordedAt).getTime(),
-            }
-          : null,
-      );
+      const latestLocation = active.latest
+        ? {
+            lat: Number(active.latest.lat),
+            lng: Number(active.latest.lng),
+            accuracy: active.latest.accuracy,
+            speed: active.latest.speed ?? null,
+            heading: active.latest.heading ?? null,
+            timestamp: new Date(active.latest.recordedAt).getTime(),
+          }
+        : null;
+      if (latestLocation && !isPlausibleThaiCoord(latestLocation)) {
+        setRemoteLocation(null);
+        setSyncError('พิกัดล่าสุดอยู่นอกพื้นที่ให้บริการในไทย');
+        return;
+      }
+      setRemoteLocation(latestLocation);
     } catch (reason) {
       setSyncError(reason instanceof Error ? reason.message : 'ซิงก์ Tracking ไม่สำเร็จ');
     }

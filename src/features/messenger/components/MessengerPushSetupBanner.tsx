@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, BellRing, Loader2 } from 'lucide-react';
+import { isNativeApp } from '@/lib/platform';
 import { currentPermission, isPushSupported, subscribeToPush, type NotifPermission } from '../push';
 
 export function MessengerPushSetupBanner({
@@ -68,6 +69,10 @@ export function MessengerPushSetupBanner({
       setBusy(false);
     }
   };
+
+  // native app: Web Push ใช้ใน WKWebView ไม่ได้ + ไม่ต้องชวนติดตั้ง PWA → ซ่อนทั้ง banner.
+  // (push บน native ต้องทำผ่าน @capacitor/push-notifications / APNs แยกต่างหากในอนาคต)
+  if (isNativeApp) return null;
 
   if (requiresInstallation) {
     return (

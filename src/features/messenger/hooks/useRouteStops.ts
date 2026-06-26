@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Order } from '@/data/mock';
-import { geocodeViaNominatim, localGeocode, type LatLng } from '../geocode';
+import { geocodeViaNominatim, isPlausibleThaiCoord, localGeocode, type LatLng } from '../geocode';
 
 export type RouteStop = {
   order: Order;
@@ -12,7 +12,11 @@ export type RouteStop = {
 };
 
 function resolveSync(order: Order): LatLng | null {
-  return order.customer.geo ?? localGeocode(order.customer.address);
+  // ไว้ใจ geo จาก backend เฉพาะเมื่อเป็นพิกัดที่สมเหตุสมผล (อยู่ในไทย) — ถ้าเป็นค่าเสีย
+  // เช่น (0,0)/สลับ lat-lng/placeholder ให้ตกไป localGeocode แทน ไม่งั้น OSRM จะ snap
+  // ไปคนละทวีปแล้วระยะพุ่งเป็นหมื่น กม. (เห็นชัดบน native ที่ใช้ public OSRM ฝั่ง client)
+  if (isPlausibleThaiCoord(order.customer.geo)) return order.customer.geo;
+  return localGeocode(order.customer.address);
 }
 
 /**

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchMessengerRoadRoute, type MessengerRoadRoute } from '@/lib/retailApi';
+import { isPlausibleThaiCoord } from '../geocode';
 
 type Coords = { lat: number; lng: number };
 export type RoadRouteStatus = 'idle' | 'loading' | 'ready' | 'error';
@@ -14,13 +15,17 @@ const MAX_AUTO_RETRIES = 2;
 // ตอนสลับแท็บ) ให้ถือว่า fail แล้วลองใหม่ — ยาวกว่า timeout ฝั่ง fetch เล็กน้อย
 const LOADING_WATCHDOG_MS = 12_000;
 
-// cache เส้นทางล่าสุดต่อชุดจุดส่ง (module scope จึงอยู่รอดการ unmount/remount ของแผนที่)
+// cache เส้นทางล่าสุดต่อจุดเริ่ม+ชุดจุดส่ง (module scope จึงอยู่รอดการ unmount/remount ของแผนที่)
 // เวลาสลับแท็บล่างแล้วกลับมา แผนที่ remount แต่ยังโชว์ระยะเดิมได้ทันที ไม่ขึ้น "กำลังคำนวณ"
 // เปล่า ๆ ระหว่างรอ fetch รอบใหม่ (โดยเฉพาะตอน public OSRM ตอบช้า/ไม่ตอบเป็นบางครั้ง)
 const roadRouteCache = new Map<string, MessengerRoadRoute>();
 
 function stopsKeyOf(stops: Coords[]) {
   return stops.map((stop) => `${stop.lat.toFixed(5)},${stop.lng.toFixed(5)}`).join('|');
+}
+
+function routeKeyOf(messenger: Coords, stops: Coords[]) {
+  return `${messenger.lat.toFixed(5)},${messenger.lng.toFixed(5)}|${stopsKeyOf(stops)}`;
 }
 
 function metersBetween(from: Coords, to: Coords) {
@@ -41,7 +46,8 @@ function metersBetween(from: Coords, to: Coords) {
 export function useRoadRoute(messenger: Coords | null, stops: Coords[], enabled: boolean) {
   const stopsKey = stopsKeyOf(stops);
   // seed จาก cache ตอน mount/remount เพื่อโชว์ระยะล่าสุดทันที (refetch จะอัปเดตทีหลัง)
-  const seeded = enabled && stops.length > 0 ? (roadRouteCache.get(stopsKey) ?? null) : null;
+  const cacheKey = enabled && messenger && stops.length > 0 ? routeKeyOf(messenger, stops) : '';
+  const seeded = cacheKey ? (roadRouteCache.get(cacheKey) ?? null) : null;
   const [route, setRoute] = useState<MessengerRoadRoute | null>(seeded);
   const [status, setStatus] = useState<RoadRouteStatus>(seeded ? 'ready' : 'idle');
   const [error, setError] = useState('');
@@ -85,7 +91,10 @@ export function useRoadRoute(messenger: Coords | null, stops: Coords[], enabled:
   }, [enabled]);
 
   useEffect(() => {
-    if (!enabled || !messenger || stops.length === 0) {
+    const points = messenger ? [messenger, ...stops] : [];
+    const hasInvalidPoint = points.some((point) => !isPlausibleThaiCoord(point));
+
+    if (!enabled || !messenger || stops.length === 0 || hasInvalidPoint) {
       setRoute(null);
       setStatus('idle');
       setError('');
@@ -112,11 +121,13 @@ export function useRoadRoute(messenger: Coords | null, stops: Coords[], enabled:
     const retryRequested = retryTick !== handledRetryTick.current;
     if (!stopsChanged && !(movedFar && cooldownPassed) && !retryRequested) return;
 
-    const points = [messenger, ...stops];
-    const routeKey = `${messenger.lat.toFixed(5)},${messenger.lng.toFixed(5)}|${stopsKey}`;
+    const routeKey = routeKeyOf(messenger, stops);
     if (activeRouteKey.current !== routeKey) {
       activeRouteKey.current = routeKey;
       retryAttempts.current = 0;
+      const cachedRoute = roadRouteCache.get(routeKey) ?? null;
+      setRoute(cachedRoute);
+      setStatus(cachedRoute ? 'ready' : 'loading');
     }
     const requestId = requestSeq.current + 1;
     requestSeq.current = requestId;
@@ -161,7 +172,7 @@ export function useRoadRoute(messenger: Coords | null, stops: Coords[], enabled:
         if (!mounted.current || requestSeq.current !== requestId) return;
         clearWatchdog();
         if (result.geometry.length >= 2 && result.legs.length > 0) {
-          roadRouteCache.set(stopsKey, result);
+          roadRouteCache.set(routeKey, result);
           setRoute(result);
           setStatus('ready');
           retryAttempts.current = 0;

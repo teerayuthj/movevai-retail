@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import type { Driver, Order, PlanningCancelReason } from '@/data/mock';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
@@ -5,6 +6,26 @@ import type { SubmitDeliveryInput } from '@/state/retail/types';
 const MESSENGER_API_BASE =
   (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
 const APP_API_BASE = (import.meta.env.VITE_APP_API_BASE_URL as string | undefined) ?? '/api/app';
+
+// running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
+const IS_NATIVE_APP = Capacitor.isNativePlatform();
+
+// vite proxy (dev) แนบ x-internal-key ให้ทุก /api/* request; ใน native ไม่มี proxy จึงต้องแนบเองจาก env.
+// ⚠️ การฝัง internal key ลงแอปที่ ship จริงสกัดออกได้ — ใช้กับ build ภายใน/ทดสอบเท่านั้น
+// production จริงควรให้ backend รับ rider Bearer token ตรงๆ โดยไม่ต้องใช้ internal key
+const INTERNAL_API_KEY = import.meta.env.VITE_INTERNAL_API_KEY as string | undefined;
+
+// native app ไม่มี proxy: base ที่เป็น path ล้วน (/api/...) จะถูก resolve เป็น
+// capacitor://localhost/api/... ซึ่งไม่มีเซิร์ฟเวอร์รองรับ → ต้องตั้ง absolute URL ตอน build
+// (ดู .env.capacitor.example + `npm run cap:*`). เตือนแต่เนิ่นๆ แทนที่จะปล่อยให้ fetch fail เงียบๆ
+if (IS_NATIVE_APP && (MESSENGER_API_BASE.startsWith('/') || APP_API_BASE.startsWith('/'))) {
+  console.error(
+    '[retailApi] กำลังรันใน native app แต่ API base ยังเป็น relative path. ' +
+      'ตั้ง VITE_MESSENGER_API_BASE_URL / VITE_APP_API_BASE_URL เป็น absolute backend URL ตอน build ' +
+      '(เช่นใน .env.capacitor) ไม่งั้น request จะยิงไปที่ capacitor://localhost แล้ว fail.',
+  );
+}
+
 const MESSENGER_TOKEN_KEY = 'movevai:messenger-token';
 const ROAD_ROUTE_TIMEOUT_MS = 7_000;
 export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
@@ -34,6 +55,10 @@ function clearLocalMessengerSession(notify = false) {
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body != null) headers.set('content-type', 'application/json');
+  // native build: แนบ internal key เองแทน vite proxy (web/dev ปล่อยให้ proxy จัดการ)
+  if (IS_NATIVE_APP && INTERNAL_API_KEY && !headers.has('x-internal-key')) {
+    headers.set('x-internal-key', INTERNAL_API_KEY);
+  }
   const isMessengerRequest = url.startsWith(MESSENGER_API_BASE);
   let messengerToken: string | null = null;
   if (isMessengerRequest) {
