@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MoveVai Retail</string>
+    <string name="title_activity_main">MoveVai Retail</string>
+    <string name="package_name">com.movevai.retail</string>
+    <string name="custom_url_scheme">com.movevai.retail</string>
+</resources>

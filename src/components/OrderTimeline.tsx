@@ -53,6 +53,8 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   postal_tracking_saved: { Icon: ClipboardCheck, tone: 'neutral' },
   postal_handed_over: { Icon: Mailbox, tone: 'info' },
   order_cancelled: { Icon: Ban, tone: 'danger' },
+  order_rejected: { Icon: XCircle, tone: 'danger' },
+  order_restored: { Icon: RefreshCcw, tone: 'info' },
   delivery_failed: { Icon: XCircle, tone: 'warning' },
   return_started: { Icon: ShieldCheck, tone: 'warning' },
   return_completed: { Icon: PackageCheck, tone: 'info' },

@@ -22,6 +22,9 @@ const DeliveryTrackingPage = lazy(() =>
 const TrackingHistoryPage = lazy(() =>
   import('@/pages/TrackingHistory').then((m) => ({ default: m.TrackingHistoryPage })),
 );
+const NotificationsPage = lazy(() =>
+  import('@/pages/Notifications').then((m) => ({ default: m.NotificationsPage })),
+);
 const PlanningPage = lazy(() =>
   import('@/pages/Planning').then((m) => ({ default: m.PlanningPage })),
 );
@@ -31,6 +34,9 @@ const PostalQueuePage = lazy(() =>
 const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default: m.DriversPage })));
 const MessengerConsolePage = lazy(() =>
   import('@/pages/MessengerConsole').then((m) => ({ default: m.MessengerConsolePage })),
+);
+const CustomerTrackingPage = lazy(() =>
+  import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
 );
 
 // อยู่ "ใน" Suspense → จะ mount ก็ต่อเมื่อ chunk ของหน้าโหลดเสร็จแล้ว
@@ -45,6 +51,7 @@ function SplashGate() {
 
 export default function App() {
   const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
+  const [locationPathname, setLocationPathname] = useState(() => window.location.pathname);
   const [locationSearch, setLocationSearch] = useState(() => window.location.search);
 
   useEffect(() => {
@@ -57,6 +64,7 @@ export default function App() {
       }
 
       setPage(nextPage);
+      setLocationPathname(window.location.pathname);
       setLocationSearch(window.location.search);
     };
 
@@ -75,6 +83,7 @@ export default function App() {
     }
 
     setPage(nextPage);
+    setLocationPathname(nextPath);
     setLocationSearch(options?.search ?? '');
   };
 
@@ -88,6 +97,15 @@ export default function App() {
           <MessengerConsolePage onExit={() => navigateToPage('overview')} />
         </Suspense>
       </RetailProvider>
+    );
+  }
+
+  if (page === 'customer_tracking') {
+    return (
+      <Suspense fallback={null}>
+        <SplashGate />
+        <CustomerTrackingPage pathname={locationPathname} />
+      </Suspense>
     );
   }
 
@@ -114,6 +132,7 @@ export default function App() {
             />
           )}
           {page === 'tracking_history' && <TrackingHistoryPage />}
+          {page === 'notifications' && <NotificationsPage />}
           {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}

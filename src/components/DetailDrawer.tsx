@@ -11,6 +11,8 @@ type DetailDrawerProps = {
   onClose: () => void;
   /** แถบปุ่ม action ติดล่าง (sticky) — ไม่ใส่ก็ได้ถ้า action อยู่ใน body แล้ว */
   footer?: ReactNode;
+  /** override ความกว้างพาเนลบนเดสก์ท็อป (lg ขึ้นไป) — ดีฟอลต์ lg:w-[460px] */
+  widthClassName?: string;
   children: ReactNode;
 };
 
@@ -24,6 +26,7 @@ export function DetailDrawer({
   subtitle,
   onClose,
   footer,
+  widthClassName = 'lg:w-[460px]',
   children,
 }: DetailDrawerProps) {
   if (!open) return null;
@@ -35,7 +38,9 @@ export function DetailDrawer({
         onClick={onClose}
         aria-hidden
       />
-      <div className="absolute inset-0 flex flex-col bg-background duration-200 animate-in slide-in-from-right lg:inset-y-0 lg:left-auto lg:right-0 lg:w-[460px] lg:border-l lg:shadow-2xl">
+      <div
+        className={`absolute inset-0 flex flex-col bg-background duration-200 animate-in slide-in-from-right lg:inset-y-0 lg:left-auto lg:right-0 lg:border-l lg:shadow-2xl ${widthClassName}`}
+      >
         <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background px-3 pb-3 pt-safe lg:pt-3">
           <button
             type="button"

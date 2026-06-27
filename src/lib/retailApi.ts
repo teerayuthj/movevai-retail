@@ -1,16 +1,51 @@
-import type { Driver, Order, PlanningCancelReason } from '@/data/mock';
+import { Capacitor } from '@capacitor/core';
+import type { Driver, Order, PlanningCancelReason, ShippingMethod } from '@/data/mock';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 
-const MESSENGER_API_BASE =
-  (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
-const APP_API_BASE = (import.meta.env.VITE_APP_API_BASE_URL as string | undefined) ?? '/api/app';
+// running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
+const IS_NATIVE_APP = Capacitor.isNativePlatform();
+
+function normalizeApiBase(value: string | undefined, fallback: string) {
+  return (value?.trim() || fallback).replace(/\/+$/, '');
+}
+
+const MESSENGER_API_BASE = normalizeApiBase(
+  import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined,
+  IS_NATIVE_APP ? 'http://localhost:4000/v1/rider' : '/api/messenger',
+);
+const APP_API_BASE = normalizeApiBase(
+  import.meta.env.VITE_APP_API_BASE_URL as string | undefined,
+  IS_NATIVE_APP ? 'http://localhost:4000/v1/app' : '/api/app',
+);
+
+// vite proxy (dev) แนบ x-internal-key ให้ทุก /api/* request; ใน native ไม่มี proxy จึงต้องแนบเองจาก env.
+// ⚠️ การฝัง internal key ลงแอปที่ ship จริงสกัดออกได้ — ใช้กับ build ภายใน/ทดสอบเท่านั้น
+// production จริงควรให้ backend รับ rider Bearer token ตรงๆ โดยไม่ต้องใช้ internal key
+const INTERNAL_API_KEY = import.meta.env.VITE_INTERNAL_API_KEY as string | undefined;
+
+// native app ไม่มี proxy: base ที่เป็น path ล้วน (/api/...) จะถูก resolve เป็น
+// capacitor://localhost/api/... ซึ่งไม่มีเซิร์ฟเวอร์รองรับ → ต้องตั้ง absolute URL ตอน build
+// (ดู .env.capacitor.example + `npm run cap:*`). เตือนแต่เนิ่นๆ แทนที่จะปล่อยให้ fetch fail เงียบๆ
+if (IS_NATIVE_APP && (MESSENGER_API_BASE.startsWith('/') || APP_API_BASE.startsWith('/'))) {
+  console.error(
+    '[retailApi] กำลังรันใน native app แต่ API base ยังเป็น relative path. ' +
+      'ตั้ง VITE_MESSENGER_API_BASE_URL / VITE_APP_API_BASE_URL เป็น absolute backend URL ตอน build ' +
+      '(เช่นใน .env.capacitor) ไม่งั้น request จะยิงไปที่ capacitor://localhost แล้ว fail.',
+  );
+}
+
 const MESSENGER_TOKEN_KEY = 'movevai:messenger-token';
 const ROAD_ROUTE_TIMEOUT_MS = 7_000;
 export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
 
 export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
 type ApiOrder = Order & { assignedDriver?: ApiDriver };
+
+function proofPayload(input: SubmitDeliveryInput) {
+  const { editorRole: _editorRole, recordedBy: _recordedBy, ...proof } = input;
+  return proof;
+}
 
 export class MessengerAuthError extends Error {
   constructor(message = 'Session หมดอายุ กรุณาเข้าสู่ระบบใหม่') {
@@ -31,16 +66,44 @@ function clearLocalMessengerSession(notify = false) {
   }
 }
 
+function assertNativeRequestUrl(url: string) {
+  if (!IS_NATIVE_APP || !url.startsWith('/')) return;
+  throw new Error(
+    'ตั้งค่า API สำหรับ iOS native ไม่ถูกต้อง: ต้องใช้ backend URL แบบเต็ม เช่น http://localhost:4000/v1/rider หรือรัน npm run build:cap ก่อน npx cap sync ios',
+  );
+}
+
+function networkErrorMessage(url: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (IS_NATIVE_APP && /expected pattern/i.test(message)) {
+    return 'URL ของ API ไม่ถูกต้องสำหรับ iOS native กรุณา build ใหม่ด้วย backend URL แบบเต็ม';
+  }
+  if (IS_NATIVE_APP && url.startsWith('http://localhost:4000')) {
+    return `เชื่อมต่อ backend ที่ http://localhost:4000 ไม่ได้ — ตรวจว่า backend รันอยู่บนเครื่อง Mac แล้วลองใหม่ (${message})`;
+  }
+  return message;
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  assertNativeRequestUrl(url);
   const headers = new Headers(init?.headers);
   if (init?.body != null) headers.set('content-type', 'application/json');
+  // native build: แนบ internal key เองแทน vite proxy (web/dev ปล่อยให้ proxy จัดการ)
+  if (IS_NATIVE_APP && INTERNAL_API_KEY && !headers.has('x-internal-key')) {
+    headers.set('x-internal-key', INTERNAL_API_KEY);
+  }
   const isMessengerRequest = url.startsWith(MESSENGER_API_BASE);
   let messengerToken: string | null = null;
   if (isMessengerRequest) {
     messengerToken = localStorage.getItem(MESSENGER_TOKEN_KEY);
     if (messengerToken) headers.set('authorization', `Bearer ${messengerToken}`);
   }
-  const response = await fetch(url, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, headers });
+  } catch (error) {
+    throw new Error(networkErrorMessage(url, error));
+  }
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -177,10 +240,11 @@ function normalizeRoute(route: PlanningRoute): PlanningRoute {
 }
 
 // อ่าน orders จาก backend สำหรับ dashboard ฝั่ง web (ใช้ refresh/poll)
-export async function fetchAppOrders(params?: { status?: string; take?: number }) {
+export async function fetchAppOrders(params?: { status?: string; take?: number; q?: string }) {
   const search = new URLSearchParams();
   if (params?.status) search.set('status', params.status);
   if (params?.take != null) search.set('take', String(params.take));
+  if (params?.q?.trim()) search.set('q', params.q.trim());
   const query = search.toString();
   const result = await request<{ items: ApiOrder[]; total: number }>(
     `${APP_API_BASE}/orders${query ? `?${query}` : ''}`,
@@ -315,6 +379,68 @@ export function fetchTrackingSessions(params?: { date?: string; driverCode?: str
 export async function fetchAppOrder(orderId: string) {
   const result = await request<ApiOrder>(`${APP_API_BASE}/orders/${encodeURIComponent(orderId)}`);
   return normalizeOrder(result);
+}
+
+/**
+ * ดึง order สำหรับหน้าติดตามลูกค้า โดยรับได้ทั้ง order **code** (ORD-...) ที่ลูกค้ารู้จัก
+ * และ order **id** (O-...) ของลิงก์เก่า — backend `/orders/:id` รับเฉพาะ id
+ * จึง resolve code → id ผ่าน q-search ก่อน แล้วค่อยดึงรายละเอียดเต็มด้วย id
+ */
+export async function fetchCustomerOrder(idOrCode: string) {
+  try {
+    const { orders } = await fetchAppOrders({ q: idOrCode, take: 5 });
+    const match = orders.find((order) => order.code === idOrCode || order.id === idOrCode);
+    if (match) return fetchAppOrder(match.id);
+  } catch {
+    // q-search ใช้ไม่ได้ — fallback ไป lookup ด้วย id ตรงๆ ด้านล่าง
+  }
+  return fetchAppOrder(idOrCode);
+}
+
+/**
+ * ตำแหน่งล่าสุดของคนส่งที่กำลังวิ่งไปส่งออเดอร์นี้ — projection แบบ privacy-minimal
+ * สำหรับหน้าติดตามฝั่งลูกค้า. คืน null เมื่อยังไม่มีคนเริ่มวิ่ง/ไม่มีสัญญาณ GPS.
+ *
+ * NOTE (prototype): กรองจาก endpoint /tracking/riders/latest ฝั่ง client.
+ * production ควรมี endpoint สาธารณะเฉพาะ order เดียว + ผูกกับ tracking token + OTP.
+ */
+export type CustomerLiveTracking = {
+  /** ชื่อต้นของคนส่ง (ไม่เปิดเผยชื่อเต็ม/เบอร์) */
+  messengerName: string;
+  recordedAt: string;
+  position: { lat: number; lng: number };
+  destination: { lat: number; lng: number } | null;
+};
+
+function toLatLng(value: { lat: number | string; lng: number | string }) {
+  const lat = typeof value.lat === 'string' ? Number(value.lat) : value.lat;
+  const lng = typeof value.lng === 'string' ? Number(value.lng) : value.lng;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+export async function fetchCustomerLiveTracking(
+  orderId: string,
+): Promise<CustomerLiveTracking | null> {
+  const sessions = await fetchLiveMessengers();
+  for (const session of sessions) {
+    const isForOrder = session.destinations?.some((dest) => dest.orderId === orderId);
+    if (!isForOrder || !session.latest) continue;
+
+    const position = toLatLng(session.latest);
+    if (!position) continue;
+
+    const destRaw = session.destinations?.find((dest) => dest.orderId === orderId);
+    const destination = destRaw ? toLatLng(destRaw) : null;
+
+    return {
+      messengerName: session.driver.name.split(/\s+/)[0] ?? 'พนักงานจัดส่ง',
+      recordedAt: session.latest.recordedAt,
+      position,
+      destination,
+    };
+  }
+  return null;
 }
 
 export async function fetchAppDrivers() {
@@ -594,7 +720,21 @@ export async function submitMessengerOrder(
     `${MESSENGER_API_BASE}/orders/${encodeURIComponent(orderId)}/submit`,
     {
       method: 'POST',
-      body: JSON.stringify({ proof }),
+      body: JSON.stringify({ proof: proofPayload(proof) }),
+    },
+  );
+  return normalizeOrder(result);
+}
+
+export async function submitAppDeliveryProof(orderId: string, input: SubmitDeliveryInput) {
+  const result = await request<ApiOrder>(
+    `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/submit-delivery-proof`,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        proof: proofPayload(input),
+        recordedBy: input.recordedBy,
+      }),
     },
   );
   return normalizeOrder(result);
@@ -761,4 +901,83 @@ export async function confirmAppDelivery(
     },
   );
   return normalizeOrder(result);
+}
+
+export type ImportBatch = {
+  id: string;
+  source: string;
+  sourceRef: string | null;
+  fileName: string;
+  status: 'PENDING' | 'PROCESSING' | 'DONE' | 'ERROR';
+  totalRows: number;
+  importedRows: number;
+  errorRows: number;
+  errorSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImportBatchRow = {
+  id: string;
+  rowIndex: number;
+  rawData: Record<string, string>;
+  status: 'PENDING' | 'IMPORTED' | 'ERROR';
+  errorMessage: string | null;
+  orderId: string | null;
+  /** code ของออเดอร์อื่นที่เบอร์ตรงกัน (ข้ามไฟล์ได้) — null = ไม่ซ้ำ */
+  duplicateOfCode: string | null;
+};
+
+export type ImportRejectReason = 'incomplete_data' | 'duplicate' | 'wrong_group' | 'other';
+
+export type ImportModerationResult = { updated: number; skipped: number };
+
+type ImportModerationInput = {
+  orderIds: string[];
+  shippingMethod?: ShippingMethod;
+  reason?: ImportRejectReason;
+  note?: string;
+};
+
+function importModeration(action: 'approve' | 'reject' | 'restore', input: ImportModerationInput) {
+  return request<ImportModerationResult>(`${APP_API_BASE}/import-batches/orders/${action}`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function approveImportOrders(orderIds: string[], shippingMethod?: ShippingMethod) {
+  return importModeration('approve', { orderIds, shippingMethod });
+}
+
+export function rejectImportOrders(
+  orderIds: string[],
+  input?: { reason?: ImportRejectReason; note?: string },
+) {
+  return importModeration('reject', { orderIds, reason: input?.reason, note: input?.note });
+}
+
+export function restoreImportOrders(orderIds: string[]) {
+  return importModeration('restore', { orderIds });
+}
+
+export type ImportBatchDetail = ImportBatch & { rows: ImportBatchRow[] };
+
+export async function fetchImportBatches(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params?.page) search.set('page', String(params.page));
+  if (params?.limit) search.set('limit', String(params.limit));
+  if (params?.status) search.set('status', params.status);
+  const qs = search.toString();
+  return request<{ total: number; page: number; limit: number; batches: ImportBatch[] }>(
+    `${APP_API_BASE}/import-batches${qs ? `?${qs}` : ''}`,
+  );
+}
+
+export async function fetchImportBatch(id: string) {
+  return request<ImportBatchDetail>(`${APP_API_BASE}/import-batches/${encodeURIComponent(id)}`);
 }

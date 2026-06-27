@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -173,6 +174,11 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
 
   const handleStartRoute = (orderIds: string[], selectedOrderForFocus?: string) => {
     orderIds.forEach((orderId) => startDelivery(orderId));
+    toast.success(
+      orderIds.length === 1
+        ? 'สร้าง Route และเริ่มจัดส่งแล้ว'
+        : `สร้าง Route และเริ่มจัดส่ง ${orderIds.length} งานแล้ว`,
+    );
     onOpenTracking(buildTrackingSearch(selectedOrderForFocus));
   };
 
@@ -184,9 +190,12 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
         plannedDate: getTomorrowDateKey(),
         dispatchReadiness: 'ready',
       });
+      toast.success('ย้ายงานเข้า Planning แล้ว');
       onOpenPlanning(`?order=${encodeURIComponent(orderId)}`);
     } catch (error) {
-      setOperationError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setOperationError(message);
+      toast.error(`ย้ายเข้า Planning ไม่สำเร็จ — ${message}`);
     } finally {
       setPlanningTargetId(null);
     }
@@ -202,10 +211,14 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
         note,
       });
       const orderId = urgentTarget.orderId;
+      const orderCode = orders.find((order) => order.id === orderId)?.code ?? '';
       setUrgentTarget(null);
+      toast.success(`ส่งงานด่วน ${orderCode} ให้คนขับแล้ว — รอคนขับรับงาน`);
       onOpenTracking(`?tab=awaiting_acceptance&order=${encodeURIComponent(orderId)}`);
     } catch (error) {
-      setUrgentError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setUrgentError(message);
+      toast.error(`ส่งงานด่วนไม่สำเร็จ — ${message}`);
     } finally {
       setUrgentLoading(false);
     }
@@ -346,6 +359,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
           autoAssignReadyOrders(orderIds);
           setAutoPreviewOpen(false);
           setActiveTab('assigned');
+          toast.success(`Auto-assign ${orderIds.length} งานให้คนขับแล้ว`);
         }}
       />
 
@@ -374,7 +388,11 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
         confirmVariant="destructive"
         onCancel={() => setCancelTargetId(null)}
         onConfirm={({ reason, note }) => {
-          if (cancelTargetId) cancelOrder(cancelTargetId, { reason, note });
+          if (cancelTargetId) {
+            const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+            cancelOrder(cancelTargetId, { reason, note });
+            toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
+          }
           setCancelTargetId(null);
         }}
       />

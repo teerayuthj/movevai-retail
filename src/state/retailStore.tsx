@@ -11,9 +11,14 @@ import {
   retryDeliveryState,
   setDriverStatusState,
   startDeliveryState,
+  canReviseDeliveryProof,
   submitDeliveryState,
 } from '@/state/retail/delivery';
 import { createInternalChatOrderState } from '@/state/retail/internalChat';
+import {
+  sendCustomerNotificationState,
+  sendCustomerNotificationsState,
+} from '@/state/retail/notifications';
 import { defaultState, loadState, persistState } from '@/state/retail/persistence';
 import {
   cancelOrderState,
@@ -30,6 +35,7 @@ import {
   setPostalTrackingState,
 } from '@/state/retail/postal';
 import { clearPlannedOrdersState, setDispatchReadinessState } from '@/state/retail/planning';
+import { rejectImportOrdersState, restoreImportOrdersState } from '@/state/retail/moderation';
 import type {
   ConfirmDeliveryInput,
   RetailState,
@@ -37,9 +43,12 @@ import type {
   SubmitDeliveryInput,
 } from '@/state/retail/types';
 import {
+  approveImportOrders as approveImportOrdersApi,
   cancelPlanningRoute,
   clearPlanning as clearPlanningApi,
   confirmAppDelivery,
+  rejectImportOrders as rejectImportOrdersApi,
+  restoreImportOrders as restoreImportOrdersApi,
   fetchAppDrivers,
   fetchAppOrders,
   fetchMessengerOrders,
@@ -47,6 +56,7 @@ import {
   publishUrgentPlanningRoute,
   reassignPlanningRoute,
   savePlanning,
+  submitAppDeliveryProof,
   startMessengerOrder,
   submitMessengerOrder,
   syncAppOrder,
@@ -85,7 +95,21 @@ function preservePendingReview(
       ...remoteOrder,
       status: local.status,
       proofOfDelivery: local.proofOfDelivery,
+      proofHistory: local.proofHistory,
       activityLog: local.activityLog,
+    };
+  }
+  if (
+    local?.status === 'pending_confirmation' &&
+    remoteOrder.status === 'pending_confirmation' &&
+    local.proofHistory?.length &&
+    !remoteOrder.proofHistory?.length
+  ) {
+    return {
+      ...remoteOrder,
+      proofOfDelivery: local.proofOfDelivery ?? remoteOrder.proofOfDelivery,
+      proofHistory: local.proofHistory,
+      activityLog: local.activityLog ?? remoteOrder.activityLog,
     };
   }
   return remoteOrder;
@@ -101,7 +125,9 @@ export function RetailProvider({
   mode?: 'web' | 'messenger';
 }) {
   const [state, setState] = useState<RetailState>(() =>
-    mode === 'messenger' ? { orders: [], drivers: defaultState.drivers } : loadState(),
+    mode === 'messenger'
+      ? { orders: [], drivers: defaultState.drivers, notifications: [] }
+      : loadState(),
   );
 
   const commit = useCallback(
@@ -213,6 +239,47 @@ export function RetailProvider({
     [commit],
   );
 
+  const confirmOrders = useCallback(
+    (orderIds: string[], shippingMethod?: Parameters<RetailStore['confirmOrder']>[1]) => {
+      if (orderIds.length === 0) return;
+      const ids = new Set(orderIds);
+      commit((current) =>
+        [...ids].reduce((acc, id) => confirmOrderState(acc, id, shippingMethod), current),
+      );
+    },
+    [commit],
+  );
+
+  const approveImportOrders = useCallback(
+    async (orderIds: string[], shippingMethod?: Parameters<RetailStore['confirmOrder']>[1]) => {
+      if (orderIds.length === 0) return;
+      await approveImportOrdersApi(orderIds, shippingMethod);
+      const ids = new Set(orderIds);
+      commit((current) =>
+        [...ids].reduce((acc, id) => confirmOrderState(acc, id, shippingMethod), current),
+      );
+    },
+    [commit],
+  );
+
+  const rejectImportOrders = useCallback(
+    async (orderIds: string[], input?: Parameters<RetailStore['rejectImportOrders']>[1]) => {
+      if (orderIds.length === 0) return;
+      await rejectImportOrdersApi(orderIds, input);
+      commit((current) => rejectImportOrdersState(current, orderIds, input));
+    },
+    [commit],
+  );
+
+  const restoreImportOrders = useCallback(
+    async (orderIds: string[]) => {
+      if (orderIds.length === 0) return;
+      await restoreImportOrdersApi(orderIds);
+      commit((current) => restoreImportOrdersState(current, orderIds));
+    },
+    [commit],
+  );
+
   const finishParsingOrder = useCallback(
     (orderId: string) => {
       commit((current) => finishParsingOrderState(current, orderId));
@@ -261,16 +328,30 @@ export function RetailProvider({
         return { ...started, orders: replaceOrder(started.orders, canonical) };
       });
     },
-    [commit, state.orders],
+    [commit, mode, state.orders],
   );
 
   const submitDelivery = useCallback(
     async (orderId: string, input: SubmitDeliveryInput) => {
       const order = state.orders.find((item) => item.id === orderId);
       if (!order?.assignedDriverId) return;
-      const canonical = await submitMessengerOrder(orderId, order.assignedDriverId, input);
+      const editorRole = input.editorRole ?? (mode === 'web' ? 'admin' : 'messenger');
+      if (order.status === 'pending_confirmation' && !canReviseDeliveryProof(order, editorRole)) {
+        throw new Error(
+          `${editorRole === 'admin' ? 'admin' : 'messenger'} แก้ไขหลักฐานได้ครบจำนวนครั้งแล้ว`,
+        );
+      }
+      const submitInput: SubmitDeliveryInput = {
+        ...input,
+        editorRole,
+        recordedBy: input.recordedBy ?? (editorRole === 'admin' ? order.handledBy : undefined),
+      };
+      const canonical =
+        editorRole === 'admin'
+          ? await submitAppDeliveryProof(orderId, submitInput)
+          : await submitMessengerOrder(orderId, order.assignedDriverId, submitInput);
       commit((current) => {
-        const submitted = submitDeliveryState(current, orderId, input);
+        const submitted = submitDeliveryState(current, orderId, submitInput);
         const submittedOrder = submitted.orders.find(
           (item) => item.id === canonical.id || item.code === canonical.code,
         );
@@ -279,6 +360,7 @@ export function RetailProvider({
               ...canonical,
               status: submittedOrder.status,
               proofOfDelivery: submittedOrder.proofOfDelivery,
+              proofHistory: submittedOrder.proofHistory,
               activityLog: submittedOrder.activityLog,
             }
           : canonical;
@@ -529,6 +611,26 @@ export function RetailProvider({
     [commit, planOrders, state.orders],
   );
 
+  const sendCustomerNotification = useCallback(
+    (orderId: string, input: Parameters<RetailStore['sendCustomerNotification']>[1]) => {
+      commit((current) => sendCustomerNotificationState(current, orderId, input));
+    },
+    [commit],
+  );
+
+  const sendCustomerNotifications = useCallback(
+    (orderIds: string[], input: Parameters<RetailStore['sendCustomerNotifications']>[1]) => {
+      let sentCount = 0;
+      commit((current) => {
+        const next = sendCustomerNotificationsState(current, orderIds, input);
+        sentCount = next.notifications.length - current.notifications.length;
+        return next;
+      });
+      return sentCount;
+    },
+    [commit],
+  );
+
   const resetDemoData = useCallback(() => {
     commit(() => defaultState);
     void syncFromBackend();
@@ -544,6 +646,10 @@ export function RetailProvider({
       updateOrderCustomer,
       setShippingMethod,
       confirmOrder,
+      confirmOrders,
+      approveImportOrders,
+      rejectImportOrders,
+      restoreImportOrders,
       finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
@@ -568,6 +674,8 @@ export function RetailProvider({
       cancelRoute,
       reassignRoute,
       setDispatchReadiness,
+      sendCustomerNotification,
+      sendCustomerNotifications,
       resetDemoData,
     }),
     [
@@ -579,6 +687,10 @@ export function RetailProvider({
       updateOrderCustomer,
       setShippingMethod,
       confirmOrder,
+      confirmOrders,
+      approveImportOrders,
+      rejectImportOrders,
+      restoreImportOrders,
       finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
@@ -603,6 +715,8 @@ export function RetailProvider({
       cancelRoute,
       reassignRoute,
       setDispatchReadiness,
+      sendCustomerNotification,
+      sendCustomerNotifications,
       resetDemoData,
     ],
   );

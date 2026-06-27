@@ -34,7 +34,7 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
                 'flex h-11 w-full items-center justify-between rounded-xl border bg-card px-4 text-sm',
                 currentTab.view === 'overdue' && currentTab.count > 0
                   ? 'text-destructive'
-                  : currentTab.view === 'needs_action' && currentTab.count > 0 && 'text-warning',
+                  : currentTab.view === 'pending' && currentTab.count > 0 && 'text-warning',
               )}
             >
               <span className="flex items-center gap-2">
@@ -45,7 +45,7 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
                     'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold tabular-nums',
                     currentTab.view === 'overdue' && currentTab.count > 0
                       ? 'bg-destructive/15 text-destructive'
-                      : currentTab.view === 'needs_action' && currentTab.count > 0
+                      : currentTab.view === 'pending' && currentTab.count > 0
                         ? 'bg-warning/15 text-warning'
                         : 'bg-muted text-muted-foreground',
                   )}
@@ -60,7 +60,7 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
             {tabs.map((tab) => {
               const active = view === tab.view;
               const overdue = tab.view === 'overdue' && tab.count > 0;
-              const urgent = tab.view === 'needs_action' && tab.count > 0;
+              const urgent = tab.view === 'pending' && tab.count > 0;
               return (
                 <button
                   key={tab.view}
@@ -104,7 +104,7 @@ export function TrackingViewTabs({ tabs, view, onChange }: TrackingViewTabsProps
             const active = view === tab.view;
             const Icon = tab.icon;
             const overdue = tab.view === 'overdue' && tab.count > 0;
-            const urgent = tab.view === 'needs_action' && tab.count > 0;
+            const urgent = tab.view === 'pending' && tab.count > 0;
             return (
               <button
                 key={tab.view}

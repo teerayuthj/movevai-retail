@@ -11,6 +11,7 @@ const LOCAL_DRAFT_STATUSES = new Set(['new', 'parsing', 'needs_review', 'ready']
 export const defaultState: RetailState = {
   orders: [],
   drivers: initialDrivers,
+  notifications: [],
 };
 
 export function loadState(): RetailState {
@@ -25,7 +26,8 @@ export function loadState(): RetailState {
       return defaultState;
     }
 
-    return parsed;
+    // notifications เพิ่มทีหลัง — cache เก่าอาจไม่มี field นี้
+    return { ...parsed, notifications: parsed.notifications ?? [] };
   } catch {
     return defaultState;
   }
@@ -39,6 +41,8 @@ export function persistState(next: RetailState) {
     const persisted: RetailState = {
       ...next,
       orders: next.orders.filter((order) => LOCAL_DRAFT_STATUSES.has(order.status)),
+      // notifications เป็นข้อความล้วน (เล็ก) ต่างจาก orders — เก็บไว้เต็มเพื่อให้ outbox คงอยู่
+      notifications: next.notifications,
     };
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(persisted));
   } catch {

@@ -87,6 +87,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     authenticated && activeTab === 'in_transit' && !tracking.session,
   );
   const autoOpenedSessionId = useRef<string | null>(null);
+  const endingStaleSessionId = useRef<string | null>(null);
 
   const messenger = drivers.find((driver) => driver.id === messengerCode) ?? null;
 
@@ -99,14 +100,30 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     [orders, messengerCode],
   );
 
+  const assignedOrderCount = myJobs.filter((o) => o.status === 'assigned').length;
+  const inTransitOrderCount = myJobs.filter((o) => o.status === 'in_transit').length;
+  const pendingConfirmationCount = myJobs.filter((o) => o.status === 'pending_confirmation').length;
+  const deliveredOrderCount = myJobs.filter((o) => o.status === 'delivered').length;
+  const hasTestTrackingSession = tracking.session?.type === 'test';
+  const hasVisibleDeliveryTrackingSession =
+    tracking.session?.type === 'delivery' && inTransitOrderCount > 0;
+  const hasVisibleTrackingSession = hasTestTrackingSession || hasVisibleDeliveryTrackingSession;
+  const openCustomerJobCount = assignedOrderCount + inTransitOrderCount + pendingConfirmationCount;
+  const effectiveMessengerStatus: NonNullable<typeof messenger>['status'] | undefined =
+    messenger?.status === 'off_duty'
+      ? 'off_duty'
+      : inTransitOrderCount > 0 || hasTestTrackingSession
+        ? 'on_delivery'
+        : messenger
+          ? 'available'
+          : undefined;
+
   const counts: Record<MessengerTab, number> = {
-    assigned: myJobs.filter((o) => o.status === 'assigned').length,
+    assigned: assignedOrderCount,
     // Test Route ไม่มี Order แต่ถือเป็นกิจกรรมที่กำลังส่งหนึ่งรายการใน UI
-    in_transit:
-      myJobs.filter((o) => o.status === 'in_transit').length +
-      (tracking.session?.type === 'test' ? 1 : 0),
-    pending_confirmation: myJobs.filter((o) => o.status === 'pending_confirmation').length,
-    delivered: myJobs.filter((o) => o.status === 'delivered').length,
+    in_transit: inTransitOrderCount + (hasTestTrackingSession ? 1 : 0),
+    pending_confirmation: pendingConfirmationCount,
+    delivered: deliveredOrderCount,
   };
 
   // auto-select เฉพาะตอน /messenger เปล่า (ยังไม่ได้เลือก tab) → เด้งไป tab แรกที่มีงาน
@@ -134,9 +151,37 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   // เปิดหน้ากำลังส่งหนึ่งครั้ง แล้วปล่อยให้ messenger เปลี่ยนแท็บเองได้ตามปกติ
   useEffect(() => {
     if (!tracking.session || autoOpenedSessionId.current === tracking.session.id) return;
+    if (tracking.session.type === 'delivery' && inTransitOrderCount === 0) return;
     autoOpenedSessionId.current = tracking.session.id;
     setTab('in_transit', { replace: true });
-  }, [setTab, tracking.session]);
+  }, [inTransitOrderCount, setTab, tracking.session]);
+
+  // ถ้า route เหลือแต่รอตรวจสอบ/สำเร็จแล้ว ให้หยุด session GPS อัตโนมัติ
+  // เพื่อไม่ให้ backend session ที่ยัง active ทำให้หน้า messenger ดูเหมือนกำลังส่งอยู่
+  useEffect(() => {
+    const session = tracking.session;
+    if (
+      !session ||
+      session.type !== 'delivery' ||
+      jobsLoading ||
+      jobsError ||
+      assignedOrderCount + inTransitOrderCount > 0 ||
+      endingStaleSessionId.current === session.id
+    ) {
+      return;
+    }
+
+    endingStaleSessionId.current = session.id;
+    void tracking.end('no_active_delivery_jobs').catch((error) => {
+      endingStaleSessionId.current = null;
+      if (isMessengerAuthError(error)) return;
+      setJobsError(
+        error instanceof Error
+          ? `หยุด GPS ของ Route ที่จบแล้วไม่สำเร็จ — ${error.message}`
+          : 'หยุด GPS ของ Route ที่จบแล้วไม่สำเร็จ',
+      );
+    });
+  }, [assignedOrderCount, inTransitOrderCount, jobsError, jobsLoading, tracking]);
 
   // คง subscription ของเครื่องนี้ให้สดเมื่อเคยอนุญาต Push แล้ว
   // ใช้ได้ทั้ง PWA และ Desktop Web ที่เปิดผ่าน HTTPS/localhost
@@ -269,8 +314,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   );
 
   const showAssignedMap = activeTab === 'assigned' && assignedView === 'map';
-  const showTrackingMap =
-    activeTab === 'in_transit' && (Boolean(tracking.session) || counts.in_transit > 0);
+  const showTrackingMap = activeTab === 'in_transit' && counts.in_transit > 0;
   // Leaflet ใช้ transform/GPU layers ซึ่งบน iOS Safari สามารถทะลุ fixed modal และ video ได้
   // เมื่อเปิด overlay ต้อง unmount map จริง ไม่ใช่แค่เพิ่ม z-index หรือซ่อนด้วย opacity
   const suspendMap = Boolean(closeTargetId) || testDialogOpen || profileOpen;
@@ -338,7 +382,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     setMapGroupKey(groupKeyOf(order));
     setAssignedView('map');
   }, []);
-  const activeRouteId = myJobs.find((order) => order.deliveryRoute)?.deliveryRoute?.id;
+  const activeRouteId = myJobs.find((order) => order.status === 'assigned' && order.deliveryRoute)
+    ?.deliveryRoute?.id;
   const mapOrder = mapOrderId ? (myJobs.find((order) => order.id === mapOrderId) ?? null) : null;
 
   if (!authenticated) {
@@ -367,25 +412,20 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           //  - off_duty = messenger กดหยุดเอง → คงไว้
           //  - กำลังบันทึก GPS หรือมีงานสถานะ in_transit → "กำลังส่ง"
           //  - นอกนั้น (มีแต่งาน assigned/รอตรวจ/เสร็จ) → "ว่าง"
-          effectiveStatus={
-            messenger?.status === 'off_duty'
-              ? 'off_duty'
-              : tracking.session || counts.in_transit > 0
-                ? 'on_delivery'
-                : 'available'
-          }
+          effectiveStatus={effectiveMessengerStatus}
+          activeOrders={openCustomerJobCount}
           onOpenProfile={() => setProfileOpen(true)}
         />
-        {(activeRouteId || tracking.session) && (
+        {(activeRouteId || hasVisibleTrackingSession) && (
           <div className="flex items-center gap-2 border-b bg-background px-3 py-2 text-xs">
             <span
               className={cn(
                 'h-2.5 w-2.5 rounded-full',
-                tracking.session ? 'animate-pulse bg-success' : 'bg-muted-foreground',
+                hasVisibleTrackingSession ? 'animate-pulse bg-success' : 'bg-muted-foreground',
               )}
             />
             <span className="min-w-0 flex-1 truncate">
-              {tracking.session
+              {hasVisibleTrackingSession && tracking.session
                 ? `${tracking.session.type === 'test' ? `Test${tracking.session.label ? ` · ${tracking.session.label}` : ''} · ` : ''}${
                     tracking.status === 'tracking'
                       ? tracking.isOwner
@@ -655,6 +695,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         {messenger && profileOpen && (
           <MessengerProfileSheet
             messenger={messenger}
+            effectiveStatus={effectiveMessengerStatus}
+            activeOrders={openCustomerJobCount}
             install={install}
             onClose={() => setProfileOpen(false)}
             onExit={() => {
@@ -671,6 +713,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         open={!!closeTargetId}
         order={orders.find((order) => order.id === closeTargetId) ?? null}
         location={liveLocation}
+        editorRole="messenger"
         onCancel={() => setCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!closeTargetId) return;

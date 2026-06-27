@@ -87,10 +87,28 @@ movevai-retail/
 ```bash
 npm run dev          # vite dev server
 npm run build        # tsc -b && vite build
+npm run build:cap    # tsc -b && vite build --mode capacitor (.env.capacitor)
+npm run agent:ready:ios      # build native bundle + sync เข้า ios/App ให้ Xcode rebuild ได้ทันที
+npm run agent:ready:android  # build native bundle + sync เข้า android/ ให้ Android Studio rebuild ได้ทันที
+npm run agent:ready:native   # build native bundle + sync ทั้ง iOS/Android
 npm run typecheck
 npm run lint         # / lint:fix
 npm run format       # prettier
 ```
+
+## Native handoff process — สำคัญมากสำหรับ AI agents
+
+เป้าหมาย: หลัง agent แก้งานที่ต้อง test บน Xcode/Simulator หรือ Android Studio/Emulator แล้ว ผู้ใช้ต้องเหลือแค่กด rebuild/run ใน simulator เท่านั้น ไม่ต้องกลับมารัน build/sync เอง
+
+ให้ทำตามนี้ทุกครั้งก่อนส่งงานให้ผู้ใช้ test:
+
+1. ถ้าแก้โค้ดที่กระทบ native app, Capacitor, messenger mobile flow, camera/photo upload, GPS, push, API base, หรือไฟล์ใน `ios/`/`android/` ให้รัน native ready command ให้ครบ
+2. สำหรับ iOS/Xcode: รัน `npm run agent:ready:ios`
+3. สำหรับ Android: รัน `npm run agent:ready:android`
+4. ถ้ากระทบทั้งสอง platform หรือไม่แน่ใจ: รัน `npm run agent:ready:native`
+5. ถ้าเป็น web-only ที่ไม่ต้อง sync native อย่างน้อยต้องรัน `npm run typecheck` และ `npm run build`
+6. Final response ต้องบอกชัดว่า command ไหนผ่านแล้ว และบอกผู้ใช้ว่าเปิด simulator แล้วกด rebuild/run ได้เลย
+7. ห้ามจบงานด้วยการบอกให้ผู้ใช้ไปรัน `npm run build` / `npx cap sync ...` เอง ยกเว้น command ล้มเหลวจาก external blocker ที่ agent แก้ไม่ได้
 
 ## Conventions
 

@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { formatTHB, type Order } from '@/data/mock';
+import { formatTHB, type DeliveryProofEditorRole, type Order } from '@/data/mock';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
+import {
+  canReviseDeliveryProof,
+  deliveryProofRevisionLimits,
+  getDeliveryProofRevisionCount,
+} from '@/state/retail/delivery';
 import {
   AlertCircle,
   ArrowLeft,
@@ -20,6 +26,7 @@ type Props = {
   open: boolean;
   order: Order | null;
   location?: { lat: number; lng: number; accuracy?: number } | null;
+  editorRole?: DeliveryProofEditorRole;
   onCancel: () => void;
   onSubmit: (input: SubmitDeliveryInput) => void | Promise<void>;
 };
@@ -68,6 +75,33 @@ function stopCameraStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
+type BrowserScreenOrientation = ScreenOrientation & {
+  lock?: (orientation: 'landscape' | 'portrait') => Promise<void>;
+  unlock?: () => void;
+};
+
+async function lockScreenOrientation(orientation: 'landscape' | 'portrait') {
+  if (Capacitor.isNativePlatform()) {
+    const { ScreenOrientation } = await import('@capacitor/screen-orientation');
+    await ScreenOrientation.lock({ orientation });
+    return;
+  }
+
+  const screenOrientation = window.screen?.orientation as BrowserScreenOrientation | undefined;
+  await screenOrientation?.lock?.(orientation);
+}
+
+async function restorePortraitOrientation() {
+  if (Capacitor.isNativePlatform()) {
+    const { ScreenOrientation } = await import('@capacitor/screen-orientation');
+    await ScreenOrientation.lock({ orientation: 'portrait' });
+    return;
+  }
+
+  const screenOrientation = window.screen?.orientation as BrowserScreenOrientation | undefined;
+  screenOrientation?.unlock?.();
+}
+
 function CameraCaptureSheet({
   open,
   onClose,
@@ -79,6 +113,7 @@ function CameraCaptureSheet({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -240,9 +275,9 @@ function CameraCaptureSheet({
             onClick={() => fileInputRef.current?.click()}
             disabled={processingFile}
             className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-50"
-            aria-label="เลือกรูปหรือเปิดกล้องมือถือ"
+            aria-label="ถ่ายรูปด้วยกล้องมือถือ"
           >
-            <ImagePlus className="h-5 w-5" />
+            <Camera className="h-5 w-5" />
           </button>
           <button
             type="button"
@@ -251,8 +286,17 @@ function CameraCaptureSheet({
             className="h-16 w-16 rounded-full border-4 border-white bg-white shadow-[0_0_0_5px_rgba(255,255,255,0.2)] disabled:opacity-50"
             aria-label="ถ่ายรูป"
           />
-          <div className="h-12 w-12" />
+          <button
+            type="button"
+            onClick={() => libraryInputRef.current?.click()}
+            disabled={processingFile}
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 disabled:opacity-50"
+            aria-label="เลือกรูปจากคลังภาพ"
+          >
+            <ImagePlus className="h-5 w-5" />
+          </button>
         </div>
+        {/* กล้องมือถือ (Capacitor/iOS): capture บังคับเปิดกล้องของเครื่อง */}
         <input
           ref={fileInputRef}
           type="file"
@@ -261,8 +305,18 @@ function CameraCaptureSheet({
           className="hidden"
           onChange={handleFileChange}
         />
+        {/* คลังภาพ/ไฟล์: ไม่มี capture เพื่อให้เลือกรูปที่มีอยู่ได้ (ใช้บน iOS Simulator/Xcode) */}
+        <input
+          ref={libraryInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <div className="text-center text-[11px] text-white/60">
-          ถ้าเปิดกล้องไม่ได้ ให้แตะไอคอนรูปภาพเพื่อใช้กล้อง/คลังรูปของเครื่อง
+          {processingFile
+            ? 'กำลังประมวลผลรูป...'
+            : 'ถ้าเปิดกล้องไม่ได้ (เช่น ทดสอบบน Xcode/Simulator) ให้แตะไอคอนรูปภาพเพื่อเลือกจากคลังภาพ'}
         </div>
       </div>
     </div>
@@ -270,16 +324,56 @@ function CameraCaptureSheet({
 }
 
 /** กระดานเซ็นชื่อจริง — วาดด้วยเมาส์/นิ้ว */
-function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void }) {
+function SignaturePad({
+  onChange,
+  fill = false,
+}: {
+  onChange: (dataUrl: string | null) => void;
+  /** ให้กระดานยืดเต็มพื้นที่ที่เหลือ (ใช้ตอนล็อกแนวนอน เพื่อไม่ให้ลูกค้าต้องเลื่อนจอ) */
+  fill?: boolean;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const inked = useRef(false);
+  const savedDataUrl = useRef<string | null>(null);
 
   useEffect(() => {
+    const configureCanvas = (preserveDrawing: boolean) => {
+      const canvas = canvasRef.current;
+      if (!canvas || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
+      const previous = preserveDrawing && inked.current ? canvas.toDataURL('image/png') : null;
+
+      canvas.width = canvas.clientWidth;
+      canvas.height = canvas.clientHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.lineWidth = 2.8;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#111827';
+      }
+
+      if (previous && ctx) {
+        const image = new Image();
+        image.onload = () => {
+          ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+          savedDataUrl.current = canvas.toDataURL('image/png');
+          onChange(savedDataUrl.current);
+        };
+        image.src = previous;
+      }
+    };
+
+    configureCanvas(false);
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.width = canvas.clientWidth;
-    canvas.height = canvas.clientHeight;
+    const observer = new ResizeObserver(() => configureCanvas(true));
+    observer.observe(canvas);
+
+    return () => observer.disconnect();
+  }, [onChange]);
+
+  const prepareContext = (canvas: HTMLCanvasElement) => {
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.lineWidth = 2.8;
@@ -287,7 +381,8 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
       ctx.lineJoin = 'round';
       ctx.strokeStyle = '#111827';
     }
-  }, []);
+    return ctx;
+  };
 
   const point = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
@@ -296,7 +391,7 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
 
   const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
-    const ctx = e.currentTarget.getContext('2d');
+    const ctx = prepareContext(e.currentTarget);
     if (!ctx) return;
     drawing.current = true;
     const { x, y } = point(e);
@@ -306,7 +401,7 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
 
   const move = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawing.current) return;
-    const ctx = e.currentTarget.getContext('2d');
+    const ctx = prepareContext(e.currentTarget);
     if (!ctx) return;
     const { x, y } = point(e);
     ctx.lineTo(x, y);
@@ -317,7 +412,10 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
   const end = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawing.current) return;
     drawing.current = false;
-    if (inked.current) onChange(e.currentTarget.toDataURL('image/png'));
+    if (inked.current) {
+      savedDataUrl.current = e.currentTarget.toDataURL('image/png');
+      onChange(savedDataUrl.current);
+    }
   };
 
   const clear = () => {
@@ -325,12 +423,13 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
     const ctx = canvas?.getContext('2d');
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
     inked.current = false;
+    savedDataUrl.current = null;
     onChange(null);
   };
 
   return (
-    <div className="rounded-lg border">
-      <div className="flex items-center justify-between border-b px-3 py-1.5">
+    <div className={cn('rounded-lg border', fill && 'flex min-h-0 flex-1 flex-col')}>
+      <div className="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
         <span className="text-xs font-medium">ลายเซ็นผู้รับ</span>
         <button
           type="button"
@@ -347,9 +446,12 @@ function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) => void
         onPointerMove={move}
         onPointerUp={end}
         onPointerLeave={end}
-        className="h-72 w-full cursor-crosshair touch-none bg-[repeating-linear-gradient(0deg,transparent,transparent_47px,#e5e7eb_48px)]"
+        className={cn(
+          'w-full cursor-crosshair touch-none bg-[repeating-linear-gradient(0deg,transparent,transparent_47px,#e5e7eb_48px)]',
+          fill ? 'min-h-0 flex-1' : 'h-56 sm:h-64',
+        )}
       />
-      <div className="px-3 pb-1.5 text-center text-[10px] text-muted-foreground">
+      <div className="shrink-0 px-3 pb-1.5 text-center text-[10px] text-muted-foreground">
         ให้ลูกค้าเซ็นในกรอบนี้
       </div>
     </div>
@@ -364,27 +466,72 @@ const CLOSE_STEPS: { key: CloseStep; label: string }[] = [
   { key: 'review', label: 'ตรวจสอบ' },
 ];
 
-export function MessengerCloseJobDialog({ open, order, location, onCancel, onSubmit }: Props) {
+export function MessengerCloseJobDialog({
+  open,
+  order,
+  location,
+  editorRole = 'messenger',
+  onCancel,
+  onSubmit,
+}: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
   const [cameraOpen, setCameraOpen] = useState(false);
   const [step, setStep] = useState<CloseStep>('photo');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const libraryInputRef = useRef<HTMLInputElement>(null);
+  const initializedOrderIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (open && order) {
-      const existingProof = order.proofOfDelivery;
-      setPhotos(existingProof?.photos ?? []);
-      setSignatureDataUrl(existingProof?.signatureDataUrl ?? null);
-      setStep(existingProof ? 'review' : 'photo');
-      setCameraOpen(!existingProof);
-      setSubmitting(false);
-      setSubmitError(null);
+    if (!open) {
+      initializedOrderIdRef.current = null;
+      setCameraOpen(false);
+      void restorePortraitOrientation().catch((error) => {
+        console.warn('[MessengerCloseJobDialog] restore portrait skipped:', error);
+      });
+      return;
     }
+
+    if (!order || initializedOrderIdRef.current === order.id) return;
+
+    initializedOrderIdRef.current = order.id;
+    const existingProof = order.proofOfDelivery;
+    setPhotos(existingProof?.photos ?? []);
+    setSignatureDataUrl(existingProof?.signatureDataUrl ?? null);
+    setStep(existingProof ? 'review' : 'photo');
+    // อย่าเด้งเข้าหน้ากล้องเอง — บน iOS/Capacitor (WKWebView) getUserMedia
+    // ใช้ไม่ได้แล้วจะเจอจอดำ ให้ผู้ใช้เลือกเองว่าจะเปิดกล้องหรือเลือกจากคลังภาพ
+    setCameraOpen(false);
+    setSubmitting(false);
+    setSubmitError(null);
+    setPhotoError(null);
   }, [open, order]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    const target = step === 'signature' ? 'landscape' : 'portrait';
+    void lockScreenOrientation(target).catch((error) => {
+      console.warn(`[MessengerCloseJobDialog] lock ${target} orientation skipped:`, error);
+    });
+
+    return () => {
+      if (step === 'signature') {
+        void restorePortraitOrientation().catch((error) => {
+          console.warn('[MessengerCloseJobDialog] restore portrait skipped:', error);
+        });
+      }
+    };
+  }, [open, step]);
+
   const signatureCaptured = !!signatureDataUrl;
+  const isRevision = order?.status === 'pending_confirmation';
+  const revisionCount = order ? getDeliveryProofRevisionCount(order, editorRole) : 0;
+  const revisionLimit = deliveryProofRevisionLimits[editorRole];
+  const revisionAllowed = !isRevision || (order ? canReviseDeliveryProof(order, editorRole) : true);
+  const editorLabel = editorRole === 'admin' ? 'admin' : 'messenger';
 
   const missing = useMemo(() => {
     const items: string[] = [];
@@ -395,8 +542,9 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
 
   if (!open || !order) return null;
 
-  const canSubmit = missing.length === 0;
+  const canSubmit = missing.length === 0 && revisionAllowed;
   const currentStepIndex = CLOSE_STEPS.findIndex((item) => item.key === step);
+  const signatureMode = step === 'signature';
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -409,6 +557,7 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
         signatureCaptured,
         signatureDataUrl: signatureDataUrl ?? undefined,
         otpVerified: false,
+        editorRole,
         location: location
           ? {
               lat: location.lat,
@@ -431,19 +580,59 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
 
   const handlePhotoCaptured = (dataUrl: string) => {
     setPhotos([dataUrl]);
-    setStep('signature');
+    setPhotoError(null);
+    setStep('photo');
+  };
+
+  const handleLibraryPick = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    setPhotoError(null);
+    try {
+      const dataUrl = await photoFromFile(file);
+      handlePhotoCaptured(dataUrl);
+    } catch {
+      setPhotoError('อ่านรูปภาพไม่สำเร็จ กรุณาลองเลือกใหม่');
+    }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center sm:p-4">
+    <div
+      className={cn(
+        'fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center',
+        signatureMode ? 'sm:p-2' : 'sm:p-4',
+      )}
+    >
       {/* มือถือ = full-screen sheet (h-dvh) / desktop = การ์ดกลางจอ */}
-      <div className="flex h-dvh w-full flex-col overflow-hidden border bg-background shadow-xl sm:h-auto sm:max-h-[90dvh] sm:max-w-md sm:rounded-xl">
-        <div className="flex items-start justify-between border-b px-5 pb-4 pt-safe">
-          <div>
-            <h2 className="text-base font-semibold">
-              {order.status === 'pending_confirmation' ? 'แก้ไขหลักฐาน' : 'ปิดงาน (messenger)'}
+      <div
+        className={cn(
+          'flex h-dvh w-full flex-col overflow-hidden border bg-background shadow-xl sm:rounded-xl',
+          signatureMode
+            ? 'sm:h-[calc(100dvh-1rem)] sm:max-h-[calc(100dvh-1rem)] sm:max-w-[calc(100vw-1rem)]'
+            : 'sm:h-auto sm:max-h-[90dvh] sm:max-w-md',
+        )}
+      >
+        <div
+          className={cn(
+            'flex items-start justify-between border-b px-5 pb-4 pt-safe',
+            signatureMode && 'shrink-0 px-4 pb-2 pt-2',
+          )}
+        >
+          <div className="min-w-0">
+            <h2 className={cn('text-base font-semibold', signatureMode && 'text-sm')}>
+              {order.status === 'pending_confirmation'
+                ? 'แก้ไขหลักฐาน'
+                : editorRole === 'admin'
+                  ? 'บันทึกหลักฐาน (admin)'
+                  : 'ปิดงาน (messenger)'}
             </h2>
-            <p className="mt-0.5 text-xs text-muted-foreground">
+            <p
+              className={cn(
+                'mt-0.5 text-xs text-muted-foreground',
+                signatureMode && 'truncate text-[11px]',
+              )}
+            >
               {order.code} · {order.customer.name} · {formatTHB(order.totalValue)}
             </p>
           </div>
@@ -457,7 +646,19 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
           </button>
         </div>
 
-        <div className="border-b px-5 py-3">
+        <div className={cn('border-b px-5 py-3', signatureMode && 'hidden')}>
+          {isRevision && (
+            <div
+              className={cn(
+                'mb-3 rounded-lg border px-3 py-2 text-[11px] font-medium',
+                revisionAllowed
+                  ? 'border-info/30 bg-info/10 text-info'
+                  : 'border-destructive/30 bg-destructive/10 text-destructive',
+              )}
+            >
+              แก้ไข {editorLabel}: {revisionCount}/{revisionLimit}
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-2">
             {CLOSE_STEPS.map((item, index) => {
               const done =
@@ -481,7 +682,10 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
                   }}
                   disabled={!canNavigate}
                   className={cn(
-                    'flex min-h-14 flex-col items-center justify-center rounded-lg border px-1.5 py-2 text-[11px] font-medium transition-colors',
+                    'flex items-center justify-center rounded-lg border text-[11px] font-medium transition-colors',
+                    step === 'signature'
+                      ? 'min-h-0 flex-row gap-1.5 px-1.5 py-1.5'
+                      : 'min-h-14 flex-col px-1.5 py-2',
                     active && 'border-primary bg-primary/10 text-primary',
                     !active && done && 'border-success/30 bg-success/10 text-success',
                     !active && !done && 'text-muted-foreground',
@@ -490,7 +694,8 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
                 >
                   <span
                     className={cn(
-                      'mb-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px]',
+                      'inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px]',
+                      step === 'signature' ? 'mb-0' : 'mb-0.5',
                       active && 'bg-primary text-primary-foreground',
                       !active && done && 'bg-success text-white',
                       !active && !done && 'bg-muted text-muted-foreground',
@@ -505,7 +710,15 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
           </div>
         </div>
 
-        <div className="flex-1 overflow-auto px-5 py-4">
+        <div
+          className={cn(
+            'flex-1 px-5',
+            // แนวนอน (เซ็นรับ): ไม่ให้ scroll ภายใน แล้วให้กระดานเซ็นยืดเต็มพื้นที่
+            signatureMode
+              ? 'flex min-h-0 flex-col overflow-hidden px-4 py-2'
+              : 'overflow-auto py-4',
+          )}
+        >
           {step === 'photo' && (
             <div className="space-y-4">
               <div>
@@ -532,51 +745,69 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
                       <RotateCcw className="h-4 w-4" />
                       ถ่ายใหม่
                     </Button>
-                    <Button onClick={() => setStep('signature')}>ใช้รูปนี้</Button>
+                    <Button variant="outline" onClick={() => libraryInputRef.current?.click()}>
+                      <ImagePlus className="h-4 w-4" />
+                      เลือกรูปใหม่
+                    </Button>
+                    <Button className="col-span-2" onClick={() => setStep('signature')}>
+                      ถัดไป
+                    </Button>
                   </div>
                 </div>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => setCameraOpen(true)}
-                  className="flex aspect-4/3 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-muted-foreground transition-colors hover:bg-muted/50"
-                >
-                  <Camera className="h-8 w-8" />
-                  <span className="text-sm font-medium">เปิดกล้องถ่ายรูป</span>
-                  <span className="text-xs">ต้องมีรูปก่อนให้ลูกค้าเซ็น</span>
-                </button>
+                <div className="space-y-3">
+                  <button
+                    type="button"
+                    onClick={() => setCameraOpen(true)}
+                    className="flex aspect-4/3 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-muted-foreground transition-colors hover:bg-muted/50"
+                  >
+                    <Camera className="h-8 w-8" />
+                    <span className="text-sm font-medium">เปิดกล้องถ่ายรูป</span>
+                    <span className="text-xs">ต้องมีรูปก่อนให้ลูกค้าเซ็น</span>
+                  </button>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => libraryInputRef.current?.click()}
+                  >
+                    <ImagePlus className="h-4 w-4" />
+                    เลือกรูปจากคลังภาพ
+                  </Button>
+                  <p className="text-center text-[11px] text-muted-foreground">
+                    เปิดกล้องไม่ได้ (เช่น ทดสอบบน Xcode/Simulator)?
+                    เลือกรูปจากคลังภาพเพื่อทำงานต่อได้
+                  </p>
+                  {photoError && (
+                    <p className="text-center text-[11px] text-destructive">{photoError}</p>
+                  )}
+                </div>
               )}
+              <input
+                ref={libraryInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleLibraryPick}
+              />
             </div>
           )}
 
           {step === 'signature' && (
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <PenLine className="h-4 w-4 text-primary" />
-                  ลูกค้าเซ็นรับ
+            <div className="flex min-h-0 flex-1 flex-col gap-2">
+              <div className="flex shrink-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2 text-xs font-semibold">
+                  <PenLine className="h-3.5 w-3.5 shrink-0 text-primary" />
+                  <span className="truncate">ลูกค้าเซ็นรับ</span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  ส่งมือถือให้ลูกค้าเซ็นในกรอบนี้ หลังจากเซ็นเสร็จ messenger
-                  รับมือถือกลับมาตรวจและปิดงาน
-                </p>
+                {signatureCaptured && (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-1 text-[11px] font-medium text-success">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    บันทึกลายเซ็นแล้ว
+                  </span>
+                )}
               </div>
 
-              <SignaturePad onChange={setSignatureDataUrl} />
-
-              {signatureCaptured && (
-                <div className="rounded-lg border border-success/30 bg-success/10 p-3">
-                  <div className="mb-2 flex items-center gap-2 text-xs text-success">
-                    <CheckCircle2 className="h-4 w-4 shrink-0" />
-                    บันทึกลายเซ็นแล้ว
-                  </div>
-                  <img
-                    src={signatureDataUrl}
-                    alt="ลายเซ็นที่บันทึกแล้ว"
-                    className="h-20 w-full rounded-md border border-success/30 bg-white object-contain"
-                  />
-                </div>
-              )}
+              <SignaturePad fill onChange={setSignatureDataUrl} />
             </div>
           )}
 
@@ -646,19 +877,42 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
               <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-warning">
                 เมื่อกดยืนยัน รายการจะอยู่ใน “รอตรวจสอบ” ก่อน ยังไม่ปิดเป็นส่งสำเร็จ
               </div>
+              {isRevision && (
+                <div
+                  className={cn(
+                    'rounded-lg border px-3 py-2 text-[11px]',
+                    revisionAllowed
+                      ? 'border-info/30 bg-info/10 text-info'
+                      : 'border-destructive/30 bg-destructive/10 text-destructive',
+                  )}
+                >
+                  แก้ไข {editorLabel}: {revisionCount}/{revisionLimit}
+                  {!revisionAllowed && ' — แก้ไขได้ครบจำนวนครั้งแล้ว'}
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div className="border-t bg-muted/30 px-5 pb-safe pt-3">
+        <div
+          className={cn(
+            'border-t bg-muted/30 px-5 pb-safe pt-3',
+            signatureMode && 'shrink-0 px-4 pb-2 pt-2',
+          )}
+        >
           {submitError && (
             <div className="mb-2 rounded-md bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
               {submitError}
             </div>
           )}
-          {missing.length > 0 && (
+          {missing.length > 0 && !signatureMode && (
             <div className="mb-2 text-[11px] text-warning">
               ต้องทำก่อนปิด: {missing.join(' · ')}
+            </div>
+          )}
+          {!revisionAllowed && !signatureMode && (
+            <div className="mb-2 text-[11px] text-destructive">
+              แก้ไขหลักฐานได้ครบจำนวนครั้งแล้ว
             </div>
           )}
           <div className="flex items-center justify-between gap-2">
@@ -689,7 +943,7 @@ export function MessengerCloseJobDialog({ open, order, location, onCancel, onSub
                 disabled={step === 'photo' ? photos.length === 0 : !signatureCaptured}
                 onClick={() => setStep(step === 'photo' ? 'signature' : 'review')}
               >
-                {step === 'photo' ? 'ต่อไป: เซ็นรับ' : 'ตรวจหลักฐาน'}
+                {step === 'photo' ? 'ถัดไป: เซ็นรับ' : 'ตรวจหลักฐาน'}
               </Button>
             ) : (
               <div className="flex gap-2">

@@ -1,7 +1,14 @@
 import { failNextActionLabel, failReasonLabel } from '@/data/mock';
 import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { describeProof, planAutoAssignments } from '@/lib/deliveryExecution';
-import type { Driver, FailReason, Order, ProofOfDelivery } from '@/data/mock';
+import type {
+  DeliveryProofEditorRole,
+  Driver,
+  FailReason,
+  Order,
+  ProofOfDelivery,
+  ProofOfDeliveryHistoryEntry,
+} from '@/data/mock';
 import {
   appendEvent,
   DEFAULT_HANDLER,
@@ -20,6 +27,24 @@ import type {
 
 const FAILABLE: Order['status'][] = ['assigned', 'in_transit', 'pending_confirmation'];
 const DRIVER_BUSY_STATUSES: Order['status'][] = ['in_transit', 'pending_confirmation', 'returning'];
+export const deliveryProofRevisionLimits: Record<DeliveryProofEditorRole, number> = {
+  messenger: 1,
+  admin: 2,
+};
+
+export function getDeliveryProofRevisionCount(
+  order: Pick<Order, 'proofHistory'>,
+  editorRole: DeliveryProofEditorRole,
+) {
+  return (order.proofHistory ?? []).filter((entry) => entry.replacedByRole === editorRole).length;
+}
+
+export function canReviseDeliveryProof(
+  order: Pick<Order, 'proofHistory'>,
+  editorRole: DeliveryProofEditorRole,
+) {
+  return getDeliveryProofRevisionCount(order, editorRole) < deliveryProofRevisionLimits[editorRole];
+}
 
 function driverHasBusyOrder(
   orders: Order[],
@@ -233,17 +258,28 @@ export function submitDeliveryState(
   if (!order || !['in_transit', 'pending_confirmation'].includes(order.status)) return current;
 
   const isRevision = order.status === 'pending_confirmation';
+  const { editorRole = 'messenger', recordedBy, ...proofInput } = input;
+  if (isRevision && !canReviseDeliveryProof(order, editorRole)) {
+    const label = editorRole === 'admin' ? 'admin' : 'messenger';
+    throw new Error(
+      `${label} แก้ไขหลักฐานได้สูงสุด ${deliveryProofRevisionLimits[editorRole]} ครั้ง`,
+    );
+  }
 
   const at = nowIso();
   const driver = current.drivers.find((item) => item.id === order.assignedDriverId);
-  const messengerActor = operatorActor({
-    name: driver?.name ?? 'คนขับ',
-    department: 'จัดส่งภายใน',
-    role: 'Messenger',
-  });
+  const actorHandler =
+    editorRole === 'admin'
+      ? (recordedBy ?? order.handledBy ?? DEFAULT_HANDLER)
+      : {
+          name: driver?.name ?? 'คนขับ',
+          department: 'จัดส่งภายใน',
+          role: 'Messenger',
+        };
+  const proofActor = operatorActor(actorHandler);
 
   const proof: ProofOfDelivery = {
-    ...input,
+    ...proofInput,
     capturedByDriverId: order.assignedDriverId ?? '',
     capturedAt: at,
   };
@@ -253,20 +289,38 @@ export function submitDeliveryState(
     ...current,
     orders: current.orders.map((item) => {
       if (item.id !== orderId) return item;
+      const nextProofHistory: ProofOfDeliveryHistoryEntry[] =
+        isRevision && item.proofOfDelivery
+          ? [
+              ...(item.proofHistory ?? []),
+              {
+                ...item.proofOfDelivery,
+                replacedAt: at,
+                replacedByRole: editorRole,
+                replacedByName: actorHandler.name,
+                revisionNumber: (item.proofHistory ?? []).length + 1,
+              },
+            ]
+          : (item.proofHistory ?? []);
 
       const next: Order = {
         ...item,
         status: 'pending_confirmation',
         proofOfDelivery: proof,
+        proofHistory: nextProofHistory,
       };
 
       return appendEvent(next, {
         type: isRevision ? 'delivery_proof_revised' : 'delivery_submitted',
         at,
-        actor: messengerActor,
+        actor: proofActor,
         summary: isRevision
-          ? 'messenger แก้ไขและส่งหลักฐานใหม่'
-          : 'messenger ส่งมอบแล้ว — รอตรวจสอบ',
+          ? editorRole === 'admin'
+            ? 'admin แก้ไขและส่งหลักฐานใหม่'
+            : 'messenger แก้ไขและส่งหลักฐานใหม่'
+          : editorRole === 'admin'
+            ? 'admin บันทึกหลักฐาน — รอตรวจสอบ'
+            : 'messenger ส่งมอบแล้ว — รอตรวจสอบ',
         details: proofDetails || undefined,
       });
     }),

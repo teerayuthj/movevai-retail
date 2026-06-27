@@ -1,8 +1,7 @@
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 
-// มุมมองหน้า — 'needs_action' คือ union ของ pending + returning (งานที่ admin ต้องลงมือ)
-// ส่วนที่เหลือ map ตรงกับ DeliveryTrackingTab ของ backend
-export type TrackingView = 'needs_action' | DeliveryTrackingTab;
+// มุมมองหน้า map ตรงกับ DeliveryTrackingTab ของ backend
+export type TrackingView = DeliveryTrackingTab;
 
 export function parseTrackingSearch(locationSearch: string): {
   view: TrackingView | null;
@@ -21,7 +20,7 @@ export function parseTrackingSearch(locationSearch: string): {
     tab === 'closed'
       ? (tab as DeliveryTrackingTab)
       : tab === 'needs_action'
-        ? 'needs_action'
+        ? 'pending'
         : null;
 
   return { view, orderId: orderId || null };

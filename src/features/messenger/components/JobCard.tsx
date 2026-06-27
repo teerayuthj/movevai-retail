@@ -1,6 +1,11 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { isHighValueOrder } from '@/lib/deliveryExecution';
+import {
+  canReviseDeliveryProof,
+  deliveryProofRevisionLimits,
+  getDeliveryProofRevisionCount,
+} from '@/state/retail/delivery';
 import { paymentLabel, type Order } from '@/data/mock';
 import {
   Banknote,
@@ -44,6 +49,9 @@ export function JobCard({
   const isOverdue = overdueMinutes != null;
   const timing = getMessengerJobTiming(order, nowMs);
   const isPendingReview = order.status === 'pending_confirmation';
+  const canMessengerEditProof = !isPendingReview || canReviseDeliveryProof(order, 'messenger');
+  const messengerRevisionCount = getDeliveryProofRevisionCount(order, 'messenger');
+  const messengerRevisionLimit = deliveryProofRevisionLimits.messenger;
 
   return (
     <div
@@ -205,6 +213,16 @@ export function JobCard({
               </span>
             )}
           </div>
+          <div
+            className={cn(
+              'mt-2 rounded-md border px-2 py-1.5 text-[10px] font-medium',
+              canMessengerEditProof
+                ? 'border-info/30 bg-info/10 text-info'
+                : 'border-destructive/30 bg-destructive/10 text-destructive',
+            )}
+          >
+            แก้ไข: {messengerRevisionCount}/{messengerRevisionLimit}
+          </div>
         </div>
       )}
 
@@ -239,7 +257,15 @@ export function JobCard({
                   แผนที่
                 </Button>
               )}
-              <Button size="sm" variant="outline" onClick={onClose}>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!canMessengerEditProof}
+                title={
+                  canMessengerEditProof ? undefined : 'messenger แก้ไขหลักฐานได้ครบ 1 ครั้งแล้ว'
+                }
+                onClick={onClose}
+              >
                 <PenLine className="h-3.5 w-3.5" />
                 แก้ไขหลักฐาน
               </Button>

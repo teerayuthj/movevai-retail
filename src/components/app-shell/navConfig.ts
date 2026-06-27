@@ -11,6 +11,7 @@ import {
   History,
   FileSpreadsheet,
   Smartphone,
+  BellRing,
 } from 'lucide-react';
 import type { PageKey } from '@/lib/routes';
 
@@ -52,6 +53,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
       { key: 'delivery_tracking', label: 'ติดตามการจัดส่ง', icon: Route, showBadge: true },
       { key: 'tracking_history', label: 'ประวัติการติดตาม', icon: History },
+      { key: 'notifications', label: 'แจ้งเตือนลูกค้า', icon: BellRing },
       { key: 'postal', label: 'ไปรษณีย์ไทย', icon: Mailbox, showBadge: true },
     ],
   },

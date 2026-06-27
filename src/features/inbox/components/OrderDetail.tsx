@@ -511,18 +511,24 @@ export default function OrderDetail({
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">
-                {order.lineContact
-                  ? 'บทสนทนาใน LINE OA'
-                  : order.source === 'internal_chat'
-                    ? 'ข้อความ / ไฟล์จาก Chat ภายใน'
-                    : 'บันทึกข้อมูลหน้าเคาน์เตอร์'}
+                {order.source === 'line_csv'
+                  ? 'ไฟล์ CSV จาก LINE Group'
+                  : order.lineContact
+                    ? 'บทสนทนาใน LINE OA'
+                    : order.source === 'internal_chat'
+                      ? 'ข้อความ / ไฟล์จาก Chat ภายใน'
+                      : 'บันทึกข้อมูลหน้าเคาน์เตอร์'}
               </CardTitle>
               <CardDescription>
-                {order.lineContact
-                  ? `ลูกค้า ${order.lineContact.displayName} → Ausiris LINE OA`
-                  : order.source === 'internal_chat'
-                    ? 'พนักงานส่งข้อมูลเข้าระบบโดยตรง ไม่ต้องผ่าน LINE'
-                    : `บันทึกโดย ${order.handledBy.name}`}
+                {order.source === 'line_csv'
+                  ? order.metadataJson?.import
+                    ? `${order.metadataJson.import.fileName} · แถวที่ ${order.metadataJson.import.rowIndex + 1}`
+                    : 'นำเข้าจากไฟล์ CSV ที่ส่งในกลุ่ม LINE'
+                  : order.lineContact
+                    ? `ลูกค้า ${order.lineContact.displayName} → Ausiris LINE OA`
+                    : order.source === 'internal_chat'
+                      ? 'พนักงานส่งข้อมูลเข้าระบบโดยตรง ไม่ต้องผ่าน LINE'
+                      : `บันทึกโดย ${order.handledBy.name}`}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -642,6 +648,68 @@ export default function OrderDetail({
                       </div>
                     </div>
                   )}
+                </div>
+              )}
+
+              {order.source === 'line_csv' && (
+                <div className="space-y-3">
+                  {(() => {
+                    const meta = order.metadataJson?.import;
+                    const columns = meta?.columns
+                      ? Object.entries(meta.columns).filter(([, v]) => String(v).trim() !== '')
+                      : [];
+                    return (
+                      <>
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-[#06c755]/5 p-3">
+                          <FileSpreadsheet className="h-4 w-4 text-[#06c755]" />
+                          <span className="text-sm font-medium">
+                            {meta?.fileName ?? 'ไฟล์ CSV'}
+                          </span>
+                          {meta && (
+                            <Badge variant="muted" className="text-[10px]">
+                              แถวที่ {meta.rowIndex + 1}
+                            </Badge>
+                          )}
+                          {meta?.source && (
+                            <Badge variant="muted" className="text-[10px]">
+                              {meta.source}
+                            </Badge>
+                          )}
+                        </div>
+
+                        {columns.length > 0 ? (
+                          <div className="overflow-hidden rounded-lg border">
+                            <table className="w-full text-xs">
+                              <tbody className="divide-y">
+                                {columns.map(([key, value]) => (
+                                  <tr key={key} className="align-top">
+                                    <td className="w-2/5 bg-muted/40 px-3 py-1.5 font-medium text-muted-foreground">
+                                      {key}
+                                    </td>
+                                    <td className="px-3 py-1.5 font-mono">{value}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : order.rawText ? (
+                          <pre className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 font-mono text-[11px] text-muted-foreground">
+                            {order.rawText}
+                          </pre>
+                        ) : (
+                          <div className="rounded-lg border bg-muted/30 p-4 text-xs text-muted-foreground">
+                            ไม่พบข้อมูลต้นฉบับของแถวนี้
+                          </div>
+                        )}
+
+                        <div className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
+                          ระบบแปลงไฟล์ CSV ที่ส่งในกลุ่ม LINE เป็นออเดอร์อัตโนมัติ ·
+                          ข้อมูลต้นฉบับด้านบนถูกเก็บไว้คู่กับออเดอร์ ·
+                          แก้ไขข้อมูลที่แปลงแล้วได้ในแท็บ “ข้อมูลที่ AI แปลง”
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 

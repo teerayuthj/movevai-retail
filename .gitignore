@@ -6,6 +6,8 @@ dev-dist/
 .env
 .env.local
 .env.*.local
+# native build env (may hold internal key) — commit .env.capacitor.example instead
+.env.capacitor
 
 # device push subscription (มี endpoint เฉพาะเครื่อง — อย่า commit)
 scripts/push-subscription.json

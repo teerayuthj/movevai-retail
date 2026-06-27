@@ -2,7 +2,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { dispatchReadinessLabel, type DispatchReadiness, type Driver } from '@/data/mock';
-import { CalendarClock, XCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { CalendarClock, Check, XCircle } from 'lucide-react';
 
 type PlanSettingsCardProps = {
   drivers: Driver[];
@@ -11,8 +12,8 @@ type PlanSettingsCardProps = {
   onPlanDate: (value: string) => void;
   planTime: string;
   onPlanTime: (value: string) => void;
-  plannedDriverId: string;
-  onPlannedDriverId: (value: string) => void;
+  plannedDriverIds: string[];
+  onPlannedDriverIds: (value: string[]) => void;
   readiness: DispatchReadiness;
   onReadiness: (value: DispatchReadiness) => void;
   planNote: string;
@@ -29,8 +30,8 @@ export function PlanSettingsCard({
   onPlanDate,
   planTime,
   onPlanTime,
-  plannedDriverId,
-  onPlannedDriverId,
+  plannedDriverIds,
+  onPlannedDriverIds,
   readiness,
   onReadiness,
   planNote,
@@ -39,6 +40,16 @@ export function PlanSettingsCard({
   onCancelPlans,
   cancelDisabled,
 }: PlanSettingsCardProps) {
+  const selectedDriverSet = new Set(plannedDriverIds);
+
+  const toggleDriver = (driverId: string) => {
+    onPlannedDriverIds(
+      selectedDriverSet.has(driverId)
+        ? plannedDriverIds.filter((id) => id !== driverId)
+        : [...plannedDriverIds, driverId],
+    );
+  };
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -81,19 +92,59 @@ export function PlanSettingsCard({
         </div>
 
         <div className="grid gap-2">
-          <label className="text-[11px] font-medium text-muted-foreground">คนขับตามแผน</label>
-          <select
-            value={plannedDriverId}
-            onChange={(event) => onPlannedDriverId(event.target.value)}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <option value="">ยังไม่เลือกคนขับ</option>
-            {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.name} · {driver.zone}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-[11px] font-medium text-muted-foreground">
+              Messenger ตามแผน
+            </label>
+            {plannedDriverIds.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-[11px] text-muted-foreground"
+                onClick={() => onPlannedDriverIds([])}
+              >
+                ล้าง Messenger
+              </Button>
+            )}
+          </div>
+          <div className="grid max-h-52 gap-2 overflow-auto rounded-md border bg-background p-2">
+            {drivers.map((driver) => {
+              const selected = selectedDriverSet.has(driver.id);
+              return (
+                <button
+                  key={driver.id}
+                  type="button"
+                  onClick={() => toggleDriver(driver.id)}
+                  className={cn(
+                    'flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                    selected
+                      ? 'border-primary bg-primary/5 text-primary'
+                      : 'border-transparent hover:bg-muted',
+                  )}
+                  aria-pressed={selected}
+                >
+                  <span
+                    className={cn(
+                      'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                      selected ? 'border-primary bg-primary text-primary-foreground' : 'bg-card',
+                    )}
+                  >
+                    {selected && <Check className="h-3 w-3" />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{driver.name}</span>
+                    <span className="block truncate text-[11px] text-muted-foreground">
+                      {driver.zone}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-muted-foreground">
+            เลือกได้มากกว่า 1 คน ระบบจะกระจายรายการที่เลือกเป็น Route แยกตาม Messenger
+          </p>
         </div>
 
         <div className="grid gap-2">

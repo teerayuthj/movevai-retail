@@ -1,4 +1,10 @@
-export type OrderSource = 'line_text' | 'line_image' | 'line_excel' | 'internal_chat' | 'manual';
+export type OrderSource =
+  | 'line_text'
+  | 'line_image'
+  | 'line_excel'
+  | 'line_csv'
+  | 'internal_chat'
+  | 'manual';
 export type OrderStatus =
   | 'new'
   | 'parsing'
@@ -11,7 +17,8 @@ export type OrderStatus =
   | 'failed'
   | 'cancelled'
   | 'returning'
-  | 'returned';
+  | 'returned'
+  | 'rejected'; // กรองออกตอนตรวจ import — ดึงกลับเป็น new ได้
 
 export type CancelReason =
   | 'customer_cancelled'
@@ -104,6 +111,15 @@ export type ProofOfDelivery = {
   capturedAt: string;
 };
 
+export type DeliveryProofEditorRole = 'messenger' | 'admin';
+
+export type ProofOfDeliveryHistoryEntry = ProofOfDelivery & {
+  replacedAt: string;
+  replacedByRole: DeliveryProofEditorRole;
+  replacedByName?: string;
+  revisionNumber?: number;
+};
+
 export type PostalService = 'ems' | 'registered' | 'cod';
 
 export type PostalBatch = {
@@ -154,6 +170,8 @@ export type OrderActivityEventType =
   | 'postal_tracking_saved'
   | 'postal_handed_over'
   | 'order_cancelled'
+  | 'order_rejected'
+  | 'order_restored'
   | 'delivery_failed'
   | 'return_started'
   | 'return_completed'
@@ -232,9 +250,28 @@ export type Order = {
   deliveryPlan?: DeliveryPlan;
   deliveryRoute?: DeliveryRoute;
   proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก messenger
+  proofHistory?: ProofOfDeliveryHistoryEntry[]; // หลักฐานชุดเก่าที่ถูกแก้ไข เก็บไว้ตรวจสอบย้อนหลัง
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ
   activityLog?: OrderActivityEvent[]; // timeline กิจกรรมของออเดอร์ (newest last)
+  metadataJson?: OrderMetadata; // ข้อมูลเสริมจาก backend (เช่น ต้นฉบับ CSV ที่นำเข้าจาก LINE)
+};
+
+// ต้นฉบับการนำเข้าจากไฟล์ CSV (LINE Group → webhook → backend) เก็บไว้บน order
+// เพื่อให้ admin เทียบข้อมูลที่ map แล้วกับแถวดิบจากไฟล์ได้ทุกเมื่อ
+export type OrderImportMeta = {
+  batchId: string;
+  fileName: string;
+  source: string; // เช่น "LINE_GROUP"
+  sourceRef?: string; // groupId ของ LINE
+  rowIndex: number;
+  importedAt: string;
+  columns: Record<string, string>; // คอลัมน์ดิบจาก CSV (header → value)
+};
+
+export type OrderMetadata = {
+  import?: OrderImportMeta;
+  [key: string]: unknown;
 };
 
 export type Driver = {
@@ -815,6 +852,7 @@ export const statusLabel: Record<OrderStatus, string> = {
   cancelled: 'ยกเลิกแล้ว',
   returning: 'กำลังส่งกลับ',
   returned: 'รับคืนแล้ว',
+  rejected: 'ปฏิเสธแล้ว',
 };
 
 export const cancelReasonLabel: Record<CancelReason, string> = {
@@ -847,6 +885,7 @@ export const sourceLabel: Record<OrderSource, string> = {
   line_text: 'LINE Text',
   line_image: 'LINE Image',
   line_excel: 'LINE Excel',
+  line_csv: 'LINE CSV',
   internal_chat: 'Internal Chat',
   manual: 'Manual',
 };

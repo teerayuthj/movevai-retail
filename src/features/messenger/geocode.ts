@@ -45,6 +45,24 @@ const ANCHORS: { match: string; lat: number; lng: number }[] = [
 // fallback กลางกรุงเทพ เมื่อไม่เจอ anchor และยังไม่ได้ผลจาก Nominatim
 export const BANGKOK_CENTER: LatLng = { lat: 13.7456, lng: 100.5331 };
 
+// กรอบคร่าว ๆ ของประเทศไทย (เผื่อขอบ) — ใช้กรองพิกัดเสีย เช่น (0,0), lat/lng สลับกัน
+// หรือ placeholder ที่ backend ส่งมา ไม่ให้ไปคำนวณระยะ/วาดหมุดผิดที่ (เคยทำให้ระยะขึ้น
+// หมื่นกว่า กม. เพราะ OSRM snap จุดเสียไปถนนคนละทวีป)
+const THAILAND_BOUNDS = { minLat: 5.5, maxLat: 20.6, minLng: 97.3, maxLng: 105.7 };
+
+/** true เมื่อพิกัดเป็นเลขจริงและอยู่ในกรอบประเทศไทย — ใช้กันพิกัดเสียจาก backend/GPS */
+export function isPlausibleThaiCoord<T extends LatLng>(coords: T | null | undefined): coords is T {
+  if (!coords) return false;
+  const { lat, lng } = coords;
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  return (
+    lat >= THAILAND_BOUNDS.minLat &&
+    lat <= THAILAND_BOUNDS.maxLat &&
+    lng >= THAILAND_BOUNDS.minLng &&
+    lng <= THAILAND_BOUNDS.maxLng
+  );
+}
+
 const CACHE_KEY = 'movevai:geocode-cache';
 
 function readCache(): Record<string, LatLng> {
@@ -77,7 +95,7 @@ export function localGeocode(address: string): LatLng | null {
 /** geocode จริงผ่าน Nominatim (OSM) + cache — ใช้เมื่อ anchor lookup ไม่เจอ */
 export async function geocodeViaNominatim(address: string): Promise<LatLng | null> {
   const cache = readCache();
-  if (cache[address]) return cache[address];
+  if (isPlausibleThaiCoord(cache[address])) return cache[address];
 
   try {
     const params = new URLSearchParams({
@@ -94,6 +112,7 @@ export async function geocodeViaNominatim(address: string): Promise<LatLng | nul
     const hit = results[0];
     if (!hit) return null;
     const coords: LatLng = { lat: Number(hit.lat), lng: Number(hit.lon) };
+    if (!isPlausibleThaiCoord(coords)) return null;
     cache[address] = coords;
     writeCache(cache);
     return coords;

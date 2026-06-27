@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -161,6 +162,7 @@ export function PostalQueuePage() {
     setLastExport({ batchId, count: selectedList.length });
     setSelectedIds(new Set());
     setActiveTab('assigned');
+    toast.success(`Export พัสดุ ${selectedList.length} รายการ (${batchId}) แล้ว`);
   };
 
   const handleReExport = (batchId: string) => {
@@ -323,7 +325,11 @@ export function PostalQueuePage() {
                 <AssignedActionPanel
                   order={selectedOrder}
                   onTracking={(id, tracking) => setPostalTracking(id, tracking)}
-                  onHandOver={(id) => markPostalHandedOver([id])}
+                  onHandOver={(id) => {
+                    const code = orders.find((order) => order.id === id)?.code ?? '';
+                    markPostalHandedOver([id]);
+                    toast.success(`มอบพัสดุ ${code} ให้ไปรษณีย์แล้ว`);
+                  }}
                   onReExport={handleReExport}
                   onRequestCancel={(id) => setCancelTargetId(id)}
                 />
@@ -368,7 +374,11 @@ export function PostalQueuePage() {
         confirmVariant="destructive"
         onCancel={() => setCancelTargetId(null)}
         onConfirm={({ reason, note }) => {
-          if (cancelTargetId) cancelOrder(cancelTargetId, { reason, note });
+          if (cancelTargetId) {
+            const code = orders.find((o) => o.id === cancelTargetId)?.code ?? '';
+            cancelOrder(cancelTargetId, { reason, note });
+            toast.success(`ยกเลิกออเดอร์ไปรษณีย์ ${code} แล้ว`);
+          }
           setCancelTargetId(null);
         }}
       />
@@ -397,6 +407,7 @@ export function PostalQueuePage() {
         onCancel={() => setFailTargetId(null)}
         onConfirm={({ reason, note, action }) => {
           if (failTargetId && action) {
+            const code = orders.find((o) => o.id === failTargetId)?.code ?? '';
             failDelivery(failTargetId, {
               reason,
               nextAction: action,
@@ -404,6 +415,13 @@ export function PostalQueuePage() {
             });
             setActiveTab(
               action === 'retry' ? 'assigned' : action === 'return' ? 'returning' : 'closed',
+            );
+            toast.success(
+              action === 'retry'
+                ? `${code} กลับเข้าคิวจัดส่งรอบใหม่แล้ว`
+                : action === 'return'
+                  ? `${code} ย้ายไปแท็บส่งกลับแล้ว — รอรับคืนเข้าสาขา`
+                  : `บันทึก ${code} เป็นส่งไม่สำเร็จแล้ว`,
             );
           }
           setFailTargetId(null);

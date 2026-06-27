@@ -31,6 +31,9 @@
         background: #ffffff;
         z-index: 9999;
       }
+      html.hide-app-splash #app-splash {
+        display: none;
+      }
       #app-splash .spinner {
         width: 38px;
         height: 38px;
@@ -54,6 +57,14 @@
         }
       }
     </style>
+    <script>
+      if (
+        window.location.pathname === '/customer-track' ||
+        window.location.pathname.startsWith('/customer-track/')
+      ) {
+        document.documentElement.classList.add('hide-app-splash');
+      }
+    </script>
     <div id="app-splash">
       <div class="spinner"></div>
       <div class="label">กำลังโหลด…</div>
