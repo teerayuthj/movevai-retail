@@ -12,7 +12,7 @@ import type {
   ProofOfDelivery,
   ShippingMethod,
 } from '@/data/mock';
-import type { PlanningRoute } from '@/lib/retailApi';
+import type { ImportRejectReason, PlanningRoute } from '@/lib/retailApi';
 import type { CustomerNotification } from '@/lib/notifications';
 import type { SendCustomerNotificationInput } from '@/state/retail/notifications';
 
@@ -79,6 +79,17 @@ export type RetailStore = RetailState & {
   updateOrderCustomer: (orderId: string, customer: Order['customer']) => void;
   setShippingMethod: (orderId: string, method: ShippingMethod) => void;
   confirmOrder: (orderId: string, shippingMethod?: ShippingMethod) => void;
+  /** ยืนยันเข้าคิวหลาย order พร้อมกันใน commit เดียว (ใช้กับ batch นำเข้า CSV) */
+  confirmOrders: (orderIds: string[], shippingMethod?: ShippingMethod) => void;
+  /** อนุมัติออเดอร์นำเข้าเข้าคิว — sync backend (durable) แล้วอัปเดต local */
+  approveImportOrders: (orderIds: string[], shippingMethod?: ShippingMethod) => Promise<void>;
+  /** ปฏิเสธออเดอร์นำเข้า → status 'rejected' (ดึงกลับได้) */
+  rejectImportOrders: (
+    orderIds: string[],
+    input?: { reason?: ImportRejectReason; note?: string },
+  ) => Promise<void>;
+  /** ดึงออเดอร์ที่ปฏิเสธกลับมาเป็น 'new' */
+  restoreImportOrders: (orderIds: string[]) => Promise<void>;
   finishParsingOrder: (orderId: string) => void;
   assignOrder: (orderId: string, driverId: string) => Promise<void>;
   autoAssignReadyOrders: (orderIds?: string[]) => Promise<void>;

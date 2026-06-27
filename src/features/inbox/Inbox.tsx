@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Coins } from 'lucide-react';
+import { Coins, MessageSquareText } from 'lucide-react';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { MobileDetailSheet } from '@/components/MobileDetailSheet';
 import { Badge } from '@/components/ui/badge';
@@ -8,12 +8,14 @@ import { Card } from '@/components/ui/card';
 import { cancelReasonLabel, formatTHB, statusLabel, type CancelReason } from '@/data/mock';
 import OrderDetail from '@/features/inbox/components/OrderDetail';
 import OrderListPanel from '@/features/inbox/components/OrderListPanel';
+import ImportBatchPanel from '@/features/inbox/components/ImportBatchPanel';
 import {
   INBOX_STATUSES,
   type InboxFilter,
   useOrderFiltering,
 } from '@/features/inbox/hooks/useOrderFiltering';
 import { useRetailStore } from '@/state/retailStore';
+import { cn } from '@/lib/utils';
 
 const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
   Object.keys(cancelReasonLabel) as CancelReason[]
@@ -21,6 +23,8 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
   value,
   label: cancelReasonLabel[value],
 }));
+
+type InboxTab = 'orders' | 'line_import';
 
 export function InboxPage() {
   const {
@@ -30,15 +34,16 @@ export function InboxPage() {
     updateOrderCustomer,
     setShippingMethod,
     cancelOrder,
+    syncFromBackend,
   } = useRetailStore();
 
+  const [tab, setTab] = useState<InboxTab>('orders');
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     return orders.find((order) => INBOX_STATUSES.includes(order.status))?.id ?? null;
   });
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [query, setQuery] = useState('');
-  // มือถือ: เปิด overlay รายละเอียดเฉพาะตอนแตะรายการ (กัน auto-select เด้งทับ list)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
   const { inboxOrders, filteredOrders, filterCounts, inboxValue } = useOrderFiltering(
@@ -48,6 +53,29 @@ export function InboxPage() {
   );
 
   const selected = orders.find((order) => order.id === selectedId);
+
+  // เปิดออเดอร์ที่นำเข้าจาก CSV ในแท็บ "คำสั่งซื้อ" เพื่อให้ admin แก้ไขได้ทันที
+  // ถ้ายังไม่มีใน store (เพิ่งนำเข้า/ยังไม่ sync) ดึงจาก backend ก่อนแล้วค่อยเลือก
+  const openImportedOrder = async (orderId: string) => {
+    let order = orders.find((item) => item.id === orderId);
+    if (!order) {
+      try {
+        await syncFromBackend();
+      } catch {
+        // sync ไม่ได้ — ไปลองหาใน store ที่มีอยู่ต่อด้านล่าง
+      }
+    }
+    setTab('orders');
+    setFilter('all');
+    setQuery('');
+    setSelectedId(orderId);
+    setMobileDetailOpen(true);
+    // หลัง sync อาจยังไม่เจอ (เช่น order ถูกปิด/ลบ) — แจ้งเตือนแทนที่จะเงียบ
+    order = order ?? orders.find((item) => item.id === orderId);
+    if (!order) {
+      toast.error('ไม่พบออเดอร์นี้ในระบบ อาจถูกลบหรือยังนำเข้าไม่สำเร็จ');
+    }
+  };
 
   useEffect(() => {
     if (!selectedId || !inboxOrders.some((order) => order.id === selectedId)) {
@@ -74,77 +102,113 @@ export function InboxPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
-        <OrderListPanel
-          filteredOrders={filteredOrders}
-          selectedId={selectedId}
-          onSelect={(id) => {
-            setSelectedId(id);
-            setMobileDetailOpen(true);
-          }}
-          filter={filter}
-          onFilterChange={setFilter}
-          query={query}
-          onQueryChange={setQuery}
-          filterCounts={filterCounts}
-        />
-
-        <Card className="hidden h-[calc(100vh-12rem)] overflow-auto p-6 lg:block">
-          {selected ? (
-            <OrderDetail
-              order={selected}
-              onConfirm={confirmOrder}
-              onFinishParsing={finishParsingOrder}
-              onSaveCustomer={updateOrderCustomer}
-              onChangeShippingMethod={setShippingMethod}
-              onRequestCancel={setCancelTargetId}
-            />
-          ) : (
-            <div>ไม่ได้เลือก</div>
+      {/* Tab switcher */}
+      <div className="flex gap-1 border-b">
+        <button
+          type="button"
+          onClick={() => setTab('orders')}
+          className={cn(
+            'px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+            tab === 'orders'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
           )}
-        </Card>
+        >
+          คำสั่งซื้อ
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('line_import')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+            tab === 'line_import'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <MessageSquareText className="h-3.5 w-3.5" />
+          LINE นำเข้า
+        </button>
       </div>
 
-      {/* มือถือ: เปิดรายละเอียดออเดอร์เต็มจอ (action ต่าง ๆ อยู่ใน OrderDetail แล้ว) */}
-      <MobileDetailSheet
-        open={!!selected && mobileDetailOpen}
-        title={<span className="font-mono">{selected?.code}</span>}
-        subtitle={selected ? statusLabel[selected.status] : undefined}
-        onClose={() => setMobileDetailOpen(false)}
-      >
-        {selected && (
-          <OrderDetail
-            order={selected}
-            onConfirm={confirmOrder}
-            onFinishParsing={finishParsingOrder}
-            onSaveCustomer={updateOrderCustomer}
-            onChangeShippingMethod={setShippingMethod}
-            onRequestCancel={setCancelTargetId}
-          />
-        )}
-      </MobileDetailSheet>
+      {tab === 'line_import' ? (
+        <ImportBatchPanel onOpenOrder={openImportedOrder} />
+      ) : (
+        <>
+          <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
+            <OrderListPanel
+              filteredOrders={filteredOrders}
+              selectedId={selectedId}
+              onSelect={(id) => {
+                setSelectedId(id);
+                setMobileDetailOpen(true);
+              }}
+              filter={filter}
+              onFilterChange={setFilter}
+              query={query}
+              onQueryChange={setQuery}
+              filterCounts={filterCounts}
+            />
 
-      <ResolutionDialog
-        open={!!cancelTargetId}
-        title="ยกเลิกออเดอร์"
-        description={
-          cancelTargetId
-            ? `${orders.find((order) => order.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผลการยกเลิก`
-            : undefined
-        }
-        reasons={CANCEL_REASONS}
-        confirmLabel="ยืนยันยกเลิก"
-        confirmVariant="destructive"
-        onCancel={() => setCancelTargetId(null)}
-        onConfirm={({ reason, note }) => {
-          if (cancelTargetId) {
-            const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
-            cancelOrder(cancelTargetId, { reason, note });
-            toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
-          }
-          setCancelTargetId(null);
-        }}
-      />
+            <Card className="hidden h-[calc(100vh-12rem)] overflow-auto p-6 lg:block">
+              {selected ? (
+                <OrderDetail
+                  order={selected}
+                  onConfirm={confirmOrder}
+                  onFinishParsing={finishParsingOrder}
+                  onSaveCustomer={updateOrderCustomer}
+                  onChangeShippingMethod={setShippingMethod}
+                  onRequestCancel={setCancelTargetId}
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                  เลือก order เพื่อดูรายละเอียด
+                </div>
+              )}
+            </Card>
+          </div>
+
+          <MobileDetailSheet
+            open={!!selected && mobileDetailOpen}
+            title={<span className="font-mono">{selected?.code}</span>}
+            subtitle={selected ? statusLabel[selected.status] : undefined}
+            onClose={() => setMobileDetailOpen(false)}
+          >
+            {selected && (
+              <OrderDetail
+                order={selected}
+                onConfirm={confirmOrder}
+                onFinishParsing={finishParsingOrder}
+                onSaveCustomer={updateOrderCustomer}
+                onChangeShippingMethod={setShippingMethod}
+                onRequestCancel={setCancelTargetId}
+              />
+            )}
+          </MobileDetailSheet>
+
+          <ResolutionDialog
+            open={!!cancelTargetId}
+            title="ยกเลิกออเดอร์"
+            description={
+              cancelTargetId
+                ? `${orders.find((order) => order.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผลการยกเลิก`
+                : undefined
+            }
+            reasons={CANCEL_REASONS}
+            confirmLabel="ยืนยันยกเลิก"
+            confirmVariant="destructive"
+            onCancel={() => setCancelTargetId(null)}
+            onConfirm={({ reason, note }) => {
+              if (cancelTargetId) {
+                const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+                cancelOrder(cancelTargetId, { reason, note });
+                toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
+              }
+              setCancelTargetId(null);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

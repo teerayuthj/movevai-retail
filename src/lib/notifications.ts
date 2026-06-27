@@ -165,6 +165,7 @@ export function suggestTemplateForStatus(status: OrderStatus): NotificationTempl
     case 'returning':
     case 'returned':
     case 'cancelled':
+    case 'rejected':
       return 'tracking_link';
   }
 }

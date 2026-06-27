@@ -31,6 +31,7 @@ export function SourceIcon({ source }: { source: Order['source'] }) {
     line_text: MessageSquare,
     line_image: ImageIcon,
     line_excel: FileSpreadsheet,
+    line_csv: FileSpreadsheet,
     internal_chat: Bot,
     manual: Pencil,
   };

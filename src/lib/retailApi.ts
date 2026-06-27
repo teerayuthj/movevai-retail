@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import type { Driver, Order, PlanningCancelReason } from '@/data/mock';
+import type { Driver, Order, PlanningCancelReason, ShippingMethod } from '@/data/mock';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 
@@ -901,4 +901,83 @@ export async function confirmAppDelivery(
     },
   );
   return normalizeOrder(result);
+}
+
+export type ImportBatch = {
+  id: string;
+  source: string;
+  sourceRef: string | null;
+  fileName: string;
+  status: 'PENDING' | 'PROCESSING' | 'DONE' | 'ERROR';
+  totalRows: number;
+  importedRows: number;
+  errorRows: number;
+  errorSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ImportBatchRow = {
+  id: string;
+  rowIndex: number;
+  rawData: Record<string, string>;
+  status: 'PENDING' | 'IMPORTED' | 'ERROR';
+  errorMessage: string | null;
+  orderId: string | null;
+  /** code ของออเดอร์อื่นที่เบอร์ตรงกัน (ข้ามไฟล์ได้) — null = ไม่ซ้ำ */
+  duplicateOfCode: string | null;
+};
+
+export type ImportRejectReason = 'incomplete_data' | 'duplicate' | 'wrong_group' | 'other';
+
+export type ImportModerationResult = { updated: number; skipped: number };
+
+type ImportModerationInput = {
+  orderIds: string[];
+  shippingMethod?: ShippingMethod;
+  reason?: ImportRejectReason;
+  note?: string;
+};
+
+function importModeration(action: 'approve' | 'reject' | 'restore', input: ImportModerationInput) {
+  return request<ImportModerationResult>(`${APP_API_BASE}/import-batches/orders/${action}`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function approveImportOrders(orderIds: string[], shippingMethod?: ShippingMethod) {
+  return importModeration('approve', { orderIds, shippingMethod });
+}
+
+export function rejectImportOrders(
+  orderIds: string[],
+  input?: { reason?: ImportRejectReason; note?: string },
+) {
+  return importModeration('reject', { orderIds, reason: input?.reason, note: input?.note });
+}
+
+export function restoreImportOrders(orderIds: string[]) {
+  return importModeration('restore', { orderIds });
+}
+
+export type ImportBatchDetail = ImportBatch & { rows: ImportBatchRow[] };
+
+export async function fetchImportBatches(params?: {
+  page?: number;
+  limit?: number;
+  status?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params?.page) search.set('page', String(params.page));
+  if (params?.limit) search.set('limit', String(params.limit));
+  if (params?.status) search.set('status', params.status);
+  const qs = search.toString();
+  return request<{ total: number; page: number; limit: number; batches: ImportBatch[] }>(
+    `${APP_API_BASE}/import-batches${qs ? `?${qs}` : ''}`,
+  );
+}
+
+export async function fetchImportBatch(id: string) {
+  return request<ImportBatchDetail>(`${APP_API_BASE}/import-batches/${encodeURIComponent(id)}`);
 }

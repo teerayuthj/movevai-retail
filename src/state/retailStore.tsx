@@ -35,6 +35,7 @@ import {
   setPostalTrackingState,
 } from '@/state/retail/postal';
 import { clearPlannedOrdersState, setDispatchReadinessState } from '@/state/retail/planning';
+import { rejectImportOrdersState, restoreImportOrdersState } from '@/state/retail/moderation';
 import type {
   ConfirmDeliveryInput,
   RetailState,
@@ -42,9 +43,12 @@ import type {
   SubmitDeliveryInput,
 } from '@/state/retail/types';
 import {
+  approveImportOrders as approveImportOrdersApi,
   cancelPlanningRoute,
   clearPlanning as clearPlanningApi,
   confirmAppDelivery,
+  rejectImportOrders as rejectImportOrdersApi,
+  restoreImportOrders as restoreImportOrdersApi,
   fetchAppDrivers,
   fetchAppOrders,
   fetchMessengerOrders,
@@ -231,6 +235,47 @@ export function RetailProvider({
   const setShippingMethod = useCallback(
     (orderId: string, method: Parameters<RetailStore['setShippingMethod']>[1]) => {
       commit((current) => setShippingMethodState(current, orderId, method));
+    },
+    [commit],
+  );
+
+  const confirmOrders = useCallback(
+    (orderIds: string[], shippingMethod?: Parameters<RetailStore['confirmOrder']>[1]) => {
+      if (orderIds.length === 0) return;
+      const ids = new Set(orderIds);
+      commit((current) =>
+        [...ids].reduce((acc, id) => confirmOrderState(acc, id, shippingMethod), current),
+      );
+    },
+    [commit],
+  );
+
+  const approveImportOrders = useCallback(
+    async (orderIds: string[], shippingMethod?: Parameters<RetailStore['confirmOrder']>[1]) => {
+      if (orderIds.length === 0) return;
+      await approveImportOrdersApi(orderIds, shippingMethod);
+      const ids = new Set(orderIds);
+      commit((current) =>
+        [...ids].reduce((acc, id) => confirmOrderState(acc, id, shippingMethod), current),
+      );
+    },
+    [commit],
+  );
+
+  const rejectImportOrders = useCallback(
+    async (orderIds: string[], input?: Parameters<RetailStore['rejectImportOrders']>[1]) => {
+      if (orderIds.length === 0) return;
+      await rejectImportOrdersApi(orderIds, input);
+      commit((current) => rejectImportOrdersState(current, orderIds, input));
+    },
+    [commit],
+  );
+
+  const restoreImportOrders = useCallback(
+    async (orderIds: string[]) => {
+      if (orderIds.length === 0) return;
+      await restoreImportOrdersApi(orderIds);
+      commit((current) => restoreImportOrdersState(current, orderIds));
     },
     [commit],
   );
@@ -601,6 +646,10 @@ export function RetailProvider({
       updateOrderCustomer,
       setShippingMethod,
       confirmOrder,
+      confirmOrders,
+      approveImportOrders,
+      rejectImportOrders,
+      restoreImportOrders,
       finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
@@ -638,6 +687,10 @@ export function RetailProvider({
       updateOrderCustomer,
       setShippingMethod,
       confirmOrder,
+      confirmOrders,
+      approveImportOrders,
+      rejectImportOrders,
+      restoreImportOrders,
       finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
