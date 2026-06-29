@@ -60,18 +60,18 @@ function readLocalEnv() {
 // rewrite request เหล่านี้ให้ vite เสิร์ฟ customer.html แทน index.html (admin)
 // production: ต้องตั้ง rewrite เดียวกันที่ hosting layer (ดู README/ความเห็นใน final response)
 function customerEntryRouting() {
+  const customerPathPrefixes = ['/track', '/customer-track'];
+
+  const isCustomerPath = (pathname: string) =>
+    customerPathPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+
   return {
     name: 'customer-entry-routing',
     apply: 'serve' as const,
     configureServer(server: import('vite').ViteDevServer) {
       server.middlewares.use((req, _res, next) => {
         const pathname = (req.url ?? '').split('?')[0];
-        if (
-          pathname === '/track' ||
-          pathname.startsWith('/track/') ||
-          pathname === '/customer-track' ||
-          pathname.startsWith('/customer-track/')
-        ) {
+        if (isCustomerPath(pathname)) {
           req.url = '/customer.html';
         }
         next();

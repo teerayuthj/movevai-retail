@@ -35,6 +35,9 @@ const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default:
 const MessengerConsolePage = lazy(() =>
   import('@/pages/MessengerConsole').then((m) => ({ default: m.MessengerConsolePage })),
 );
+const CustomerTrackingPage = lazy(() =>
+  import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
+);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFound').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -101,7 +104,27 @@ export default function App() {
   }
 
   // หมายเหตุ: surface "ลูกค้า" (/track) ย้ายไป entry แยกแล้ว (customer.html → src/main-customer.tsx)
-  // admin entry นี้จึงไม่ render customer_tracking อีก (vite rewrite /track* → customer.html)
+  // ปกติ vite/hosting rewrite จะเสิร์ฟ customer.html โดยตรง
+  // แต่ถ้า hosting/dev fallback ผิดมาโหลด index.html ให้แสดง customer surface แบบไม่มี AppShell
+  // เพื่อไม่ให้ sidebar/topbar ของ admin หลุดไปหน้าลูกค้า
+  if (page === 'customer_tracking') {
+    return (
+      <Suspense fallback={null}>
+        <SplashGate />
+        <CustomerTrackingPage pathname={locationPathname} />
+      </Suspense>
+    );
+  }
+
+  // Unknown paths must not expose the admin shell/sidebar to public users.
+  if (page === 'not_found') {
+    return (
+      <Suspense fallback={null}>
+        <SplashGate />
+        <NotFoundPage pathname={locationPathname} />
+      </Suspense>
+    );
+  }
 
   return (
     <RetailProvider>
@@ -132,9 +155,6 @@ export default function App() {
           {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}
-          {page === 'not_found' && (
-            <NotFoundPage pathname={locationPathname} onGoHome={() => navigateToPage('overview')} />
-          )}
         </Suspense>
       </AppShell>
     </RetailProvider>

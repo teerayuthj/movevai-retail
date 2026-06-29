@@ -48,6 +48,14 @@ function normalizePath(pathname: string) {
   return pathname.replace(/\/+$/, '') || '/';
 }
 
+const customerTrackingPathPrefixes = ['/track', '/customer-track'];
+
+function isCustomerTrackingRoute(pathname: string) {
+  return customerTrackingPathPrefixes.some(
+    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
+  );
+}
+
 export function getPathForPage(page: PageKey) {
   return routeByPage[page].path;
 }
@@ -55,13 +63,7 @@ export function getPathForPage(page: PageKey) {
 export function getPageFromPath(pathname: string): PageKey {
   const normalizedPath = normalizePath(pathname);
 
-  if (
-    normalizedPath === '/track' ||
-    normalizedPath.startsWith('/track/') ||
-    // legacy — รองรับลิงก์เก่าที่เคยส่งให้ลูกค้า
-    normalizedPath === '/customer-track' ||
-    normalizedPath.startsWith('/customer-track/')
-  ) {
+  if (isCustomerTrackingRoute(normalizedPath)) {
     return 'customer_tracking';
   }
 
