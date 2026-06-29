@@ -84,6 +84,17 @@ function networkErrorMessage(url: string, error: unknown) {
   return message;
 }
 
+function validationFieldSummary(details: unknown) {
+  if (!details || typeof details !== 'object') return '';
+  const fieldErrors = (details as { fieldErrors?: Record<string, string[]> }).fieldErrors;
+  if (!fieldErrors || typeof fieldErrors !== 'object') return '';
+
+  return Object.entries(fieldErrors)
+    .filter(([, messages]) => Array.isArray(messages) && messages.length > 0)
+    .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+    .join(' · ');
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   assertNativeRequestUrl(url);
   const headers = new Headers(init?.headers);
@@ -107,8 +118,12 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
     try {
-      const body = (await response.json()) as { error?: { message?: string } };
+      const body = (await response.json()) as {
+        error?: { message?: string; details?: unknown };
+      };
       message = body.error?.message ?? message;
+      const fieldSummary = validationFieldSummary(body.error?.details);
+      if (fieldSummary) message = `${message}: ${fieldSummary}`;
     } catch {
       // response ไม่ใช่ JSON
     }
@@ -155,6 +170,47 @@ export async function geocodeAddress(address: string): Promise<GeoCoordinate | n
     `${APP_API_BASE}/geocode?q=${encodeURIComponent(trimmed)}`,
   );
   return result.coordinate;
+}
+
+// ── Thai address autocomplete (จังหวัด → อำเภอ → ตำบล → รหัสไปรษณีย์) ──
+// ข้อมูลจาก backend (jquery.Thailand.js / Thaipost) โหลดใน memory ฝั่ง api
+export type ThaiAddressRecord = {
+  subdistrict: string;
+  district: string;
+  province: string;
+  postalCode: string;
+  subdistrictCode: number;
+  districtCode: number;
+  provinceCode: number;
+};
+
+export async function fetchAddressProvinces(): Promise<string[]> {
+  const result = await request<{ results: Array<{ province: string }> }>(
+    `${APP_API_BASE}/address/provinces`,
+  );
+  return result.results.map((r) => r.province);
+}
+
+export async function fetchAddressDistricts(province: string): Promise<string[]> {
+  const trimmed = province.trim();
+  if (!trimmed) return [];
+  const result = await request<{ results: Array<{ district: string }> }>(
+    `${APP_API_BASE}/address/districts?province=${encodeURIComponent(trimmed)}`,
+  );
+  return result.results.map((r) => r.district);
+}
+
+export async function fetchAddressSubdistricts(
+  province: string,
+  district: string,
+): Promise<Array<{ subdistrict: string; postalCode: string }>> {
+  const p = province.trim();
+  const d = district.trim();
+  if (!p || !d) return [];
+  const result = await request<{ results: Array<{ subdistrict: string; postalCode: string }> }>(
+    `${APP_API_BASE}/address/subdistricts?province=${encodeURIComponent(p)}&district=${encodeURIComponent(d)}`,
+  );
+  return result.results;
 }
 
 function normalizeDriver(driver: ApiDriver): Driver {
@@ -939,6 +995,28 @@ type ImportModerationInput = {
   note?: string;
 };
 
+export type ImportOrderUpdateInput = {
+  rawData?: Record<string, string>;
+  customer: {
+    name: string;
+    phone: string;
+    address: string;
+    idCard?: string;
+  };
+  item: {
+    sku: string;
+    name: string;
+    purity: string;
+    weight: string;
+    qty: number;
+    unitPrice: number;
+    note?: string;
+  };
+  totalValue: number;
+  payment: Order['payment'];
+  note?: string | null;
+};
+
 function importModeration(action: 'approve' | 'reject' | 'restore', input: ImportModerationInput) {
   return request<ImportModerationResult>(`${APP_API_BASE}/import-batches/orders/${action}`, {
     method: 'POST',
@@ -961,6 +1039,16 @@ export function restoreImportOrders(orderIds: string[]) {
   return importModeration('restore', { orderIds });
 }
 
+export function updateImportedOrder(orderId: string, input: ImportOrderUpdateInput) {
+  return request<{ updated: true }>(
+    `${APP_API_BASE}/import-batches/orders/${encodeURIComponent(orderId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
 export type ImportBatchDetail = ImportBatch & { rows: ImportBatchRow[] };
 
 export async function fetchImportBatches(params?: {
@@ -980,4 +1068,38 @@ export async function fetchImportBatches(params?: {
 
 export async function fetchImportBatch(id: string) {
   return request<ImportBatchDetail>(`${APP_API_BASE}/import-batches/${encodeURIComponent(id)}`);
+}
+
+function filenameFromContentDisposition(value: string | null) {
+  const utf8Match = value?.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+
+  const asciiMatch = value?.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1] ?? null;
+}
+
+export async function downloadImportBatchCsv(id: string) {
+  const url = `${APP_API_BASE}/import-batches/${encodeURIComponent(id)}/raw-csv`;
+  assertNativeRequestUrl(url);
+
+  const headers = new Headers();
+  if (IS_NATIVE_APP && INTERNAL_API_KEY) {
+    headers.set('x-internal-key', INTERNAL_API_KEY);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(url, { headers });
+  } catch (error) {
+    throw new Error(networkErrorMessage(url, error));
+  }
+
+  if (!response.ok) {
+    throw new Error(`${response.status} ${response.statusText}`);
+  }
+
+  return {
+    fileName: filenameFromContentDisposition(response.headers.get('content-disposition')),
+    content: await response.text(),
+  };
 }

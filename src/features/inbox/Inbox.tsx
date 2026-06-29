@@ -30,14 +30,13 @@ export function InboxPage() {
   const {
     orders,
     confirmOrder,
-    finishParsingOrder,
     updateOrderCustomer,
     setShippingMethod,
     cancelOrder,
     syncFromBackend,
   } = useRetailStore();
 
-  const [tab, setTab] = useState<InboxTab>('orders');
+  const [tab, setTab] = useState<InboxTab>('line_import');
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     return orders.find((order) => INBOX_STATUSES.includes(order.status))?.id ?? null;
@@ -89,7 +88,7 @@ export function InboxPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Order Inbox — คำสั่งซื้อ</h1>
           <p className="text-sm text-muted-foreground">
-            รวมออเดอร์จากทุกช่องทาง intake · ระบบช่วยอ่านสลิป/ไฟล์ + จับคู่ SKU · ตรวจสอบก่อนยืนยัน
+            รวมออเดอร์จากทุกช่องทาง intake · อ่านข้อมูลจาก CSV/ข้อความต้นทาง · แก้ไขก่อนยืนยัน
             โดยใช้ order เดียวกันต่อเนื่องไปยัง Planning และคิวจัดส่ง
           </p>
         </div>
@@ -106,18 +105,6 @@ export function InboxPage() {
       <div className="flex gap-1 border-b">
         <button
           type="button"
-          onClick={() => setTab('orders')}
-          className={cn(
-            'px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
-            tab === 'orders'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          คำสั่งซื้อ
-        </button>
-        <button
-          type="button"
           onClick={() => setTab('line_import')}
           className={cn(
             'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
@@ -128,6 +115,18 @@ export function InboxPage() {
         >
           <MessageSquareText className="h-3.5 w-3.5" />
           LINE นำเข้า
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('orders')}
+          className={cn(
+            'px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+            tab === 'orders'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          คำสั่งซื้อ
         </button>
       </div>
 
@@ -155,7 +154,6 @@ export function InboxPage() {
                 <OrderDetail
                   order={selected}
                   onConfirm={confirmOrder}
-                  onFinishParsing={finishParsingOrder}
                   onSaveCustomer={updateOrderCustomer}
                   onChangeShippingMethod={setShippingMethod}
                   onRequestCancel={setCancelTargetId}
@@ -178,7 +176,6 @@ export function InboxPage() {
               <OrderDetail
                 order={selected}
                 onConfirm={confirmOrder}
-                onFinishParsing={finishParsingOrder}
                 onSaveCustomer={updateOrderCustomer}
                 onChangeShippingMethod={setShippingMethod}
                 onRequestCancel={setCancelTargetId}

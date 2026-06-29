@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { toDataURL } from 'qrcode';
 import { CalendarClock, Copy, Download, ExternalLink, QrCode, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import {
   buildCustomerTrackingUrl,
+  getCustomerTrackingPath,
   getPlannedDelivery,
   isOrderScheduled,
 } from '@/lib/customerTracking';
@@ -20,6 +22,8 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
   const [copied, setCopied] = useState(false);
   // ใช้ order code (ORD-...) ที่ลูกค้ารู้จักใน URL ให้ตรงกับเลขออเดอร์บนหน้า ไม่ใช่ internal id
   const trackingUrl = useMemo(() => buildCustomerTrackingUrl(order.code), [order.code]);
+  const trackingPath = useMemo(() => getCustomerTrackingPath(order.code), [order.code]);
+  const isNativeApp = Capacitor.isNativePlatform();
   const scheduled = isOrderScheduled(order);
   const plannedDelivery = getPlannedDelivery(order);
 
@@ -95,6 +99,16 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
     }
   }
 
+  function openTrackingPreview() {
+    if (!isNativeApp) {
+      window.open(trackingUrl, '_blank', 'noreferrer');
+      return;
+    }
+
+    window.history.pushState({ page: 'customer_tracking' }, '', trackingPath);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }
+
   return (
     <div className="rounded-lg border bg-muted/20 p-3">
       <div className="flex items-start gap-3">
@@ -131,11 +145,9 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
               <Copy className="h-3.5 w-3.5" />
               {copied ? 'คัดลอกแล้ว' : 'คัดลอกลิงก์'}
             </Button>
-            <Button type="button" size="sm" variant="outline" asChild>
-              <a href={trackingUrl} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-3.5 w-3.5" />
-                เปิดหน้าลูกค้า
-              </a>
+            <Button type="button" size="sm" variant="outline" onClick={openTrackingPreview}>
+              <ExternalLink className="h-3.5 w-3.5" />
+              เปิดหน้าลูกค้า
             </Button>
           </div>
         </div>

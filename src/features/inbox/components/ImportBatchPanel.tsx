@@ -13,6 +13,7 @@ import {
   Copy,
   RotateCcw,
   Layers,
+  Download,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -21,11 +22,14 @@ import { Separator } from '@/components/ui/separator';
 import {
   fetchImportBatches,
   fetchImportBatch,
+  downloadImportBatchCsv,
+  updateImportedOrder,
   type ImportBatch,
   type ImportBatchDetail,
   type ImportBatchRow,
   type ImportRejectReason,
 } from '@/lib/retailApi';
+import { downloadCsv } from '@/lib/export';
 import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from '@/data/mock';
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
@@ -53,58 +57,79 @@ function BatchListItem({
   batch,
   selected,
   onClick,
+  onDownload,
+  downloading,
 }: {
   batch: ImportBatch;
   selected: boolean;
   onClick: () => void;
+  onDownload: () => void;
+  downloading: boolean;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <div
       className={cn(
-        'w-full rounded-lg border p-3 text-left transition-colors',
+        'rounded-lg border p-3 transition-colors',
         selected ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
       )}
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-xs font-medium">{batch.fileName}</span>
+      <button type="button" onClick={onClick} className="w-full text-left">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate text-xs font-medium">{batch.fileName}</span>
+          </div>
+          <Badge
+            variant={batchStatusVariant(batch.status)}
+            className="h-5 shrink-0 px-1.5 text-[10px]"
+          >
+            {batchStatusLabel(batch.status)}
+          </Badge>
         </div>
-        <Badge
-          variant={batchStatusVariant(batch.status)}
-          className="h-5 shrink-0 px-1.5 text-[10px]"
+
+        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <span>LINE Group</span>
+          <span>·</span>
+          <span>
+            {new Date(batch.createdAt).toLocaleString('th', {
+              day: '2-digit',
+              month: 'short',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+        </div>
+
+        {(batch.status === 'DONE' || batch.status === 'ERROR') && (
+          <div className="mt-2 flex items-center gap-3 text-[11px]">
+            <span className="text-success">✓ {batch.importedRows} orders</span>
+            {batch.errorRows > 0 && (
+              <span className="text-destructive">✗ {batch.errorRows} error</span>
+            )}
+            {batch.totalRows > 0 && (
+              <span className="text-muted-foreground">/ {batch.totalRows} แถว</span>
+            )}
+          </div>
+        )}
+      </button>
+      <div className="mt-2 flex justify-end">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-[11px]"
+          disabled={downloading}
+          onClick={onDownload}
         >
-          {batchStatusLabel(batch.status)}
-        </Badge>
-      </div>
-
-      <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span>LINE Group</span>
-        <span>·</span>
-        <span>
-          {new Date(batch.createdAt).toLocaleString('th', {
-            day: '2-digit',
-            month: 'short',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </span>
-      </div>
-
-      {(batch.status === 'DONE' || batch.status === 'ERROR') && (
-        <div className="mt-2 flex items-center gap-3 text-[11px]">
-          <span className="text-success">✓ {batch.importedRows} orders</span>
-          {batch.errorRows > 0 && (
-            <span className="text-destructive">✗ {batch.errorRows} error</span>
+          {downloading ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Download className="h-3 w-3" />
           )}
-          {batch.totalRows > 0 && (
-            <span className="text-muted-foreground">/ {batch.totalRows} แถว</span>
-          )}
-        </div>
-      )}
-    </button>
+          Export CSV
+        </Button>
+      </div>
+    </div>
   );
 }
 
@@ -115,6 +140,7 @@ type RowVM = {
   rowId: string;
   rowIndex: number;
   fileName: string;
+  rawData: Record<string, string>;
   kind: RowKind;
   orderId?: string;
   name: string;
@@ -122,6 +148,24 @@ type RowVM = {
   value?: number;
   errorMessage?: string | null;
   duplicateOfCode?: string | null;
+};
+
+type ImportEditDraft = {
+  rawData: Record<string, string>;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  customerIdCard: string;
+  totalValue: string;
+  payment: Order['payment'];
+  note: string;
+  itemName: string;
+  itemSku: string;
+  itemPurity: string;
+  itemWeight: string;
+  itemQty: string;
+  itemUnitPrice: string;
+  itemNote: string;
 };
 
 function rawField(raw: Record<string, string>, ...keys: string[]) {
@@ -145,6 +189,7 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
       rowId: row.id,
       rowIndex: row.rowIndex,
       fileName,
+      rawData: row.rawData,
       kind: 'error',
       name: rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') || '(ไม่ระบุชื่อ)',
       address: rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') || '—',
@@ -156,6 +201,7 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
     rowId: row.id,
     rowIndex: row.rowIndex,
     fileName,
+    rawData: row.rawData,
     kind: rowKindForOrder(order),
     orderId: row.orderId,
     name:
@@ -169,6 +215,71 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
     value: order?.totalValue,
     duplicateOfCode: row.duplicateOfCode,
   };
+}
+
+function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
+  const item = order?.items[0];
+  const rawTotalValue = Number(rawField(row.rawData, 'totalValue', 'total', 'ราคารวม', 'มูลค่า'));
+  const rawItemQty = Number(rawField(row.rawData, 'qty', 'quantity', 'จำนวน'));
+  const rawItemUnitPrice = Number(rawField(row.rawData, 'price', 'unitPrice', 'itemPrice', 'ราคา'));
+  const rawPayment = rawField(row.rawData, 'payment', 'การชำระ', 'ชำระ');
+  return {
+    rawData: row.rawData,
+    customerName:
+      order?.customer.name ??
+      rawField(row.rawData, 'customerName', 'customer_name', 'ชื่อลูกค้า', 'ชื่อ', 'name'),
+    customerPhone:
+      order?.customer.phone ??
+      rawField(row.rawData, 'customerPhone', 'phone', 'tel', 'เบอร์โทร', 'เบอร์'),
+    customerAddress:
+      order?.customer.address ?? rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่'),
+    customerIdCard:
+      order?.customer.idCard ?? rawField(row.rawData, 'idCard', 'เลขบัตร', 'บัตรประชาชน'),
+    totalValue: String(order?.totalValue ?? (Number.isFinite(rawTotalValue) ? rawTotalValue : 0)),
+    payment: normalizePaymentMethod(order?.payment ?? rawPayment),
+    note: order?.note ?? rawField(row.rawData, 'note', 'หมายเหตุ'),
+    itemName:
+      item?.name ?? rawField(row.rawData, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า'),
+    itemSku: item?.sku ?? rawField(row.rawData, 'sku', 'itemSku', 'รหัสสินค้า') ?? '-',
+    itemPurity: item?.purity ?? rawField(row.rawData, 'purity', 'ความบริสุทธิ์') ?? '-',
+    itemWeight: item?.weight ?? rawField(row.rawData, 'weight', 'น้ำหนัก') ?? '0',
+    itemQty: String(item?.qty ?? (Number.isFinite(rawItemQty) && rawItemQty > 0 ? rawItemQty : 1)),
+    itemUnitPrice: String(
+      item?.unitPrice ?? (Number.isFinite(rawItemUnitPrice) ? rawItemUnitPrice : 0),
+    ),
+    itemNote: item?.note ?? '',
+  };
+}
+
+function normalizePaymentMethod(value: unknown): Order['payment'] {
+  if (typeof value !== 'string') return 'prepaid';
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'cod' || normalized.includes('ปลายทาง')) return 'cod';
+  if (normalized.includes('โอนตอนส่ง') || normalized.includes('โอนเมื่อส่ง')) {
+    return 'transfer_on_delivery';
+  }
+  if (
+    normalized === 'transfer_on_delivery' ||
+    normalized === 'prepaid' ||
+    normalized === 'transfer' ||
+    normalized === 'paid' ||
+    normalized === 'โอน' ||
+    normalized === 'โอนแล้ว' ||
+    normalized.includes('ชำระแล้ว')
+  ) {
+    return normalized === 'transfer_on_delivery' ? 'transfer_on_delivery' : 'prepaid';
+  }
+  return 'prepaid';
+}
+
+function toPositiveInt(value: string, fallback = 1) {
+  const next = Number.parseInt(value, 10);
+  return Number.isFinite(next) && next > 0 ? next : fallback;
+}
+
+function toNonNegativeNumber(value: string, fallback = 0) {
+  const next = Number(value.replace(/,/g, ''));
+  return Number.isFinite(next) && next >= 0 ? next : fallback;
 }
 
 function TabChip({
@@ -246,12 +357,17 @@ function BatchWorkspace({
   scope,
   batches,
   onOpenOrder,
+  onDownloadBatch,
+  downloadingBatchId,
 }: {
   scope: string; // batchId | 'all'
   batches: ImportBatch[];
   onOpenOrder?: (orderId: string) => void;
+  onDownloadBatch: (batch: Pick<ImportBatch, 'id' | 'fileName'>) => void;
+  downloadingBatchId: string | null;
 }) {
-  const { orders, approveImportOrders, rejectImportOrders, restoreImportOrders } = useRetailStore();
+  const { orders, approveImportOrders, rejectImportOrders, restoreImportOrders, syncFromBackend } =
+    useRetailStore();
   const [details, setDetails] = useState<ImportBatchDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('review');
@@ -259,6 +375,9 @@ function BatchWorkspace({
   const [method, setMethod] = useState<ShippingMethod>('internal_driver');
   const [reason, setReason] = useState<ImportRejectReason | ''>('');
   const [busy, setBusy] = useState(false);
+  const [editingRow, setEditingRow] = useState<RowVM | null>(null);
+  const [editDraft, setEditDraft] = useState<ImportEditDraft | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const targetBatchIds = useMemo(
     () => (scope === ALL_SCOPE ? batches.map((b) => b.id) : [scope]),
@@ -370,6 +489,64 @@ function BatchWorkspace({
     );
   };
 
+  const reloadDetails = async () => {
+    const res = await Promise.all(targetBatchIds.map((id) => fetchImportBatch(id)));
+    setDetails(res);
+  };
+
+  const startEditRow = (row: RowVM) => {
+    if (!row.orderId) return;
+    setEditingRow(row);
+    setEditDraft(draftFromRow(row, ordersById.get(row.orderId)));
+  };
+
+  const saveEditRow = async () => {
+    if (!editingRow?.orderId || !editDraft) return;
+    const missing = [
+      !editDraft.customerName.trim() && 'ชื่อผู้รับ',
+      !editDraft.customerPhone.trim() && 'เบอร์โทร',
+      !editDraft.customerAddress.trim() && 'ที่อยู่',
+      !editDraft.itemName.trim() && 'สินค้า',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      toast.error(`กรอกข้อมูลให้ครบก่อนบันทึก: ${missing.join(', ')}`);
+      return;
+    }
+
+    setSavingEdit(true);
+    try {
+      await updateImportedOrder(editingRow.orderId, {
+        rawData: editDraft.rawData,
+        customer: {
+          name: editDraft.customerName.trim(),
+          phone: editDraft.customerPhone.trim(),
+          address: editDraft.customerAddress.trim(),
+          idCard: editDraft.customerIdCard.trim() || undefined,
+        },
+        item: {
+          sku: editDraft.itemSku.trim() || '-',
+          name: editDraft.itemName.trim() || 'สินค้า',
+          purity: editDraft.itemPurity.trim() || '-',
+          weight: editDraft.itemWeight.trim() || '0',
+          qty: toPositiveInt(editDraft.itemQty),
+          unitPrice: toNonNegativeNumber(editDraft.itemUnitPrice),
+          note: editDraft.itemNote.trim() || undefined,
+        },
+        totalValue: toNonNegativeNumber(editDraft.totalValue),
+        payment: normalizePaymentMethod(editDraft.payment),
+        note: editDraft.note.trim() || null,
+      });
+      await Promise.all([reloadDetails(), syncFromBackend()]);
+      toast.success('บันทึกข้อมูลจาก CSV แล้ว');
+      setEditingRow(null);
+      setEditDraft(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'บันทึกข้อมูลไม่สำเร็จ');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-32 items-center justify-center">
@@ -406,6 +583,22 @@ function BatchWorkspace({
             {stats.total} แถว · มูลค่ารวม {formatTHB(stats.value)}
           </div>
         </div>
+        {scope !== ALL_SCOPE && details[0] && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={downloadingBatchId === details[0].id}
+            onClick={() => onDownloadBatch(details[0])}
+          >
+            {downloadingBatchId === details[0].id ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Export CSV
+          </Button>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-4 gap-2">
@@ -477,7 +670,7 @@ function BatchWorkspace({
               <th className="w-20 px-2 py-2 font-medium">สถานะ</th>
               <th className="px-2 py-2 font-medium">ผู้รับ / ที่อยู่</th>
               <th className="w-20 px-2 py-2 text-right font-medium">มูลค่า</th>
-              <th className="w-[124px] px-2 py-2 text-right font-medium">จัดการ</th>
+              <th className="w-[220px] px-2 py-2 text-right font-medium">จัดการ</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -491,6 +684,7 @@ function BatchWorkspace({
             {visibleRows.map((r) => {
               const selectable = r.kind === 'review' && !!r.orderId && ordersById.has(r.orderId);
               const checked = !!r.orderId && selected.has(r.orderId);
+              const editable = !!r.orderId && r.kind !== 'error';
               return (
                 <tr
                   key={r.rowId}
@@ -541,6 +735,17 @@ function BatchWorkspace({
                   </td>
                   <td className="px-2 py-2.5 align-top">
                     <div className="flex items-center justify-end gap-1">
+                      {editable && (
+                        <button
+                          type="button"
+                          disabled={busy || savingEdit}
+                          onClick={() => startEditRow(r)}
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-40"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          แก้ไข
+                        </button>
+                      )}
                       {r.kind === 'review' && r.orderId && (
                         <>
                           <button
@@ -582,11 +787,11 @@ function BatchWorkspace({
                       {r.orderId && onOpenOrder && (
                         <button
                           type="button"
-                          aria-label="แก้ไขออเดอร์"
+                          aria-label="เปิดออเดอร์"
                           onClick={() => onOpenOrder(r.orderId!)}
-                          className="text-muted-foreground hover:text-primary"
+                          className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-primary"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          เปิด
                         </button>
                       )}
                     </div>
@@ -597,6 +802,181 @@ function BatchWorkspace({
           </tbody>
         </table>
       </div>
+
+      {editingRow && editDraft && (
+        <div className="mt-3 rounded-lg border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="text-sm font-medium">แก้ไขข้อมูลจาก CSV</div>
+              <div className="text-xs text-muted-foreground">
+                {editingRow.fileName} · แถวที่ {editingRow.rowIndex + 1}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={savingEdit}
+                onClick={() => {
+                  setEditingRow(null);
+                  setEditDraft(null);
+                }}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="button" size="sm" disabled={savingEdit} onClick={saveEditRow}>
+                {savingEdit ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+                บันทึก
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-3">
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">ชื่อผู้รับ</span>
+              <input
+                value={editDraft.customerName}
+                onChange={(e) => setEditDraft({ ...editDraft, customerName: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">เบอร์โทร</span>
+              <input
+                value={editDraft.customerPhone}
+                onChange={(e) => setEditDraft({ ...editDraft, customerPhone: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">เลขบัตร</span>
+              <input
+                value={editDraft.customerIdCard}
+                onChange={(e) => setEditDraft({ ...editDraft, customerIdCard: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs md:col-span-3">
+              <span className="text-muted-foreground">ที่อยู่</span>
+              <input
+                value={editDraft.customerAddress}
+                onChange={(e) => setEditDraft({ ...editDraft, customerAddress: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">มูลค่ารวม</span>
+              <input
+                inputMode="decimal"
+                value={editDraft.totalValue}
+                onChange={(e) => setEditDraft({ ...editDraft, totalValue: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">การชำระเงิน</span>
+              <select
+                value={editDraft.payment}
+                onChange={(e) =>
+                  setEditDraft({ ...editDraft, payment: e.target.value as Order['payment'] })
+                }
+                className="h-8 w-full rounded-md border bg-background px-2"
+              >
+                <option value="prepaid">โอนแล้ว</option>
+                <option value="cod">เก็บเงินปลายทาง</option>
+                <option value="transfer_on_delivery">โอนตอนส่ง</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">หมายเหตุ</span>
+              <input
+                value={editDraft.note}
+                onChange={(e) => setEditDraft({ ...editDraft, note: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 grid gap-2 md:grid-cols-6">
+            <label className="space-y-1 text-xs md:col-span-2">
+              <span className="text-muted-foreground">สินค้า</span>
+              <input
+                value={editDraft.itemName}
+                onChange={(e) => setEditDraft({ ...editDraft, itemName: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">SKU</span>
+              <input
+                value={editDraft.itemSku}
+                onChange={(e) => setEditDraft({ ...editDraft, itemSku: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">Purity</span>
+              <input
+                value={editDraft.itemPurity}
+                onChange={(e) => setEditDraft({ ...editDraft, itemPurity: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">น้ำหนัก</span>
+              <input
+                value={editDraft.itemWeight}
+                onChange={(e) => setEditDraft({ ...editDraft, itemWeight: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">จำนวน</span>
+              <input
+                inputMode="numeric"
+                value={editDraft.itemQty}
+                onChange={(e) => setEditDraft({ ...editDraft, itemQty: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">ราคา/ชิ้น</span>
+              <input
+                inputMode="decimal"
+                value={editDraft.itemUnitPrice}
+                onChange={(e) => setEditDraft({ ...editDraft, itemUnitPrice: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+          </div>
+
+          <div className="mt-3 rounded-md border bg-background">
+            <div className="border-b px-3 py-2 text-xs font-medium">คอลัมน์ CSV ต้นทาง</div>
+            <div className="grid max-h-48 gap-2 overflow-auto p-3 md:grid-cols-2">
+              {Object.entries(editDraft.rawData).map(([key, value]) => (
+                <label key={key} className="space-y-1 text-xs">
+                  <span className="text-muted-foreground">{key}</span>
+                  <input
+                    value={value}
+                    onChange={(e) =>
+                      setEditDraft({
+                        ...editDraft,
+                        rawData: { ...editDraft.rawData, [key]: e.target.value },
+                      })
+                    }
+                    className="h-8 w-full rounded-md border bg-background px-2 font-mono"
+                  />
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {errorSummary && stats.error > 0 && tab !== 'approved' && tab !== 'rejected' && (
         <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5">
@@ -652,6 +1032,20 @@ export default function ImportBatchPanel({
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [selectedId, setSelectedId] = useState<string>(ALL_SCOPE);
   const [loading, setLoading] = useState(true);
+  const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
+
+  const exportBatchCsv = async (batch: Pick<ImportBatch, 'id' | 'fileName'>) => {
+    setDownloadingBatchId(batch.id);
+    try {
+      const result = await downloadImportBatchCsv(batch.id);
+      downloadCsv(result.fileName ?? batch.fileName, result.content);
+      toast.success(`บันทึกไฟล์ ${result.fileName ?? batch.fileName} แล้ว`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Export CSV ไม่สำเร็จ');
+    } finally {
+      setDownloadingBatchId(null);
+    }
+  };
 
   const load = () => {
     setLoading(true);
@@ -725,6 +1119,8 @@ export default function ImportBatchPanel({
               batch={batch}
               selected={selectedId === batch.id}
               onClick={() => setSelectedId(batch.id)}
+              onDownload={() => void exportBatchCsv(batch)}
+              downloading={downloadingBatchId === batch.id}
             />
           ))}
         </CardContent>
@@ -737,6 +1133,8 @@ export default function ImportBatchPanel({
             scope={selectedId}
             batches={batches}
             onOpenOrder={onOpenOrder}
+            onDownloadBatch={(batch) => void exportBatchCsv(batch)}
+            downloadingBatchId={downloadingBatchId}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

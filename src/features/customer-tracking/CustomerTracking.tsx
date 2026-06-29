@@ -355,15 +355,16 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
 
   // ระหว่างกำลังจัดส่ง: poll ตำแหน่งคนส่งเพื่ออัปเดต "กำลังมาส่ง" แบบ near real-time
   const isInTransit = order?.status === 'in_transit';
+  const liveTrackingOrderId = order?.id ?? orderId;
   useEffect(() => {
-    if (!isInTransit || !orderId) {
+    if (!isInTransit || !liveTrackingOrderId) {
       setLiveTracking(null);
       return;
     }
 
     let cancelled = false;
     const poll = () => {
-      void fetchCustomerLiveTracking(orderId)
+      void fetchCustomerLiveTracking(liveTrackingOrderId)
         .then((next) => {
           if (!cancelled) setLiveTracking(next);
         })
@@ -378,7 +379,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isInTransit, orderId]);
+  }, [isInTransit, liveTrackingOrderId]);
 
   if (isLoading) return <CustomerTrackingSkeleton />;
   if (!order) return <CustomerTrackingNotFound orderId={orderId} />;

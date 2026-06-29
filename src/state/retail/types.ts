@@ -90,7 +90,6 @@ export type RetailStore = RetailState & {
   ) => Promise<void>;
   /** ดึงออเดอร์ที่ปฏิเสธกลับมาเป็น 'new' */
   restoreImportOrders: (orderIds: string[]) => Promise<void>;
-  finishParsingOrder: (orderId: string) => void;
   assignOrder: (orderId: string, driverId: string) => Promise<void>;
   autoAssignReadyOrders: (orderIds?: string[]) => Promise<void>;
   startDelivery: (orderId: string) => Promise<void>;

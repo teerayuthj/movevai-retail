@@ -6,7 +6,6 @@ import {
   diffCustomer,
   nowIso,
   operatorActor,
-  PARSER_ACTOR,
   shippingLabel,
 } from '@/state/retail/timeline';
 import type { CancelOrderInput, RetailState } from '@/state/retail/types';
@@ -129,64 +128,6 @@ export function setShippingMethodState(
           ],
         },
       );
-    }),
-  };
-}
-
-export function finishParsingOrderState(current: RetailState, orderId: string): RetailState {
-  return {
-    ...current,
-    orders: current.orders.map((order) => {
-      if (order.id !== orderId) return order;
-
-      const next: Order = {
-        ...order,
-        status: 'needs_review',
-        confidence: Math.max(order.confidence, 84),
-        customer: {
-          ...order.customer,
-          phone: order.customer.phone === '—' ? '02-118-4499' : order.customer.phone,
-          address:
-            order.items.length === 0
-              ? 'อาคาร Silom Complex ชั้น 12 ถ.สีลม แขวงสีลม เขตบางรัก กทม. 10500'
-              : order.customer.address,
-        },
-        items:
-          order.items.length > 0
-            ? order.items
-            : [
-                {
-                  sku: 'AUS-BAR-965-1B',
-                  name: 'AUSIRIS ทองคำแท่ง 96.5%',
-                  purity: '96.5%',
-                  weight: '1 บาท (15.244 ก.)',
-                  qty: 8,
-                  unitPrice: 45200,
-                },
-                {
-                  sku: 'AUS-INV-9999-10G',
-                  name: 'AUSIRIS ทองคำแท่ง 99.99% Investment Grade',
-                  purity: '99.99%',
-                  weight: '10 กรัม',
-                  qty: 6,
-                  unitPrice: 32500,
-                },
-              ],
-        totalValue: order.totalValue > 0 ? order.totalValue : 556600,
-        requiresIdCheck: true,
-        insured: true,
-        note:
-          order.note ??
-          'นำเข้าจาก Excel · AI จับคู่ SKU แล้ว โปรดตรวจจำนวนและยอดรวมก่อนยืนยันเข้าคิว',
-      };
-
-      return appendEvent(next, {
-        type: 'parsing_completed',
-        at: nowIso(),
-        actor: PARSER_ACTOR,
-        summary: 'ประมวลผลไฟล์เสร็จ — ส่งเข้า Inbox ให้ตรวจ',
-        details: `AI confidence ${next.confidence}%`,
-      });
     }),
   };
 }

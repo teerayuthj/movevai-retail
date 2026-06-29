@@ -12,7 +12,6 @@ import {
   IdCard,
   Pencil,
   ShieldCheck,
-  Sparkles,
   StickyNote,
   UserCircle2,
   Wallet,
@@ -35,7 +34,6 @@ import {
   sourceLabel,
 } from '@/data/mock';
 import CustomerInfoForm from '@/features/inbox/components/CustomerInfoForm';
-import ExcelParsingView from '@/features/inbox/components/ExcelParsingView';
 import ShippingMethodSelector from '@/features/inbox/components/ShippingMethodSelector';
 import { SourceIcon } from '@/features/inbox/components/OrderListItem';
 import { buildRawText } from '@/features/inbox/utils/orderFormatting';
@@ -130,7 +128,6 @@ function ItemRow({ item, index }: { item: OrderItem; index: number }) {
 type OrderDetailProps = {
   order: Order;
   onConfirm: (orderId: string, shippingMethod: ShippingMethod) => void;
-  onFinishParsing: (orderId: string) => void;
   onSaveCustomer: (orderId: string, customer: Order['customer']) => void;
   onChangeShippingMethod: (orderId: string, method: ShippingMethod) => void;
   onRequestCancel: (orderId: string) => void;
@@ -139,7 +136,6 @@ type OrderDetailProps = {
 export default function OrderDetail({
   order,
   onConfirm,
-  onFinishParsing,
   onSaveCustomer,
   onChangeShippingMethod,
   onRequestCancel,
@@ -153,10 +149,6 @@ export default function OrderDetail({
     // reset only on order switch, not on external customer updates during editing
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
-
-  if (order.status === 'parsing') {
-    return <ExcelParsingView order={order} onFinishParsing={onFinishParsing} />;
-  }
 
   const lowConfidence = order.confidence < 80;
   const isHighValue = order.totalValue >= 500000;
@@ -440,7 +432,7 @@ export default function OrderDetail({
           <div className="text-xs">
             <div className="font-medium text-warning">ต้องตรวจข้อมูลบางรายการ</div>
             <div className="text-warning">
-              โปรดตรวจจำนวนชิ้น น้ำหนัก และยอดรวมเทียบกับสลิปก่อนยืนยันเข้าคิว
+              โปรดตรวจข้อมูลที่อ่านจากไฟล์หรือข้อความต้นทางก่อนยืนยันเข้าคิว
             </div>
           </div>
         </div>
@@ -449,10 +441,10 @@ export default function OrderDetail({
       <Tabs defaultValue="parsed">
         <TabsList>
           <TabsTrigger value="parsed" className="gap-2 pr-4">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-linear-to-br from-info to-success text-white shadow-xs">
-              <Sparkles className="h-3 w-3" />
+            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-info text-white shadow-xs">
+              <FileSpreadsheet className="h-3 w-3" />
             </span>
-            <span>ข้อมูลที่ AI แปลง</span>
+            <span>{order.source === 'line_csv' ? 'ข้อมูลจาก CSV' : 'ข้อมูลออเดอร์'}</span>
           </TabsTrigger>
           <TabsTrigger value="raw">ต้นฉบับ</TabsTrigger>
         </TabsList>
@@ -464,6 +456,7 @@ export default function OrderDetail({
             </CardHeader>
             <CardContent>
               <CustomerInfoForm
+                key={order.id}
                 customer={draftCustomer}
                 editing={editing}
                 onChange={setDraftCustomer}
@@ -588,7 +581,7 @@ export default function OrderDetail({
                     </div>
                   </div>
                   <div className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                    AI ทำ OCR + จับคู่ SKU อัตโนมัติ ·{' '}
+                    ระบบอ่านข้อมูลจากรูปและเตรียมรายการเบื้องต้น ·{' '}
                     <span className="font-medium text-foreground">{order.handledBy.name}</span>{' '}
                     เป็นผู้ยืนยันส่งเข้าระบบ
                   </div>
@@ -703,9 +696,9 @@ export default function OrderDetail({
                         )}
 
                         <div className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                          ระบบแปลงไฟล์ CSV ที่ส่งในกลุ่ม LINE เป็นออเดอร์อัตโนมัติ ·
-                          ข้อมูลต้นฉบับด้านบนถูกเก็บไว้คู่กับออเดอร์ ·
-                          แก้ไขข้อมูลที่แปลงแล้วได้ในแท็บ “ข้อมูลที่ AI แปลง”
+                          ระบบอ่านไฟล์ CSV ที่ส่งในกลุ่ม LINE เป็นออเดอร์เบื้องต้น ·
+                          ข้อมูลต้นฉบับด้านบนถูกเก็บไว้คู่กับออเดอร์ · แก้ไขข้อมูลได้จากแท็บ “LINE
+                          นำเข้า” ก่อนอนุมัติเข้าคิว
                         </div>
                       </>
                     );

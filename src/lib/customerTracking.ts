@@ -31,8 +31,22 @@ export function getCustomerTrackingOrderId(pathname: string) {
   return decodeURIComponent(normalized.slice(prefix.length));
 }
 
-export function buildCustomerTrackingUrl(orderId: string, origin = window.location.origin) {
-  return `${origin}${getCustomerTrackingPath(orderId)}`;
+function normalizeOrigin(origin: string | undefined) {
+  return origin?.trim().replace(/\/+$/, '') ?? '';
+}
+
+function getDefaultCustomerTrackingOrigin() {
+  const publicOrigin = normalizeOrigin(import.meta.env.VITE_CUSTOMER_TRACKING_PUBLIC_ORIGIN);
+  if (publicOrigin) return publicOrigin;
+  return typeof window === 'undefined' ? '' : window.location.origin;
+}
+
+export function buildCustomerTrackingUrl(
+  orderId: string,
+  origin = getDefaultCustomerTrackingOrigin(),
+) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  return `${normalizedOrigin}${getCustomerTrackingPath(orderId)}`;
 }
 
 export function maskPhone(phone: string) {

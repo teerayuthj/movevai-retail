@@ -23,7 +23,6 @@ import { defaultState, loadState, persistState } from '@/state/retail/persistenc
 import {
   cancelOrderState,
   confirmOrderState,
-  finishParsingOrderState,
   setShippingMethodState,
   updateOrderCustomerState,
   updateOrderState,
@@ -276,13 +275,6 @@ export function RetailProvider({
       if (orderIds.length === 0) return;
       await restoreImportOrdersApi(orderIds);
       commit((current) => restoreImportOrdersState(current, orderIds));
-    },
-    [commit],
-  );
-
-  const finishParsingOrder = useCallback(
-    (orderId: string) => {
-      commit((current) => finishParsingOrderState(current, orderId));
     },
     [commit],
   );
@@ -650,7 +642,6 @@ export function RetailProvider({
       approveImportOrders,
       rejectImportOrders,
       restoreImportOrders,
-      finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
       startDelivery,
@@ -691,7 +682,6 @@ export function RetailProvider({
       approveImportOrders,
       rejectImportOrders,
       restoreImportOrders,
-      finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
       startDelivery,

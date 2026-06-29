@@ -30,7 +30,7 @@ export const SYSTEM_ACTOR: OrderActivityActor = {
 
 export const PARSER_ACTOR: OrderActivityActor = {
   kind: 'system',
-  label: 'AI Parser',
+  label: 'Import Parser',
 };
 
 export function operatorActor(handler: Handler | undefined | null): OrderActivityActor {
@@ -177,7 +177,7 @@ function synthesizeBaseline(order: Order): Order {
         order.source === 'line_excel'
           ? 'ประมวลผลไฟล์ Excel เสร็จ — ส่งเข้า Inbox ให้ตรวจ'
           : 'ประมวลผลรูปสลิปเสร็จ — ส่งเข้า Inbox ให้ตรวจ',
-      details: order.confidence > 0 ? `AI confidence ${order.confidence}%` : undefined,
+      details: order.confidence > 0 ? `ความมั่นใจ ${order.confidence}%` : undefined,
     });
   }
 
