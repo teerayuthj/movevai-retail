@@ -301,24 +301,20 @@ export function MessengerRouteMap({
 
       {destination &&
         (remainingDistance != null || (showRemainingDistance && roadRouteMessage)) && (
-          <div className="absolute bottom-2 right-2 z-[1000] max-w-[70%] rounded-lg border bg-background/95 px-3 py-2 text-right shadow-sm backdrop-blur">
+          <div className="absolute right-2 top-2 z-[1000] max-w-[56%] rounded-full border bg-background/95 px-3 py-1.5 text-right shadow-sm backdrop-blur">
             {remainingDistance != null ? (
               <>
                 <div
                   className={
                     remainingDistance <= 1_000
-                      ? 'text-xs font-semibold text-success'
-                      : 'text-xs font-medium'
+                      ? 'text-[10px] font-semibold text-success'
+                      : 'text-[10px] font-medium text-muted-foreground'
                   }
                 >
                   {arrivalStatus}
                 </div>
-                <div className="text-xl font-semibold tabular-nums">
+                <div className="text-base font-semibold leading-tight tabular-nums">
                   {formatRemainingDistance(remainingDistance)}
-                </div>
-                <div className="truncate text-[10px] text-muted-foreground">
-                  ถึง {destination.order.customer.name} ·{' '}
-                  {roadDistanceTrustworthy ? 'ระยะตามถนนโดยประมาณ' : 'ระยะเส้นตรงโดยประมาณ'}
                 </div>
               </>
             ) : (

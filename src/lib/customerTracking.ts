@@ -118,8 +118,46 @@ export function isOrderReleased(order: Order): boolean {
   return SCHEDULED_STATUSES.has(order.status);
 }
 
+const PLANNING_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PLANNING_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function firstImportColumn(columns: Record<string, string> | undefined, keys: string[]) {
+  if (!columns) return undefined;
+  for (const key of keys) {
+    const value = columns[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function getImportedDelivery(order: Order): { date: string; time?: string } | null {
+  const columns = order.metadataJson?.import?.columns;
+  const date = firstImportColumn(columns, [
+    'deliveryDate',
+    'plannedDate',
+    'delivery_date',
+    'วันที่ส่ง',
+    'วันที่จัดส่ง',
+  ]);
+  const time = firstImportColumn(columns, [
+    'deliveryTime',
+    'plannedTime',
+    'delivery_time',
+    'เวลาส่ง',
+    'เวลาจัดส่ง',
+  ]);
+
+  if (!date || !PLANNING_DATE_RE.test(date)) return null;
+  if (time && !PLANNING_TIME_RE.test(time)) return { date };
+  return { date, time };
+}
+
 /** กำหนดวัน/เวลาส่งที่จะโชว์ให้ลูกค้า — รอบส่งจริง (deliveryRoute) มาก่อนแผนร่าง */
 export function getPlannedDelivery(order: Order): { date: string; time?: string } | null {
+  const importedDelivery = getImportedDelivery(order);
+  if (order.deliveryRoute?.dispatchMode === 'urgent' && importedDelivery) {
+    return importedDelivery;
+  }
   if (order.deliveryRoute?.plannedDate) {
     return { date: order.deliveryRoute.plannedDate, time: order.deliveryRoute.plannedTime };
   }
