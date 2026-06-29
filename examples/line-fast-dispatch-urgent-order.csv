@@ -1,0 +1,2 @@
+invoiceNo,orderDate,deliveryDate,deliveryTime,customerName,customerPhone,customerAddress,totalValue,payment,note,shippingMethod,itemName,sku,qty,price,weight,purity
+INV-20260629-0001,2026-06-29,2026-06-30,14:00,คุณศรัณย์ วงศ์วัฒนา,098-077-8112,98 Wireless Residence ห้อง 2504 ถนนวิทยุ แขวงลุมพินี เขตปทุมวัน กรุงเทพฯ 10330,259300,prepaid,ส่งด่วน 1 วัน ลูกค้าชำระครบแล้ว โทรก่อนถึง 10 นาที ส่งถึงมือผู้รับเท่านั้น เลข INV-20260629-0001 นัดส่ง 2026-06-30 14:00,internal_driver,AUSIRIS ทองคำแท่ง 99.99% Investment Grade,AUS-INV-9999-10G,3,32500,10 กรัม,99.99%

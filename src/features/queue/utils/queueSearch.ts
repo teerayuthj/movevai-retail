@@ -4,10 +4,12 @@ export function parseQueueSearch(locationSearch: string) {
   const params = new URLSearchParams(locationSearch);
   const tab = params.get('tab');
   const orderId = params.get('order');
+  const mode = params.get('mode');
 
   return {
     tab: tab === 'ready' || tab === 'assigned' ? (tab as DriverQueueTab) : null,
     orderId: orderId || null,
+    mode: mode === 'fast' ? 'fast' : null,
   };
 }
 

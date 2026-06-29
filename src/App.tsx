@@ -117,7 +117,9 @@ export default function App() {
           {page === 'overview' && <OverviewPage />}
           {page === 'chat' && <ChatIntakePage onOpenInbox={() => navigateToPage('inbox')} />}
           {page === 'script_transform' && <ScriptTransformPage />}
-          {page === 'inbox' && <InboxPage />}
+          {page === 'inbox' && (
+            <InboxPage onOpenQueue={(search) => navigateToPage('queue', { search })} />
+          )}
           {page === 'queue' && (
             <QueuePage
               locationSearch={locationSearch}

@@ -26,7 +26,7 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
 
 type InboxTab = 'orders' | 'line_import';
 
-export function InboxPage() {
+export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => void }) {
   const {
     orders,
     confirmOrder,
@@ -131,7 +131,12 @@ export function InboxPage() {
       </div>
 
       {tab === 'line_import' ? (
-        <ImportBatchPanel onOpenOrder={openImportedOrder} />
+        <ImportBatchPanel
+          onOpenOrder={openImportedOrder}
+          onFastDispatchOrder={(orderId) =>
+            onOpenQueue?.(`?tab=ready&order=${encodeURIComponent(orderId)}&mode=fast`)
+          }
+        />
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[360px_1fr]">

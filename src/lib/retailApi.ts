@@ -577,6 +577,7 @@ export async function clearPlanning(
 
 export type RoutePreview = {
   distanceMeters: number | null;
+  durationSeconds: number | null;
   geometry: { lat: number; lng: number }[];
 };
 

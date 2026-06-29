@@ -16,6 +16,7 @@ import {
   IdCard,
   Map as MapIcon,
   MapPin,
+  MessageSquareText,
   Navigation,
   Package,
   Phone,
@@ -33,6 +34,7 @@ export function JobCard({
   onStart,
   onClose,
   onViewMap,
+  starting = false,
 }: {
   order: Order;
   nowMs?: number;
@@ -40,6 +42,8 @@ export function JobCard({
   onClose: () => void;
   /** เปิดแผนที่โฟกัสปลายทางของงานนี้โดยเฉพาะ (แยกจากภาพรวมทั้ง Route) */
   onViewMap?: () => void;
+  /** กำลังเริ่มงานนี้อยู่ (ระหว่างรอ backend) — disable ปุ่ม + แสดงสถานะ */
+  starting?: boolean;
 }) {
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
@@ -67,7 +71,7 @@ export function JobCard({
           <Package className="h-3 w-3" /> พัสดุ
         </Badge>
       </div>
-      {isUrgent && (
+      {isUrgent && order.status === 'assigned' && (
         <Badge variant="destructive" className="mt-2">
           งานด่วน · กรุณารับภายใน 5 นาที
         </Badge>
@@ -115,6 +119,21 @@ export function JobCard({
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>{order.customer.address}</span>
         </div>
+        {order.note && (
+          <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-warning">
+            <div className="flex items-start gap-1.5">
+              <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <div>
+                <div className="text-[10px] font-medium uppercase tracking-normal opacity-80">
+                  หมายเหตุ
+                </div>
+                <div className="mt-0.5 whitespace-pre-wrap text-[12px] leading-relaxed">
+                  {order.note}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex flex-wrap items-center gap-3">
           <a href={`tel:${order.customer.phone}`} className="flex items-center gap-1.5 text-info">
             <Phone className="h-3.5 w-3.5" />
@@ -232,10 +251,16 @@ export function JobCard({
             size="sm"
             variant={isUrgent || isOverdue ? 'destructive' : 'default'}
             onClick={onStart}
-            disabled={isFutureJob}
+            disabled={isFutureJob || starting}
           >
             <Navigation className="h-4 w-4" />
-            {isFutureJob ? 'ยังไม่ถึงวันส่ง' : isUrgent || isOverdue ? 'รับงานด่วน' : 'รับงาน'}
+            {isFutureJob
+              ? 'ยังไม่ถึงวันส่ง'
+              : starting
+                ? 'กำลังเริ่ม...'
+                : isUrgent || isOverdue
+                  ? 'รับงานด่วน'
+                  : 'รับงาน'}
           </Button>
         )}
         {order.status === 'in_transit' && (

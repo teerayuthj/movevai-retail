@@ -92,6 +92,8 @@ export type RetailStore = RetailState & {
   restoreImportOrders: (orderIds: string[]) => Promise<void>;
   assignOrder: (orderId: string, driverId: string) => Promise<void>;
   autoAssignReadyOrders: (orderIds?: string[]) => Promise<void>;
+  /** จับคู่คนขับ + สร้าง route + เริ่มจัดส่ง ในคำสั่งเดียว — คืน id งานที่ส่งออก */
+  autoAssignAndDispatchReadyOrders: (orderIds?: string[]) => Promise<string[]>;
   startDelivery: (orderId: string) => Promise<void>;
   submitDelivery: (orderId: string, input: SubmitDeliveryInput) => Promise<void>;
   confirmDelivery: (orderId: string, input?: ConfirmDeliveryInput) => Promise<void>;

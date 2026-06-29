@@ -368,12 +368,14 @@ function BatchWorkspace({
   scope,
   batches,
   onOpenOrder,
+  onFastDispatchOrder,
   onDownloadBatch,
   downloadingBatchId,
 }: {
   scope: string; // batchId | 'all'
   batches: ImportBatch[];
   onOpenOrder?: (orderId: string) => void;
+  onFastDispatchOrder?: (orderId: string) => void;
   onDownloadBatch: (batch: Pick<ImportBatch, 'id' | 'fileName'>) => void;
   downloadingBatchId: string | null;
 }) {
@@ -491,6 +493,13 @@ function BatchWorkspace({
     void runAction(`อนุมัติเข้าคิว ${ids.length} รายการ · ${shippingMethodLabel[method]}`, () =>
       approveImportOrders(ids, method),
     );
+  };
+
+  const approveAndOpenFastDispatch = (orderId: string) => {
+    void runAction('อนุมัติและเปิด Fast Dispatch', async () => {
+      await approveImportOrders([orderId], 'internal_driver');
+      onFastDispatchOrder?.(orderId);
+    });
   };
 
   const bulkReject = () => {
@@ -627,6 +636,11 @@ function BatchWorkspace({
             <Coins className="h-3 w-3 text-warning" />
             {stats.total} แถว · มูลค่ารวม {formatTHB(stats.value)}
           </div>
+          {onFastDispatchOrder && (
+            <div className="mt-1 text-[11px] text-muted-foreground">
+              Local demo: อนุมัติแล้วเปิดคิวส่งด่วนได้ทันที โดย dispatcher ยังกดยืนยัน Route เอง
+            </div>
+          )}
         </div>
         {scope !== ALL_SCOPE && details[0] && (
           <Button
@@ -798,6 +812,16 @@ function BatchWorkspace({
                       )}
                       {r.kind === 'review' && r.orderId && (
                         <>
+                          {onFastDispatchOrder && (
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => approveAndOpenFastDispatch(r.orderId!)}
+                              className="rounded-md border border-warning/60 px-2 py-1 text-[11px] font-medium text-warning hover:bg-warning/10 disabled:opacity-40"
+                            >
+                              Fast Dispatch
+                            </button>
+                          )}
                           <button
                             type="button"
                             disabled={busy}
@@ -1109,8 +1133,10 @@ function BatchWorkspace({
 
 export default function ImportBatchPanel({
   onOpenOrder,
+  onFastDispatchOrder,
 }: {
   onOpenOrder?: (orderId: string) => void;
+  onFastDispatchOrder?: (orderId: string) => void;
 }) {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [selectedId, setSelectedId] = useState<string>(ALL_SCOPE);
@@ -1216,6 +1242,7 @@ export default function ImportBatchPanel({
             scope={selectedId}
             batches={batches}
             onOpenOrder={onOpenOrder}
+            onFastDispatchOrder={onFastDispatchOrder}
             onDownloadBatch={(batch) => void exportBatchCsv(batch)}
             downloadingBatchId={downloadingBatchId}
           />

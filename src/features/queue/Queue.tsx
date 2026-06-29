@@ -4,7 +4,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { AutoAssignPreviewDialog } from '@/components/delivery/AutoAssignPreviewDialog';
 import { OrderTimeline } from '@/components/OrderTimeline';
@@ -14,25 +13,38 @@ import {
   DriverSummary,
   EmptyState,
   OrderSummary,
-  QueueAiAssessment,
   QueueOrderCard,
 } from '@/components/delivery/DeliveryExecutionShared';
 import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/mock';
 import { getTomorrowDateKey, isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
-  compareOrderPriority,
   canDriverTakeOrder,
-  driverQueueTabLabels,
   getDriverQueueTab,
   planAutoAssignments,
   recommendDriverForOrder,
-  type DriverQueueTab,
 } from '@/lib/deliveryExecution';
+import {
+  formatFastDispatchDueAt,
+  getFastDispatchSla,
+  isFastDispatchOrder,
+} from '@/lib/fastDispatch';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
 import { previewPlanningRoute, type RoutePreview } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';
-import { Ban, BellRing, CalendarClock, List, MapPin, Route, Search, Sparkles } from 'lucide-react';
+import {
+  Ban,
+  BellRing,
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  List,
+  MapPin,
+  PlayCircle,
+  Route,
+  Search,
+  Sparkles,
+} from 'lucide-react';
 import { AssignmentPanel } from './components/AssignmentPanel';
 import { UrgentDispatchDialog } from './components/UrgentDispatchDialog';
 import { buildTrackingSearch, parseQueueSearch } from './utils/queueSearch';
@@ -52,7 +64,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   const {
     orders,
     drivers,
-    autoAssignReadyOrders,
+    autoAssignAndDispatchReadyOrders,
     startDelivery,
     cancelOrder,
     planOrders,
@@ -78,11 +90,10 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   );
   const readyOrders = workflowOrders.filter((order) => order.status === 'ready');
   const assignedOrders = workflowOrders.filter((order) => order.status === 'assigned');
-  const defaultTab: DriverQueueTab =
-    readyOrders.length > 0 || assignedOrders.length === 0 ? 'ready' : 'assigned';
   const parsedSearch = useMemo(() => parseQueueSearch(locationSearch), [locationSearch]);
+  const fastMode = parsedSearch.mode === 'fast';
+  const fastReadyOrders = readyOrders.filter(isFastDispatchOrder);
 
-  const [activeTab, setActiveTab] = useState<DriverQueueTab>(parsedSearch.tab ?? defaultTab);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
     parsedSearch.orderId ?? readyOrders[0]?.id ?? assignedOrders[0]?.id ?? null,
   );
@@ -92,6 +103,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
 
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
   const selectedDriver = drivers.find((driver) => driver.id === selectedDriverId) ?? null;
+  const fastSelectedSla = selectedOrder ? getFastDispatchSla(selectedOrder) : null;
 
   // คนขับที่ระบบแนะนำสำหรับออเดอร์ที่เลือก (โซน + capacity + ใบรับรอง)
   const recommendedDriverId =
@@ -105,9 +117,9 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     [orders, drivers],
   );
 
+  // list เดียวรวม ready + assigned — ไม่มีแท็บแล้ว แยกสถานะด้วย badge บนการ์ด
   const filteredOrders = workflowOrders
     .filter((order) => {
-      const tab = getDriverQueueTab(order);
       const normalizedQuery = query.trim().toLowerCase();
       const assignedDriverName = order.assignedDriverId
         ? (drivers.find((driver) => driver.id === order.assignedDriverId)?.name ?? '')
@@ -125,16 +137,16 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
           .toLowerCase()
           .includes(normalizedQuery);
 
-      return tab === activeTab && matchesQuery;
+      return matchesQuery;
     })
-    // แท็บ "รอมอบหมาย" เรียงตามความสำคัญ — งานด่วน/มูลค่าสูง/ค้างนานขึ้นก่อน
-    .sort((a, b) => (activeTab === 'ready' ? compareOrderPriority(a, b) : 0));
-
-  useEffect(() => {
-    if (parsedSearch.tab) {
-      setActiveTab(parsedSearch.tab);
-    }
-  }, [parsedSearch.tab]);
+    .sort((a, b) => {
+      if (fastMode) {
+        const fastDiff = Number(isFastDispatchOrder(b)) - Number(isFastDispatchOrder(a));
+        if (fastDiff !== 0) return fastDiff;
+      }
+      // เรียง order ล่าสุดขึ้นก่อน (newest receivedAt first)
+      return new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
+    });
 
   useEffect(() => {
     if (parsedSearch.orderId) {
@@ -164,11 +176,6 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     selectedOrder?.status === 'ready' &&
     selectedDriver &&
     canDriverTakeOrder(selectedOrder, selectedDriver);
-
-  const tabCounts: Record<DriverQueueTab, number> = {
-    ready: readyOrders.length,
-    assigned: assignedOrders.length,
-  };
 
   const assignedReadyToStart = assignedOrders.length > 0;
 
@@ -224,10 +231,27 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     }
   };
 
-  const routeTargetOrders =
-    activeTab === 'assigned' && selectedOrder?.status === 'assigned'
-      ? [selectedOrder]
-      : assignedOrders;
+  const simulateMessengerAccept = async () => {
+    if (!selectedOrder) return;
+    setOperationError('');
+    try {
+      await startDelivery(selectedOrder.id);
+      toast.success(`${selectedOrder.code} จำลอง Messenger รับงานและเริ่มส่งแล้ว`);
+      onOpenTracking(`?tab=in_transit&order=${encodeURIComponent(selectedOrder.id)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setOperationError(message);
+      toast.error(`จำลองรับงานไม่สำเร็จ — ${message}`);
+    }
+  };
+
+  const openUrgentTimeoutView = () => {
+    if (!selectedOrder) return;
+    toast.message('เปิดมุมมองงานเลยกำหนดใน Tracking');
+    onOpenTracking(`?tab=overdue&order=${encodeURIComponent(selectedOrder.id)}`);
+  };
+
+  const routeTargetOrders = selectedOrder?.status === 'assigned' ? [selectedOrder] : assignedOrders;
 
   const selectedOrderSet = useMemo(
     () => new Set(selectedOrderId ? [selectedOrderId] : []),
@@ -356,10 +380,14 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
         drivers={drivers}
         onCancel={() => setAutoPreviewOpen(false)}
         onConfirm={(orderIds) => {
-          autoAssignReadyOrders(orderIds);
           setAutoPreviewOpen(false);
-          setActiveTab('assigned');
-          toast.success(`Auto-assign ${orderIds.length} งานให้คนขับแล้ว`);
+          void (async () => {
+            const dispatched = await autoAssignAndDispatchReadyOrders(orderIds);
+            toast.success(`จ่ายงาน + เริ่มจัดส่ง ${dispatched.length} งานแล้ว`);
+            onOpenTracking(
+              buildTrackingSearch(dispatched.length === 1 ? dispatched[0] : undefined),
+            );
+          })();
         }}
       />
 
@@ -403,34 +431,66 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
         </div>
       )}
 
+      {fastMode && (
+        <div className="grid gap-3 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm lg:grid-cols-[1fr_220px_220px]">
+          <div>
+            <div className="flex items-center gap-2 font-medium text-warning">
+              <BellRing className="h-4 w-4" />
+              Fast Dispatch local demo
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              งานจาก import ถูกเปิดเข้าคิวพร้อม focus order แล้ว ขั้นต่อไปคือเลือก Messenger,
+              พรีวิวแผนที่ แล้วกดยืนยัน Route ด่วน
+            </div>
+          </div>
+          <div className="rounded-lg border bg-background/70 px-3 py-2">
+            <div className="text-[11px] text-muted-foreground">จับ SLA ด่วนได้</div>
+            <div className="mt-0.5 text-lg font-semibold text-warning">
+              {fastReadyOrders.length}
+              <span className="ml-1 text-xs font-normal text-muted-foreground">งานพร้อมจ่าย</span>
+            </div>
+          </div>
+          <div className="rounded-lg border bg-background/70 px-3 py-2">
+            <div className="text-[11px] text-muted-foreground">Order ที่เลือก</div>
+            <div className="mt-0.5 truncate font-mono text-sm font-semibold">
+              {selectedOrder?.code ?? 'ยังไม่ได้เลือก'}
+            </div>
+            {fastSelectedSla && (
+              <div
+                className={cn(
+                  'mt-0.5 text-[11px]',
+                  fastSelectedSla.urgent ? 'text-warning' : 'text-muted-foreground',
+                )}
+              >
+                {fastSelectedSla.urgent
+                  ? `${fastSelectedSla.detail} · ${formatFastDispatchDueAt(fastSelectedSla.dueAt)}`
+                  : 'ยังไม่พบ keyword ด่วนจากข้อมูลนำเข้า'}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="grid gap-4 lg:grid-cols-[1fr_320px_380px]">
         <Card className="flex h-[calc(100vh-12rem)] flex-col overflow-hidden">
           <CardHeader className="pb-3">
             <div className="space-y-3">
               <CardTitle className="text-sm">งานพร้อมจ่ายวันนี้</CardTitle>
               <div className="flex flex-col gap-3">
-                <Tabs
-                  value={activeTab}
-                  onValueChange={(value) => setActiveTab(value as DriverQueueTab)}
-                  className="w-full"
-                >
-                  <div className="w-full">
-                    <TabsList className="flex h-auto w-full flex-nowrap justify-start gap-1.5 overflow-x-auto rounded-2xl bg-muted/70 p-1.5 lg:flex-wrap">
-                      {(Object.keys(driverQueueTabLabels) as DriverQueueTab[]).map((tab) => (
-                        <TabsTrigger
-                          key={tab}
-                          value={tab}
-                          className="h-10 shrink-0 gap-2 rounded-xl px-3.5 text-sm text-muted-foreground data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-xs"
-                        >
-                          <span>{driverQueueTabLabels[tab]}</span>
-                          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-background/80 px-1.5 text-[11px] font-semibold tabular-nums text-muted-foreground">
-                            {tabCounts[tab]}
-                          </span>
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </div>
-                </Tabs>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 font-medium text-muted-foreground">
+                    รอมอบหมาย
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {readyOrders.length}
+                    </span>
+                  </span>
+                  {assignedOrders.length > 0 && (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-info/10 px-2.5 py-1 font-medium text-info">
+                      จับคู่แล้ว · รอสร้าง Route
+                      <span className="font-semibold tabular-nums">{assignedOrders.length}</span>
+                    </span>
+                  )}
+                </div>
                 <div className="relative w-full max-w-xl">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -523,6 +583,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                             preview: true,
                             loading: routePreviewLoading && !routePreview?.geometry.length,
                             distanceMeters: routePreview?.distanceMeters,
+                            durationSeconds: routePreview?.durationSeconds,
                             geometry: routePreview?.geometry ?? [],
                           }
                         : null
@@ -546,7 +607,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                         setMobileDetailOpen(true);
                       }}
                       statusText={statusLabel[order.status]}
-                      rank={activeTab === 'ready' ? index + 1 : undefined}
+                      rank={index + 1}
                     />
                     <button
                       type="button"
@@ -589,13 +650,100 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                 driver={driver}
                 selected={selectedDriverId === driver.id}
                 onSelect={() => setSelectedDriverId(driver.id)}
-                recommended={driver.id === recommendedDriverId}
+                orders={orders}
               />
             ))}
           </CardContent>
         </Card>
 
         <div className="hidden h-[calc(100vh-12rem)] space-y-4 overflow-auto lg:block">
+          {fastMode && (
+            <Card className="border-warning/30 bg-warning/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm text-warning">
+                  <PlayCircle className="h-4 w-4" />
+                  Local Route Simulator
+                </CardTitle>
+                <CardDescription>
+                  ใช้ action จริงของระบบเพื่อทดสอบภาพรวมก่อนต่อ Google Maps/automation
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-[20px_1fr] gap-x-2 gap-y-2 text-xs">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-success" />
+                  <div>
+                    <div className="font-medium">1. Import approved</div>
+                    <div className="text-muted-foreground">Order ถูกเปิดในคิวพร้อมจ่ายแล้ว</div>
+                  </div>
+                  <div
+                    className={cn(
+                      'mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border text-[10px]',
+                      selectedOrder?.status === 'assigned' ||
+                        selectedOrder?.status === 'in_transit' ||
+                        selectedOrder?.status === 'pending_confirmation'
+                        ? 'border-success text-success'
+                        : 'border-muted-foreground/40 text-muted-foreground',
+                    )}
+                  >
+                    2
+                  </div>
+                  <div>
+                    <div className="font-medium">Create urgent route</div>
+                    <div className="text-muted-foreground">เลือก Messenger แล้วกดส่งด่วนทันที</div>
+                  </div>
+                  <div
+                    className={cn(
+                      'mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border text-[10px]',
+                      selectedOrder?.status === 'in_transit' ||
+                        selectedOrder?.status === 'pending_confirmation'
+                        ? 'border-success text-success'
+                        : 'border-muted-foreground/40 text-muted-foreground',
+                    )}
+                  >
+                    3
+                  </div>
+                  <div>
+                    <div className="font-medium">Messenger accepts</div>
+                    <div className="text-muted-foreground">จำลองการรับงานและเริ่มส่ง</div>
+                  </div>
+                </div>
+
+                {selectedOrder?.status === 'ready' && (
+                  <Button
+                    className="w-full"
+                    disabled={!canAssign}
+                    onClick={() => {
+                      if (!selectedOrder || !selectedDriverId) return;
+                      setUrgentError('');
+                      setUrgentTarget({ orderId: selectedOrder.id, driverId: selectedDriverId });
+                    }}
+                  >
+                    <BellRing className="h-4 w-4" />
+                    สร้าง Route ด่วนจาก simulator
+                  </Button>
+                )}
+
+                {selectedOrder?.status === 'assigned' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" onClick={() => void simulateMessengerAccept()}>
+                      <PlayCircle className="h-4 w-4" />
+                      รับงาน
+                    </Button>
+                    <Button variant="outline" onClick={openUrgentTimeoutView}>
+                      <Clock className="h-4 w-4" />
+                      ไม่รับงาน
+                    </Button>
+                  </div>
+                )}
+
+                {!selectedOrder && (
+                  <div className="rounded-lg border border-dashed bg-background/70 p-3 text-center text-xs text-muted-foreground">
+                    เลือก order เพื่อจำลอง route
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
           <AssignmentPanel
             order={selectedOrder}
             driver={selectedDriver}
@@ -630,7 +778,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                       driver={driver}
                       selected={selectedDriverId === driver.id}
                       onSelect={() => setSelectedDriverId(driver.id)}
-                      recommended={driver.id === recommendedDriverId}
+                      orders={orders}
                     />
                   ))}
                 </div>
@@ -639,10 +787,9 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
             {selectedOrder.status === 'assigned' && selectedDriver && (
               <div>
                 <div className="mb-1 text-[11px] font-medium text-muted-foreground">คนขับ</div>
-                <DriverSummary driver={selectedDriver} order={selectedOrder} />
+                <DriverSummary driver={selectedDriver} order={selectedOrder} orders={orders} />
               </div>
             )}
-            <QueueAiAssessment />
             <OrderTimeline
               order={selectedOrder}
               description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้"

@@ -668,6 +668,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                               preview: true,
                               loading: routePreviewLoading && !routePreview?.geometry.length,
                               distanceMeters: routePreview?.distanceMeters,
+                              durationSeconds: routePreview?.durationSeconds,
                               geometry: routePreview?.geometry ?? [],
                             }
                           : null

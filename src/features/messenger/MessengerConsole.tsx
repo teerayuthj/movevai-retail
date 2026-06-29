@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import { Button } from '@/components/ui/button';
 import { useRetailStore } from '@/state/retailStore';
@@ -24,6 +25,7 @@ import {
   isPushSupported,
   subscribeToPush,
 } from './push';
+import { isNativePushSupported, registerNativePush } from './nativePush';
 import { MessengerHeader } from './components/MessengerHeader';
 import { JobCard } from './components/JobCard';
 import { getMessengerJobOverdueMinutes, getMessengerJobScheduledAt } from './messengerSchedule';
@@ -76,6 +78,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const [mapGroupKey, setMapGroupKey] = useState<string | null>(null);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
+  const [startingJobId, setStartingJobId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
   const install = useInstallPrompt();
   const { activeTab, mapOrderId, setTab, openOrderMap, backToPending } = useMessengerTab();
@@ -192,10 +195,17 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     void subscribeToPush(messenger.id);
   }, [messenger]);
 
+  // native (iOS/Android): ขอ permission + ผูก device token (APNs/FCM) กับคนขับ
+  useEffect(() => {
+    if (!messenger || !isNativePushSupported()) return;
+    void registerNativePush(messenger.id);
+  }, [messenger]);
+
   // เริ่มส่งงาน = จังหวะ messenger ออกไปส่งของจริง → ถ้ายังไม่ได้บันทึก Route ของรอบนี้
   // ให้ start tracking อัตโนมัติ เพื่อให้ "ทุกรอบถูกบันทึก" โดยไม่ต้องพึ่งความจำ messenger
   const handleStartJob = useCallback(
     async (order: Order) => {
+      setStartingJobId(order.id);
       try {
         await startDelivery(order.id);
         const routeId = order.deliveryRoute?.id;
@@ -210,8 +220,16 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         }
         setTab('in_transit');
       } catch (error) {
-        if (isMessengerAuthError(error)) return;
-        setJobsError(error instanceof Error ? error.message : 'เริ่มงานไม่สำเร็จ');
+        // เดิม fail เงียบ ๆ ทำให้ปุ่ม "นิ่ง" — แสดง toast บอกสาเหตุเสมอ
+        if (isMessengerAuthError(error)) {
+          toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'เริ่มงานไม่สำเร็จ';
+        setJobsError(message);
+        toast.error(`รับงานไม่สำเร็จ — ${message}`);
+      } finally {
+        setStartingJobId(null);
       }
     },
     [setTab, startDelivery, tracking],
@@ -657,6 +675,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                       <JobCard
                         order={order}
                         nowMs={nowMs}
+                        starting={startingJobId === order.id}
                         onStart={() => void handleStartJob(order)}
                         onClose={() => setCloseTargetId(order.id)}
                         onViewMap={

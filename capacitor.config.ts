@@ -13,6 +13,13 @@ const config: CapacitorConfig = {
   server: process.env.CAP_SERVER_URL
     ? { url: process.env.CAP_SERVER_URL, cleartext: true }
     : undefined,
+  plugins: {
+    // ให้ iOS เด้ง banner/เสียง/badge แม้แอปเปิดอยู่ foreground
+    // (default ของ iOS คือ "เงียบ" ตอน foreground — ต้องเปิดตรงนี้)
+    PushNotifications: {
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
+  },
 };
 
 export default config;

@@ -257,8 +257,9 @@ export function RetailProvider({
       commit((current) =>
         [...ids].reduce((acc, id) => confirmOrderState(acc, id, shippingMethod), current),
       );
+      await syncFromBackend();
     },
-    [commit],
+    [commit, syncFromBackend],
   );
 
   const rejectImportOrders = useCallback(
@@ -306,6 +307,38 @@ export function RetailProvider({
         ...next,
         orders: canonical.reduce(replaceOrder, next.orders),
       }));
+    },
+    [commit, state],
+  );
+
+  // จับคู่คนขับ + สร้าง route + เริ่มจัดส่ง ในคำสั่งเดียว (one-click dispatch)
+  // ข้ามขั้น "รอสร้าง Route" — ใช้เมื่อไว้ใจการจับคู่ของ auto-assign เต็มที่
+  const autoAssignAndDispatchReadyOrders = useCallback(
+    async (orderIds?: string[]) => {
+      const next = autoAssignReadyOrdersState(state, orderIds);
+      const changed = next.orders.filter((order) => {
+        const before = state.orders.find((item) => item.id === order.id);
+        return before?.assignedDriverId !== order.assignedDriverId && order.assignedDriverId;
+      });
+      // 1) sync + assign บน backend
+      const assigned = await Promise.all(
+        changed.map((order) => syncAndAssignOrder(order, order.assignedDriverId!)),
+      );
+      // 2) เริ่มจัดส่งทันทีด้วย id/คนขับจาก canonical ที่เพิ่ง assign
+      const started = await Promise.all(
+        assigned.map((order, index) =>
+          startMessengerOrder(order.id, order.assignedDriverId ?? changed[index].assignedDriverId!),
+        ),
+      );
+      commit(() => {
+        let result: RetailState = { ...next, orders: assigned.reduce(replaceOrder, next.orders) };
+        for (const order of started) {
+          const advanced = startDeliveryState(result, order.id);
+          result = { ...advanced, orders: replaceOrder(advanced.orders, order) };
+        }
+        return result;
+      });
+      return started.map((order) => order.id);
     },
     [commit, state],
   );
@@ -644,6 +677,7 @@ export function RetailProvider({
       restoreImportOrders,
       assignOrder,
       autoAssignReadyOrders,
+      autoAssignAndDispatchReadyOrders,
       startDelivery,
       submitDelivery,
       confirmDelivery,
@@ -684,6 +718,7 @@ export function RetailProvider({
       restoreImportOrders,
       assignOrder,
       autoAssignReadyOrders,
+      autoAssignAndDispatchReadyOrders,
       startDelivery,
       submitDelivery,
       confirmDelivery,

@@ -3,8 +3,9 @@
 export type NotifPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
 export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-const MESSENGER_API_BASE_URL =
+export const MESSENGER_API_BASE_URL =
   (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
+export const MESSENGER_TOKEN_STORAGE_KEY = 'movevai:messenger-token';
 export const DEFAULT_MESSENGER_CODE =
   (import.meta.env.VITE_MESSENGER_CODE as string | undefined) ?? 'D-02';
 

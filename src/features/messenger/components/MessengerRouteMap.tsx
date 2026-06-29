@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Circle, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { AlertCircle, Loader2, LocateFixed, Navigation, Radio } from 'lucide-react';
+import { AlertCircle, Loader2, LocateFixed, Navigation } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
 import { getMessengerJobOverdueMinutes } from '../messengerSchedule';
@@ -250,6 +250,11 @@ export function MessengerRouteMap({
                     จุดที่ {stop.label} · {stop.order.customer.name}
                   </div>
                   <div className="text-muted-foreground">{stop.order.customer.address}</div>
+                  {stop.order.note && (
+                    <div className="rounded border border-warning/30 bg-warning/10 px-2 py-1 text-warning">
+                      หมายเหตุ: {stop.order.note}
+                    </div>
+                  )}
                   <a
                     href={navigationUrl(stop.order.customer.address, stop.coords)}
                     target="_blank"
@@ -266,41 +271,33 @@ export function MessengerRouteMap({
         <FitBounds points={points} messengerPoint={messengerPoint} />
       </MapContainer>
 
-      <div className="absolute left-2 top-2 z-[1000] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-2.5 py-2 text-xs shadow-sm backdrop-blur">
-        {displayedLocationStatus === 'tracking' && location ? (
-          <div className="space-y-0.5">
-            <div className="flex items-center gap-1.5 font-medium text-info">
-              <Radio className="h-3.5 w-3.5" />
-              {locationSource?.remote ? 'ตำแหน่งจากเครื่องที่เริ่ม Route' : 'GPS realtime ทำงาน'}
+      {/* การติดตามสำเร็จไม่ต้องโชว์ card ทับแผนที่ — แสดงเฉพาะตอน GPS ยังไม่พร้อม/กำลังขอ */}
+      {displayedLocationStatus !== 'tracking' && (
+        <div className="absolute left-2 top-2 z-[1000] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-2.5 py-2 text-xs shadow-sm backdrop-blur">
+          {displayedLocationStatus === 'requesting' ? (
+            <div className="flex items-center gap-1.5 text-muted-foreground">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {locationSource?.remote ? 'กำลังรอ GPS จากเครื่องที่เริ่ม Route…' : 'กำลังขอ GPS…'}
             </div>
-            <div className="text-muted-foreground">
-              ความแม่นยำ ±{Math.round(location.accuracy)} ม. ·{' '}
-              {locationSource?.remote ? 'อัปเดตจาก backend ทุก 5 วินาที' : 'ทำงานขณะเปิดหน้านี้'}
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex items-center gap-1.5 text-destructive">
+                <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                <span>{displayedLocationError || 'GPS ยังไม่พร้อมใช้งาน'}</span>
+              </div>
+              {(displayedLocationStatus === 'error' || displayedLocationStatus === 'denied') && (
+                <button
+                  type="button"
+                  onClick={retry}
+                  className="inline-flex items-center gap-1 font-medium text-info"
+                >
+                  <LocateFixed className="h-3.5 w-3.5" /> ลองอ่านตำแหน่งอีกครั้ง
+                </button>
+              )}
             </div>
-          </div>
-        ) : displayedLocationStatus === 'requesting' ? (
-          <div className="flex items-center gap-1.5 text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            {locationSource?.remote ? 'กำลังรอ GPS จากเครื่องที่เริ่ม Route…' : 'กำลังขอ GPS…'}
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-1.5 text-destructive">
-              <AlertCircle className="h-3.5 w-3.5 shrink-0" />
-              <span>{displayedLocationError || 'GPS ยังไม่พร้อมใช้งาน'}</span>
-            </div>
-            {(displayedLocationStatus === 'error' || displayedLocationStatus === 'denied') && (
-              <button
-                type="button"
-                onClick={retry}
-                className="inline-flex items-center gap-1 font-medium text-info"
-              >
-                <LocateFixed className="h-3.5 w-3.5" /> ลองอ่านตำแหน่งอีกครั้ง
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {destination &&
         (remainingDistance != null || (showRemainingDistance && roadRouteMessage)) && (
