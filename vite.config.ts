@@ -56,6 +56,30 @@ function readLocalEnv() {
   ) as Record<string, string>;
 }
 
+// dev-only: surface "ลูกค้า" มี entry แยก (customer.html) แต่ใช้ path เดิม /track, /customer-track
+// rewrite request เหล่านี้ให้ vite เสิร์ฟ customer.html แทน index.html (admin)
+// production: ต้องตั้ง rewrite เดียวกันที่ hosting layer (ดู README/ความเห็นใน final response)
+function customerEntryRouting() {
+  return {
+    name: 'customer-entry-routing',
+    apply: 'serve' as const,
+    configureServer(server: import('vite').ViteDevServer) {
+      server.middlewares.use((req, _res, next) => {
+        const pathname = (req.url ?? '').split('?')[0];
+        if (
+          pathname === '/track' ||
+          pathname.startsWith('/track/') ||
+          pathname === '/customer-track' ||
+          pathname.startsWith('/customer-track/')
+        ) {
+          req.url = '/customer.html';
+        }
+        next();
+      });
+    },
+  };
+}
+
 async function sendDevPush(subscription: unknown, payload: unknown) {
   const localEnv = readLocalEnv();
   const publicKey = process.env.VAPID_PUBLIC_KEY ?? localEnv.VAPID_PUBLIC_KEY;
@@ -145,8 +169,19 @@ function devPushSubscriptionSink() {
 }
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      input: {
+        // admin + messenger ยังแชร์ entry เดียว (index.html) — แยก messenger ภายหลัง
+        main: path.resolve(__dirname, 'index.html'),
+        // surface "ลูกค้า" เป็น entry/bundle แยก → ลูกค้าไม่ต้องโหลด JS ของ admin
+        customer: path.resolve(__dirname, 'customer.html'),
+      },
+    },
+  },
   plugins: [
     react(),
+    customerEntryRouting(),
     devPushSubscriptionSink(),
     // PWA: ทำให้ "เปิดแอป Messenger" ติดตั้งลงหน้าจอมือถือได้ + offline app-shell
     // (ระยะ 2 ส่วนที่ไม่ต้องมี backend — ดู CLAUDE.md / messenger architecture)

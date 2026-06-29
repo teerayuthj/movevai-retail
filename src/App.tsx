@@ -35,9 +35,6 @@ const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default:
 const MessengerConsolePage = lazy(() =>
   import('@/pages/MessengerConsole').then((m) => ({ default: m.MessengerConsolePage })),
 );
-const CustomerTrackingPage = lazy(() =>
-  import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
-);
 const NotFoundPage = lazy(() =>
   import('@/pages/NotFound').then((m) => ({ default: m.NotFoundPage })),
 );
@@ -103,14 +100,8 @@ export default function App() {
     );
   }
 
-  if (page === 'customer_tracking') {
-    return (
-      <Suspense fallback={null}>
-        <SplashGate />
-        <CustomerTrackingPage pathname={locationPathname} />
-      </Suspense>
-    );
-  }
+  // หมายเหตุ: surface "ลูกค้า" (/track) ย้ายไป entry แยกแล้ว (customer.html → src/main-customer.tsx)
+  // admin entry นี้จึงไม่ render customer_tracking อีก (vite rewrite /track* → customer.html)
 
   return (
     <RetailProvider>
