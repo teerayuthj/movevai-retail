@@ -21,13 +21,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   formatTHB,
-  orders as mockOrders,
   paymentLabel,
   shippingMethodLabel,
   statusLabel,
   type Order,
   type OrderStatus,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import {
   fetchCustomerOrder,
   fetchCustomerLiveTracking,
@@ -321,28 +320,22 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
   const orderId = useMemo(() => getCustomerTrackingOrderId(pathname), [pathname]);
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadSource, setLoadSource] = useState<'api' | 'demo' | null>(null);
   const [liveTracking, setLiveTracking] = useState<CustomerLiveTracking | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setOrder(null);
-    setLoadSource(null);
 
     void fetchCustomerOrder(orderId)
       .then((nextOrder) => {
         if (cancelled) return;
         setOrder(nextOrder);
-        setLoadSource('api');
       })
       .catch(() => {
         if (cancelled) return;
-        const fallbackOrder = import.meta.env.DEV
-          ? mockOrders.find((item) => item.id === orderId || item.code === orderId)
-          : undefined;
-        setOrder(fallbackOrder ?? null);
-        setLoadSource(fallbackOrder ? 'demo' : null);
+        // ไม่มี mock fallback แล้ว — customer surface ใช้ข้อมูลจริงจาก backend อย่างเดียว
+        setOrder(null);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -568,7 +561,6 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
           <section className="rounded-lg border bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold">Timeline</div>
-              {loadSource === 'demo' && <Badge variant="muted">demo</Badge>}
             </div>
             {timelineEvents.length === 0 ? (
               <div className="mt-3 rounded-md border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
