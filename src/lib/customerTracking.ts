@@ -1,6 +1,8 @@
 import type { Order, OrderActivityEventType, OrderStatus, ProofOfDelivery } from '@/data/mock';
 
-const CUSTOMER_TRACKING_BASE_PATH = '/customer-track';
+const CUSTOMER_TRACKING_BASE_PATH = '/track';
+// path เดิม — เก็บไว้รองรับลิงก์เก่าที่เคยส่งให้ลูกค้าไปแล้ว (อย่าใช้สร้างลิงก์ใหม่)
+const CUSTOMER_TRACKING_LEGACY_BASE_PATHS = ['/customer-track'];
 
 // สถานะที่ถือว่าออเดอร์เดินเข้าสู่ flow จัดส่งแล้ว (ผ่าน Planning/ปล่อยคิว/ส่งจริง)
 const SCHEDULED_STATUSES = new Set<OrderStatus>([
@@ -17,18 +19,26 @@ export function getCustomerTrackingPath(orderId: string) {
   return `${CUSTOMER_TRACKING_BASE_PATH}/${encodeURIComponent(orderId)}`;
 }
 
+const ALL_CUSTOMER_TRACKING_BASE_PATHS = [
+  CUSTOMER_TRACKING_BASE_PATH,
+  ...CUSTOMER_TRACKING_LEGACY_BASE_PATHS,
+];
+
 export function isCustomerTrackingPath(pathname: string) {
-  return (
-    pathname === CUSTOMER_TRACKING_BASE_PATH ||
-    pathname.startsWith(`${CUSTOMER_TRACKING_BASE_PATH}/`)
+  return ALL_CUSTOMER_TRACKING_BASE_PATHS.some(
+    (base) => pathname === base || pathname.startsWith(`${base}/`),
   );
 }
 
 export function getCustomerTrackingOrderId(pathname: string) {
   const normalized = pathname.replace(/\/+$/, '');
-  const prefix = `${CUSTOMER_TRACKING_BASE_PATH}/`;
-  if (!normalized.startsWith(prefix)) return '';
-  return decodeURIComponent(normalized.slice(prefix.length));
+  for (const base of ALL_CUSTOMER_TRACKING_BASE_PATHS) {
+    const prefix = `${base}/`;
+    if (normalized.startsWith(prefix)) {
+      return decodeURIComponent(normalized.slice(prefix.length));
+    }
+  }
+  return '';
 }
 
 function normalizeOrigin(origin: string | undefined) {

@@ -38,6 +38,9 @@ const MessengerConsolePage = lazy(() =>
 const CustomerTrackingPage = lazy(() =>
   import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
 );
+const NotFoundPage = lazy(() =>
+  import('@/pages/NotFound').then((m) => ({ default: m.NotFoundPage })),
+);
 
 // อยู่ "ใน" Suspense → จะ mount ก็ต่อเมื่อ chunk ของหน้าโหลดเสร็จแล้ว
 // (ตอน suspend ทั้ง subtree ถูกแทนด้วย fallback, effect นี้จึงยังไม่ยิง)
@@ -138,6 +141,9 @@ export default function App() {
           {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}
+          {page === 'not_found' && (
+            <NotFoundPage pathname={locationPathname} onGoHome={() => navigateToPage('overview')} />
+          )}
         </Suspense>
       </AppShell>
     </RetailProvider>

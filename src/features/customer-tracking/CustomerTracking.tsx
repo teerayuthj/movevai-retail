@@ -577,14 +577,15 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
             ) : (
               <ol className="mt-5">
                 {timelineEvents.map((event, index) => {
+                  const isLast = index === timelineEvents.length - 1;
+                  const isLatest = index === 0;
+                  const isCurrentLatest = isLatest && event.tone === 'default';
                   const Icon =
                     event.tone === 'success'
                       ? CheckCircle2
                       : event.tone === 'problem'
                         ? AlertCircle
                         : Clock;
-                  const isLast = index === timelineEvents.length - 1;
-                  const isLatest = index === 0 && event.tone !== 'problem';
                   return (
                     <li key={event.id} className="relative flex gap-3.5 pb-5 last:pb-0">
                       {/* เส้นเชื่อม timeline (ซ่อนที่จุดสุดท้าย) */}
@@ -593,11 +594,13 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
                           aria-hidden
                           className={cn(
                             'absolute left-[15px] top-8 h-[calc(100%-1.5rem)] w-px -translate-x-1/2',
-                            event.tone === 'success'
-                              ? 'bg-gradient-to-b from-success/60 to-success/15'
-                              : event.tone === 'problem'
-                                ? 'bg-gradient-to-b from-warning/60 to-warning/15'
-                                : 'bg-gradient-to-b from-primary/50 to-primary/15',
+                            isCurrentLatest
+                              ? 'bg-gradient-to-b from-info/60 to-info/15'
+                              : event.tone === 'success'
+                                ? 'bg-gradient-to-b from-success/60 to-success/15'
+                                : event.tone === 'problem'
+                                  ? 'bg-gradient-to-b from-warning/60 to-warning/15'
+                                  : 'bg-gradient-to-b from-primary/50 to-primary/15',
                           )}
                         />
                       )}
@@ -607,15 +610,18 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
                             'relative flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-card',
                             event.tone === 'success' && 'bg-success/12 text-success',
                             event.tone === 'problem' && 'bg-warning/12 text-warning',
-                            event.tone === 'default' && 'bg-primary/12 text-primary',
-                            isLatest && 'ring-2 ring-primary/40 ring-offset-2 ring-offset-card',
+                            event.tone === 'default' &&
+                              (isCurrentLatest
+                                ? 'bg-info/12 text-info'
+                                : 'bg-primary/12 text-primary'),
+                            isCurrentLatest && 'ring-2 ring-info/40 ring-offset-2 ring-offset-card',
                           )}
                         >
                           <Icon className="h-4 w-4" />
                         </div>
                       </div>
                       <div className="min-w-0 flex-1 pt-0.5">
-                        <div className={cn('text-sm font-medium', isLatest && 'text-primary')}>
+                        <div className={cn('text-sm font-medium', isCurrentLatest && 'text-info')}>
                           {event.label}
                         </div>
                         <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground">

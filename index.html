@@ -59,6 +59,8 @@
     </style>
     <script>
       if (
+        window.location.pathname === '/track' ||
+        window.location.pathname.startsWith('/track/') ||
         window.location.pathname === '/customer-track' ||
         window.location.pathname.startsWith('/customer-track/')
       ) {

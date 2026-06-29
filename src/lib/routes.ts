@@ -11,7 +11,8 @@ export type PageKey =
   | 'postal'
   | 'drivers'
   | 'messenger'
-  | 'customer_tracking';
+  | 'customer_tracking'
+  | 'not_found';
 
 type RouteDefinition = {
   page: PageKey;
@@ -32,7 +33,9 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'postal', path: '/thai-post' },
   { page: 'drivers', path: '/drivers' },
   { page: 'messenger', path: '/messenger' },
-  { page: 'customer_tracking', path: '/customer-track' },
+  { page: 'customer_tracking', path: '/track', aliases: ['/customer-track'] },
+  // หน้า fallback เมื่อ path ไม่ตรงกับ route ใดเลย — ไม่อยู่ใน sidebar nav
+  { page: 'not_found', path: '/404' },
 ];
 
 const routeByPage = Object.fromEntries(
@@ -52,7 +55,13 @@ export function getPathForPage(page: PageKey) {
 export function getPageFromPath(pathname: string): PageKey {
   const normalizedPath = normalizePath(pathname);
 
-  if (normalizedPath === '/customer-track' || normalizedPath.startsWith('/customer-track/')) {
+  if (
+    normalizedPath === '/track' ||
+    normalizedPath.startsWith('/track/') ||
+    // legacy — รองรับลิงก์เก่าที่เคยส่งให้ลูกค้า
+    normalizedPath === '/customer-track' ||
+    normalizedPath.startsWith('/customer-track/')
+  ) {
     return 'customer_tracking';
   }
 
@@ -67,7 +76,7 @@ export function getPageFromPath(pathname: string): PageKey {
     return route.aliases?.includes(normalizedPath);
   });
 
-  return matchedRoute?.page ?? 'overview';
+  return matchedRoute?.page ?? 'not_found';
 }
 
 export function getCanonicalPath(pathname: string) {
@@ -75,5 +84,7 @@ export function getCanonicalPath(pathname: string) {
   if (page === 'customer_tracking') return normalizePath(pathname);
   // messenger เก็บ sub-path ไว้ (อย่ายุบ /messenger/delivered → /messenger) — ให้ feature redirect เอง
   if (page === 'messenger') return normalizePath(pathname);
+  // not_found เก็บ path เดิมไว้บน address bar (อย่า rewrite เป็น /404) เพื่อให้ผู้ใช้เห็นว่าพิมพ์อะไรผิด
+  if (page === 'not_found') return normalizePath(pathname);
   return getPathForPage(page);
 }
