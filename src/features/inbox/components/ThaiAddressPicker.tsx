@@ -7,13 +7,7 @@ import {
   fetchAddressProvinces,
   fetchAddressSubdistricts,
 } from '@/lib/retailApi';
-
-export type ThaiAddressValue = {
-  province: string;
-  district: string;
-  subdistrict: string;
-  postalCode: string;
-};
+import { EMPTY_THAI_ADDRESS, type ThaiAddressValue } from '@/features/inbox/utils/thaiAddress';
 
 type ThaiAddressPickerProps = {
   value: ThaiAddressValue;
@@ -21,7 +15,7 @@ type ThaiAddressPickerProps = {
   onChange: (value: ThaiAddressValue) => void;
 };
 
-const EMPTY: ThaiAddressValue = { province: '', district: '', subdistrict: '', postalCode: '' };
+const EMPTY = EMPTY_THAI_ADDRESS;
 
 /**
  * Cascading address picker: เลือกจังหวัด → อำเภอ → ตำบล แล้วเติมรหัสไปรษณีย์อัตโนมัติ

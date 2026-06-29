@@ -3,9 +3,12 @@ import { IdCard, MapPin, Phone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Order } from '@/data/mock';
 import { AddressMapPreview } from '@/components/AddressMapPreview';
-import ThaiAddressPicker, {
+import ThaiAddressPicker from '@/features/inbox/components/ThaiAddressPicker';
+import {
+  EMPTY_THAI_ADDRESS,
+  composeThaiAddress,
   type ThaiAddressValue,
-} from '@/features/inbox/components/ThaiAddressPicker';
+} from '@/features/inbox/utils/thaiAddress';
 
 type CustomerInfoFormProps = {
   customer: Order['customer'];
@@ -13,31 +16,11 @@ type CustomerInfoFormProps = {
   onChange: (customer: Order['customer']) => void;
 };
 
-const EMPTY_ADDR: ThaiAddressValue = {
-  province: '',
-  district: '',
-  subdistrict: '',
-  postalCode: '',
-};
-
-// ประกอบที่อยู่เต็ม = รายละเอียด (บ้านเลขที่/ถนน) + ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์
-function composeAddress(street: string, addr: ThaiAddressValue) {
-  const tail = [
-    addr.subdistrict && `ต.${addr.subdistrict}`,
-    addr.district && `อ.${addr.district}`,
-    addr.province && `จ.${addr.province}`,
-    addr.postalCode,
-  ]
-    .filter(Boolean)
-    .join(' ');
-  return [street.trim(), tail].filter(Boolean).join(' ');
-}
-
 export default function CustomerInfoForm({ customer, editing, onChange }: CustomerInfoFormProps) {
   // street = ส่วน free-text, addr = ส่วนที่เลือกจาก picker — รวมแล้วเขียนกลับเป็น customer.address
   // seed street จากที่อยู่เดิม (parent ใส่ key={order.id} ให้ remount ตอนสลับ order จึง reset ได้)
   const [street, setStreet] = useState(customer.address);
-  const [addr, setAddr] = useState<ThaiAddressValue>(EMPTY_ADDR);
+  const [addr, setAddr] = useState<ThaiAddressValue>(EMPTY_THAI_ADDRESS);
 
   const updateField = (
     field: keyof Order['customer'],
@@ -48,12 +31,12 @@ export default function CustomerInfoForm({ customer, editing, onChange }: Custom
 
   const handleStreet = (next: string) => {
     setStreet(next);
-    onChange({ ...customer, address: composeAddress(next, addr) });
+    onChange({ ...customer, address: composeThaiAddress(next, addr) });
   };
 
   const handleAddr = (next: ThaiAddressValue) => {
     setAddr(next);
-    onChange({ ...customer, address: composeAddress(street, next) });
+    onChange({ ...customer, address: composeThaiAddress(street, next) });
   };
 
   return (

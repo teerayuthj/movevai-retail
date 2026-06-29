@@ -14,6 +14,7 @@ import {
   RotateCcw,
   Layers,
   Download,
+  Sparkles,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -24,6 +25,7 @@ import {
   fetchImportBatch,
   downloadImportBatchCsv,
   updateImportedOrder,
+  parseAddress,
   type ImportBatch,
   type ImportBatchDetail,
   type ImportBatchRow,
@@ -34,6 +36,13 @@ import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from 
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';
+import ThaiAddressPicker from '@/features/inbox/components/ThaiAddressPicker';
+import {
+  EMPTY_THAI_ADDRESS,
+  composeThaiAddress,
+  extractStreet,
+  type ThaiAddressValue,
+} from '@/features/inbox/utils/thaiAddress';
 
 // order ที่ยังอยู่ขั้นตรวจใน Inbox (ยังไม่ปล่อยเข้าคิว)
 const REVIEW_STATUSES: Order['status'][] = ['new', 'needs_review', 'parsing'];
@@ -155,6 +164,7 @@ type ImportEditDraft = {
   customerName: string;
   customerPhone: string;
   customerAddress: string;
+  addr: ThaiAddressValue;
   customerIdCard: string;
   totalValue: string;
   payment: Order['payment'];
@@ -248,6 +258,7 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
       item?.unitPrice ?? (Number.isFinite(rawItemUnitPrice) ? rawItemUnitPrice : 0),
     ),
     itemNote: item?.note ?? '',
+    addr: EMPTY_THAI_ADDRESS,
   };
 }
 
@@ -320,28 +331,28 @@ function TabChip({
 function RowStatusBadge({ kind }: { kind: RowKind }) {
   if (kind === 'error') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
-        <XCircle className="h-3 w-3" /> ผิดพลาด
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+        <XCircle className="h-3 w-3 shrink-0" /> ผิดพลาด
       </span>
     );
   }
   if (kind === 'review') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
-        <AlertTriangle className="h-3 w-3" /> รอตรวจ
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+        <AlertTriangle className="h-3 w-3 shrink-0" /> รอตรวจ
       </span>
     );
   }
   if (kind === 'rejected') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-        <XCircle className="h-3 w-3" /> ปฏิเสธ
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+        <XCircle className="h-3 w-3 shrink-0" /> ปฏิเสธ
       </span>
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
-      <CheckCircle2 className="h-3 w-3" /> เข้าคิวแล้ว
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
+      <CheckCircle2 className="h-3 w-3 shrink-0" /> เข้าคิวแล้ว
     </span>
   );
 }
@@ -378,6 +389,7 @@ function BatchWorkspace({
   const [editingRow, setEditingRow] = useState<RowVM | null>(null);
   const [editDraft, setEditDraft] = useState<ImportEditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [autoFilling, setAutoFilling] = useState(false);
 
   const targetBatchIds = useMemo(
     () => (scope === ALL_SCOPE ? batches.map((b) => b.id) : [scope]),
@@ -496,16 +508,49 @@ function BatchWorkspace({
 
   const startEditRow = (row: RowVM) => {
     if (!row.orderId) return;
+    const draft = draftFromRow(row, ordersById.get(row.orderId));
     setEditingRow(row);
-    setEditDraft(draftFromRow(row, ordersById.get(row.orderId)));
+    setEditDraft(draft);
+    // ที่อยู่จาก CSV มักมายาว ๆ บรรทัดเดียว → เดา ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์ ให้อัตโนมัติ
+    void applyAutoFill(draft.customerAddress, { silent: true });
+  };
+
+  // แยกที่อยู่ยาว ๆ → เติม picker อัตโนมัติ แล้วเหลือเฉพาะบ้านเลขที่/ถนนในช่อง free-text
+  const applyAutoFill = async (rawText: string, opts?: { silent?: boolean }) => {
+    const raw = rawText.trim();
+    if (!raw) return;
+    setAutoFilling(true);
+    try {
+      const parsed = await parseAddress(raw);
+      if (!parsed || parsed.score === 0) {
+        if (!opts?.silent) toast.error('ไม่สามารถแยกที่อยู่อัตโนมัติได้ กรุณาเลือกเอง');
+        return;
+      }
+      const addr: ThaiAddressValue = {
+        province: parsed.province,
+        district: parsed.district,
+        subdistrict: parsed.subdistrict,
+        postalCode: parsed.postalCode,
+      };
+      setEditDraft((prev) =>
+        prev ? { ...prev, addr, customerAddress: extractStreet(raw, addr) } : prev,
+      );
+      if (!opts?.silent) toast.success('แยกที่อยู่อัตโนมัติแล้ว — ตรวจสอบความถูกต้องอีกครั้ง');
+    } catch {
+      if (!opts?.silent) toast.error('แยกที่อยู่ไม่สำเร็จ');
+    } finally {
+      setAutoFilling(false);
+    }
   };
 
   const saveEditRow = async () => {
     if (!editingRow?.orderId || !editDraft) return;
+    // customerAddress = ส่วน free-text, addr = ที่เลือกจาก picker → รวมเป็นที่อยู่เต็ม
+    const fullAddress = composeThaiAddress(editDraft.customerAddress, editDraft.addr);
     const missing = [
       !editDraft.customerName.trim() && 'ชื่อผู้รับ',
       !editDraft.customerPhone.trim() && 'เบอร์โทร',
-      !editDraft.customerAddress.trim() && 'ที่อยู่',
+      !fullAddress.trim() && 'ที่อยู่',
       !editDraft.itemName.trim() && 'สินค้า',
     ].filter(Boolean);
     if (missing.length > 0) {
@@ -520,7 +565,7 @@ function BatchWorkspace({
         customer: {
           name: editDraft.customerName.trim(),
           phone: editDraft.customerPhone.trim(),
-          address: editDraft.customerAddress.trim(),
+          address: fullAddress.trim(),
           idCard: editDraft.customerIdCard.trim() || undefined,
         },
         item: {
@@ -563,7 +608,7 @@ function BatchWorkspace({
   const errorSummary = scope === ALL_SCOPE ? null : details[0].errorSummary;
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* header + summary */}
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
@@ -653,7 +698,12 @@ function BatchWorkspace({
       </div>
 
       {/* table */}
-      <div className="mt-3 flex-1 overflow-auto rounded-lg border">
+      <div
+        className={cn(
+          'mt-3 overflow-auto rounded-lg border',
+          editingRow ? 'max-h-56 flex-none' : 'min-h-0 flex-1',
+        )}
+      >
         <table className="w-full text-xs">
           <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
             <tr className="text-left text-muted-foreground">
@@ -667,7 +717,7 @@ function BatchWorkspace({
                   className="h-3.5 w-3.5 align-middle"
                 />
               </th>
-              <th className="w-20 px-2 py-2 font-medium">สถานะ</th>
+              <th className="w-24 px-2 py-2 font-medium">สถานะ</th>
               <th className="px-2 py-2 font-medium">ผู้รับ / ที่อยู่</th>
               <th className="w-20 px-2 py-2 text-right font-medium">มูลค่า</th>
               <th className="w-[220px] px-2 py-2 text-right font-medium">จัดการ</th>
@@ -861,14 +911,39 @@ function BatchWorkspace({
                 className="h-8 w-full rounded-md border bg-background px-2"
               />
             </label>
-            <label className="space-y-1 text-xs md:col-span-3">
-              <span className="text-muted-foreground">ที่อยู่</span>
+            <div className="space-y-2 text-xs md:col-span-3">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">ที่อยู่ (บ้านเลขที่ / ถนน)</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 text-[11px]"
+                  disabled={autoFilling || !editDraft.customerAddress.trim()}
+                  onClick={() => applyAutoFill(editDraft.customerAddress)}
+                  title="แยกตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์ จากข้อความที่อยู่อัตโนมัติ"
+                >
+                  {autoFilling ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  เติมอัตโนมัติ
+                </Button>
+              </div>
               <input
                 value={editDraft.customerAddress}
                 onChange={(e) => setEditDraft({ ...editDraft, customerAddress: e.target.value })}
                 className="h-8 w-full rounded-md border bg-background px-2"
               />
-            </label>
+              <ThaiAddressPicker
+                value={editDraft.addr}
+                onChange={(addr) => setEditDraft({ ...editDraft, addr })}
+              />
+              <p className="rounded-md bg-muted/50 px-2.5 py-1.5 text-muted-foreground">
+                ที่อยู่เต็ม: {composeThaiAddress(editDraft.customerAddress, editDraft.addr) || '—'}
+              </p>
+            </div>
             <label className="space-y-1 text-xs">
               <span className="text-muted-foreground">มูลค่ารวม</span>
               <input
@@ -956,22 +1031,30 @@ function BatchWorkspace({
           </div>
 
           <div className="mt-3 rounded-md border bg-background">
-            <div className="border-b px-3 py-2 text-xs font-medium">คอลัมน์ CSV ต้นทาง</div>
-            <div className="grid max-h-48 gap-2 overflow-auto p-3 md:grid-cols-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+              <div className="text-xs font-medium">คอลัมน์ CSV ต้นทาง</div>
+              <div className="text-[11px] text-muted-foreground">
+                {Object.keys(editDraft.rawData).length} คอลัมน์
+              </div>
+            </div>
+            <div className="divide-y">
               {Object.entries(editDraft.rawData).map(([key, value]) => (
-                <label key={key} className="space-y-1 text-xs">
-                  <span className="text-muted-foreground">{key}</span>
-                  <input
+                <div key={key} className="grid gap-2 px-3 py-2 md:grid-cols-[180px_1fr]">
+                  <div className="min-w-0 break-words rounded-md bg-muted/50 px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
+                    {key}
+                  </div>
+                  <textarea
                     value={value}
+                    rows={value.length > 48 || value.includes('\n') ? 2 : 1}
                     onChange={(e) =>
                       setEditDraft({
                         ...editDraft,
                         rawData: { ...editDraft.rawData, [key]: e.target.value },
                       })
                     }
-                    className="h-8 w-full rounded-md border bg-background px-2 font-mono"
+                    className="min-h-8 w-full min-w-0 resize-y rounded-md border bg-background px-2 py-1.5 font-mono text-xs leading-5"
                   />
-                </label>
+                </div>
               ))}
             </div>
           </div>
@@ -1126,7 +1209,7 @@ export default function ImportBatchPanel({
         </CardContent>
       </Card>
 
-      <Card className="h-[calc(100vh-16rem)] overflow-hidden p-4">
+      <Card className="h-[calc(100vh-16rem)] overflow-auto p-4">
         {hasBatches ? (
           <BatchWorkspace
             key={workspaceKey}

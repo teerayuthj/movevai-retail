@@ -200,6 +200,25 @@ export async function fetchAddressDistricts(province: string): Promise<string[]>
   return result.results.map((r) => r.district);
 }
 
+export type ParsedThaiAddress = {
+  province: string;
+  district: string;
+  subdistrict: string;
+  postalCode: string;
+  matched: { province: boolean; district: boolean; subdistrict: boolean; postalCode: boolean };
+  score: number;
+};
+
+// แยกที่อยู่ยาว ๆ 1 บรรทัด → เดา จังหวัด/อำเภอ/ตำบล/รหัสไปรษณีย์ อัตโนมัติ (null = เดาไม่ได้)
+export async function parseAddress(raw: string): Promise<ParsedThaiAddress | null> {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const result = await request<{ result: ParsedThaiAddress | null }>(
+    `${APP_API_BASE}/address/parse?q=${encodeURIComponent(trimmed)}`,
+  );
+  return result.result;
+}
+
 export async function fetchAddressSubdistricts(
   province: string,
   district: string,
