@@ -1,6 +1,5 @@
 export type PageKey =
   | 'overview'
-  | 'chat'
   | 'script_transform'
   | 'inbox'
   | 'queue'
@@ -22,7 +21,6 @@ type RouteDefinition = {
 
 const routeDefinitions: RouteDefinition[] = [
   { page: 'overview', path: '/', aliases: ['/overview'] },
-  { page: 'chat', path: '/chat-intake' },
   { page: 'script_transform', path: '/script-transform' },
   { page: 'inbox', path: '/order-inbox' },
   { page: 'queue', path: '/driver-queue' },

@@ -38,9 +38,6 @@ export function AppShell({ page, onChangePage, children }: Props) {
 
   // จำนวนงานค้างต่อเมนู (อ้างอิงด้วย PageKey ให้ตรงกับ navConfig)
   const badgeCounts: Partial<Record<PageKey, number>> = {
-    chat: orders.filter(
-      (o) => o.source === 'internal_chat' && ['new', 'needs_review'].includes(o.status),
-    ).length,
     inbox: orders.filter((o) => ['new', 'parsing', 'needs_review', 'ready'].includes(o.status))
       .length,
     queue: orders.filter(
@@ -216,7 +213,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
             collapsed ? 'lg:pl-16' : 'lg:pl-60',
           )}
         >
-          <Topbar onOpenMobileNav={() => setIsMobileNavOpen(true)} onNavigate={handleNavigate} />
+          <Topbar onOpenMobileNav={() => setIsMobileNavOpen(true)} />
           <main className="p-4 sm:p-6">{children}</main>
         </div>
       </div>

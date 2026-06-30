@@ -1,14 +1,12 @@
-import React, { useState } from 'react';
-import { Search, Bell, MessageCircle, Menu } from 'lucide-react';
+import { useState } from 'react';
+import { Search, Bell, Menu } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { getPathForPage, type PageKey } from '@/lib/routes';
 
 type Props = {
   onOpenMobileNav: () => void;
-  onNavigate: (event: React.MouseEvent<HTMLAnchorElement>, page: PageKey) => void;
 };
 
-export function Topbar({ onOpenMobileNav, onNavigate }: Props) {
+export function Topbar({ onOpenMobileNav }: Props) {
   const [q, setQ] = useState('');
 
   return (
@@ -31,14 +29,6 @@ export function Topbar({ onOpenMobileNav, onNavigate }: Props) {
         />
       </div>
       <div className="ml-auto flex items-center gap-2">
-        <a
-          href={getPathForPage('chat')}
-          onClick={(event) => onNavigate(event, 'chat')}
-          className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent"
-        >
-          <MessageCircle className="h-4 w-4" />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-success" />
-        </a>
         <button className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent">
           <Bell className="h-4 w-4" />
           <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-destructive" />

@@ -8,9 +8,6 @@ import { getCanonicalPath, getPageFromPath, getPathForPage, type PageKey } from 
 const OverviewPage = lazy(() =>
   import('@/pages/Overview').then((m) => ({ default: m.OverviewPage })),
 );
-const ChatIntakePage = lazy(() =>
-  import('@/pages/ChatIntake').then((m) => ({ default: m.ChatIntakePage })),
-);
 const ScriptTransformPage = lazy(() =>
   import('@/pages/ScriptTransform').then((m) => ({ default: m.ScriptTransformPage })),
 );
@@ -132,7 +129,6 @@ export default function App() {
         <Suspense fallback={null}>
           <SplashGate />
           {page === 'overview' && <OverviewPage />}
-          {page === 'chat' && <ChatIntakePage onOpenInbox={() => navigateToPage('inbox')} />}
           {page === 'script_transform' && <ScriptTransformPage />}
           {page === 'inbox' && (
             <InboxPage onOpenQueue={(search) => navigateToPage('queue', { search })} />

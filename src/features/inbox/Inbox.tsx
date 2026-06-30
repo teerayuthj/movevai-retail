@@ -38,7 +38,7 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
     syncFromBackend,
   } = useRetailStore();
 
-  const [tab, setTab] = useState<InboxTab>('manual_import');
+  const [tab, setTab] = useState<InboxTab>('line_import');
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     return orders.find((order) => INBOX_STATUSES.includes(order.status))?.id ?? null;
@@ -114,19 +114,6 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
       <div className="flex flex-wrap gap-1 border-b">
         <button
           type="button"
-          onClick={() => setTab('manual_import')}
-          className={cn(
-            'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
-            tab === 'manual_import'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <FileSpreadsheet className="h-3.5 w-3.5" />
-          Manual Import
-        </button>
-        <button
-          type="button"
           onClick={() => setTab('line_import')}
           className={cn(
             'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
@@ -137,6 +124,19 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
         >
           <MessageSquareText className="h-3.5 w-3.5" />
           ประวัติ LINE
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('manual_import')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+            tab === 'manual_import'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <FileSpreadsheet className="h-3.5 w-3.5" />
+          Manual Import
         </button>
         <button
           type="button"

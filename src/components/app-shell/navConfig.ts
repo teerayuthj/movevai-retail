@@ -4,7 +4,6 @@ import {
   Inbox,
   Truck,
   Users,
-  MessageCircle,
   Mailbox,
   CalendarClock,
   Route,
@@ -40,7 +39,6 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'intake',
     label: 'รับออเดอร์',
     items: [
-      { key: 'chat', label: 'Chat Intake', icon: MessageCircle, showBadge: true },
       { key: 'script_transform', label: 'Script Transform', icon: FileSpreadsheet },
       { key: 'inbox', label: 'Order Inbox', icon: Inbox, showBadge: true },
     ],
