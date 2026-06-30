@@ -288,10 +288,22 @@ export type Driver = {
   vehicle: 'motorcycle' | 'van' | 'pickup';
   zone: string;
   status: 'available' | 'on_delivery' | 'off_duty';
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  archivedAt?: string;
   activeOrders: number;
   capacity: number;
   rating: number;
   highValueCertified: boolean; // อบรมขนส่งของมีค่าแล้ว
+  licensePlate?: string;
+  idCardNumber?: string;
+  idCardPhotoDataUrl?: string;
+  profilePhotoDataUrl?: string;
+  submittedAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export const statusLabel: Record<OrderStatus, string> = {

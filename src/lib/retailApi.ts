@@ -49,6 +49,48 @@ export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
 export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
 type ApiOrder = Order & { assignedDriver?: ApiDriver };
 
+export type DriverApprovalStatus = NonNullable<Driver['approvalStatus']>;
+
+export type DriverMutationInput = {
+  code?: string;
+  name: string;
+  phone: string;
+  avatarKey?: string;
+  vehicle: Driver['vehicle'];
+  status?: Driver['status'];
+  approvalStatus?: DriverApprovalStatus;
+  capacity: number;
+  rating?: number;
+  highValueCertified?: boolean;
+  licensePlate?: string;
+  idCardNumber?: string;
+  idCardPhotoDataUrl?: string;
+  profilePhotoDataUrl?: string;
+};
+
+export type DriverStats = {
+  driver: Driver;
+  totals: {
+    trackingSessions: number;
+    distanceMeters: number;
+    offRouteCount: number;
+    completedOrders: number;
+    routes: number;
+  };
+  frequentDestinations: { label: string; count: number }[];
+  recentSessions: {
+    id: string;
+    routeId?: string | null;
+    sessionType?: 'delivery' | 'test';
+    label?: string | null;
+    status: string;
+    startedAt: string;
+    endedAt?: string | null;
+    distanceMeters: number;
+    offRouteCount: number;
+  }[];
+};
+
 function proofPayload(input: SubmitDeliveryInput) {
   const { editorRole: _editorRole, recordedBy: _recordedBy, ...proof } = input;
   return proof;
@@ -525,9 +567,66 @@ export async function fetchCustomerLiveTracking(
   return null;
 }
 
-export async function fetchAppDrivers() {
-  const result = await request<ApiDriver[]>(`${APP_API_BASE}/drivers`);
+export async function fetchAppDrivers(params?: {
+  approvalStatus?: DriverApprovalStatus;
+  includeArchived?: boolean;
+}) {
+  const search = new URLSearchParams();
+  if (params?.approvalStatus) search.set('approvalStatus', params.approvalStatus);
+  if (params?.includeArchived) search.set('includeArchived', 'true');
+  const query = search.toString();
+  const result = await request<ApiDriver[]>(`${APP_API_BASE}/drivers${query ? `?${query}` : ''}`);
   return result.map(normalizeDriver);
+}
+
+export async function createDriver(input: DriverMutationInput) {
+  const result = await request<ApiDriver>(`${APP_API_BASE}/drivers`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return normalizeDriver(result);
+}
+
+export async function updateDriver(driverId: string, input: Partial<DriverMutationInput>) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    },
+  );
+  return normalizeDriver(result);
+}
+
+export async function archiveDriver(driverId: string) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/archive`,
+    { method: 'POST' },
+  );
+  return normalizeDriver(result);
+}
+
+export async function approveDriver(driverId: string, input?: { approvedBy?: string }) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/approve`,
+    { method: 'POST', body: JSON.stringify(input ?? {}) },
+  );
+  return normalizeDriver(result);
+}
+
+export async function rejectDriver(driverId: string, reason: string) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/reject`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+  return normalizeDriver(result);
+}
+
+export async function fetchDriverStats(driverId: string): Promise<DriverStats> {
+  const result = await request<Omit<DriverStats, 'driver'> & { driver: ApiDriver }>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/stats`,
+  );
+  return { ...result, driver: normalizeDriver(result.driver) };
 }
 
 export function upsertMessengerAccount(
