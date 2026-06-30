@@ -80,7 +80,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
   const [urgentTarget, setUrgentTarget] = useState<{
     orderId: string;
-    driverId: string;
+    driverIds: string[];
   } | null>(null);
   const [urgentLoading, setUrgentLoading] = useState(false);
   const [urgentError, setUrgentError] = useState('');
@@ -97,12 +97,20 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
     parsedSearch.orderId ?? readyOrders[0]?.id ?? assignedOrders[0]?.id ?? null,
   );
-  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  // เลือกคนขับได้หลายคน (co-delivery) — index 0 = คนขับหลัก, ที่เหลือ = คนขับร่วม
+  const [selectedDriverIds, setSelectedDriverIds] = useState<string[]>([]);
   // มือถือ: เปิด overlay เฉพาะตอนผู้ใช้แตะรายการ (กัน auto-select ไม่ให้เด้งทับ list ตอนโหลด)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
+  const toggleDriver = (driverId: string) =>
+    setSelectedDriverIds((current) =>
+      current.includes(driverId) ? current.filter((id) => id !== driverId) : [...current, driverId],
+    );
+
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
-  const selectedDriver = drivers.find((driver) => driver.id === selectedDriverId) ?? null;
+  const selectedDrivers = selectedDriverIds
+    .map((id) => drivers.find((driver) => driver.id === id))
+    .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver));
   const fastSelectedSla = selectedOrder ? getFastDispatchSla(selectedOrder) : null;
 
   // คนขับที่ระบบแนะนำสำหรับออเดอร์ที่เลือก (โซน + capacity + ใบรับรอง)
@@ -162,20 +170,22 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
 
   useEffect(() => {
     if (!selectedOrder) {
-      setSelectedDriverId(null);
+      setSelectedDriverIds([]);
       return;
     }
     if (selectedOrder.assignedDriverId) {
-      setSelectedDriverId(selectedOrder.assignedDriverId);
+      setSelectedDriverIds([selectedOrder.assignedDriverId, ...(selectedOrder.coDriverIds ?? [])]);
       return;
     }
-    setSelectedDriverId(selectedOrder.status === 'ready' ? recommendedDriverId : null);
+    setSelectedDriverIds(
+      selectedOrder.status === 'ready' && recommendedDriverId ? [recommendedDriverId] : [],
+    );
   }, [recommendedDriverId, selectedOrder]);
 
   const canAssign =
     selectedOrder?.status === 'ready' &&
-    selectedDriver &&
-    canDriverTakeOrder(selectedOrder, selectedDriver);
+    selectedDrivers.length > 0 &&
+    selectedDrivers.every((driver) => canDriverTakeOrder(selectedOrder, driver));
 
   const assignedReadyToStart = assignedOrders.length > 0;
 
@@ -214,7 +224,8 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     setUrgentError('');
     try {
       await publishUrgentRoute(urgentTarget.orderId, {
-        driverCode: urgentTarget.driverId,
+        driverCode: urgentTarget.driverIds[0],
+        coDriverCodes: urgentTarget.driverIds.slice(1),
         note,
       });
       const orderId = urgentTarget.orderId;
@@ -295,9 +306,9 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
             <Button
               disabled={!canAssign}
               onClick={() => {
-                if (!selectedOrder || !selectedDriverId) return;
+                if (!selectedOrder || selectedDriverIds.length === 0) return;
                 setUrgentError('');
-                setUrgentTarget({ orderId: selectedOrder.id, driverId: selectedDriverId });
+                setUrgentTarget({ orderId: selectedOrder.id, driverIds: selectedDriverIds });
               }}
             >
               <BellRing className="h-4 w-4" />
@@ -394,7 +405,13 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
       <UrgentDispatchDialog
         open={!!urgentTarget}
         order={orders.find((order) => order.id === urgentTarget?.orderId) ?? null}
-        driver={drivers.find((driver) => driver.id === urgentTarget?.driverId) ?? null}
+        drivers={
+          urgentTarget
+            ? urgentTarget.driverIds
+                .map((id) => drivers.find((driver) => driver.id === id))
+                .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver))
+            : []
+        }
         loading={urgentLoading}
         error={urgentError}
         onCancel={() => {
@@ -638,21 +655,27 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
             <CardDescription>
               {selectedOrder
                 ? selectedOrder.status === 'ready'
-                  ? `สำหรับ ${selectedOrder.code}`
+                  ? selectedDriverIds.length > 1
+                    ? `สำหรับ ${selectedOrder.code} · ส่งร่วม ${selectedDriverIds.length} คน`
+                    : `สำหรับ ${selectedOrder.code} · เลือกหลายคนเพื่อส่งร่วมกัน`
                   : `${selectedOrder.code} · ${statusLabel[selectedOrder.status]}`
                 : 'เลือก order ก่อน'}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 space-y-2 overflow-auto">
-            {drivers.map((driver) => (
-              <DriverCard
-                key={driver.id}
-                driver={driver}
-                selected={selectedDriverId === driver.id}
-                onSelect={() => setSelectedDriverId(driver.id)}
-                orders={orders}
-              />
-            ))}
+            {drivers.map((driver) => {
+              const rank = selectedDriverIds.indexOf(driver.id);
+              return (
+                <DriverCard
+                  key={driver.id}
+                  driver={driver}
+                  selected={rank !== -1}
+                  coRole={rank === -1 ? undefined : rank === 0 ? 'primary' : 'secondary'}
+                  onSelect={() => toggleDriver(driver.id)}
+                  orders={orders}
+                />
+              );
+            })}
           </CardContent>
         </Card>
 
@@ -713,9 +736,9 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                     className="w-full"
                     disabled={!canAssign}
                     onClick={() => {
-                      if (!selectedOrder || !selectedDriverId) return;
+                      if (!selectedOrder || selectedDriverIds.length === 0) return;
                       setUrgentError('');
-                      setUrgentTarget({ orderId: selectedOrder.id, driverId: selectedDriverId });
+                      setUrgentTarget({ orderId: selectedOrder.id, driverIds: selectedDriverIds });
                     }}
                   >
                     <BellRing className="h-4 w-4" />
@@ -746,7 +769,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
           )}
           <AssignmentPanel
             order={selectedOrder}
-            driver={selectedDriver}
+            drivers={selectedDrivers}
             actions={assignmentActions}
           />
           <OrderTimeline
@@ -770,24 +793,41 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
             <OrderSummary order={selectedOrder} />
             {selectedOrder.status === 'ready' && (
               <div>
-                <div className="mb-2 text-[11px] font-medium text-muted-foreground">เลือกคนขับ</div>
+                <div className="mb-2 text-[11px] font-medium text-muted-foreground">
+                  เลือกคนขับ · เลือกหลายคนเพื่อส่งร่วมกัน
+                </div>
                 <div className="space-y-2">
-                  {drivers.map((driver) => (
-                    <DriverCard
+                  {drivers.map((driver) => {
+                    const rank = selectedDriverIds.indexOf(driver.id);
+                    return (
+                      <DriverCard
+                        key={driver.id}
+                        driver={driver}
+                        selected={rank !== -1}
+                        coRole={rank === -1 ? undefined : rank === 0 ? 'primary' : 'secondary'}
+                        onSelect={() => toggleDriver(driver.id)}
+                        orders={orders}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {selectedOrder.status === 'assigned' && selectedDrivers.length > 0 && (
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                  คนขับ{selectedDrivers.length > 1 ? ` · ส่งร่วม ${selectedDrivers.length} คน` : ''}
+                </div>
+                <div className="space-y-2">
+                  {selectedDrivers.map((driver) => (
+                    <DriverSummary
                       key={driver.id}
                       driver={driver}
-                      selected={selectedDriverId === driver.id}
-                      onSelect={() => setSelectedDriverId(driver.id)}
+                      order={selectedOrder}
                       orders={orders}
                     />
                   ))}
                 </div>
-              </div>
-            )}
-            {selectedOrder.status === 'assigned' && selectedDriver && (
-              <div>
-                <div className="mb-1 text-[11px] font-medium text-muted-foreground">คนขับ</div>
-                <DriverSummary driver={selectedDriver} order={selectedOrder} orders={orders} />
               </div>
             )}
             <OrderTimeline

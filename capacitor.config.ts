@@ -10,9 +10,16 @@ const config: CapacitorConfig = {
   //   2) npm run dev (vite host:true อยู่แล้ว)
   //   3) npx cap sync && npx cap run ios|android
   // production build อย่าตั้ง env นี้ — จะ bundle dist/ เข้า native app ตรง ๆ
-  server: process.env.CAP_SERVER_URL
-    ? { url: process.env.CAP_SERVER_URL, cleartext: true }
-    : undefined,
+  server: {
+    // Android dev backend is HTTP (10.0.2.2:4000). Keep the WebView origin HTTP too,
+    // otherwise Android blocks requests as mixed content before they reach the backend.
+    androidScheme: 'http',
+    ...(process.env.CAP_SERVER_URL ? { url: process.env.CAP_SERVER_URL, cleartext: true } : {}),
+  },
+  android: {
+    // Dev-only: native bundle talks to the local HTTP backend.
+    allowMixedContent: true,
+  },
   plugins: {
     // ให้ iOS เด้ง banner/เสียง/badge แม้แอปเปิดอยู่ foreground
     // (default ของ iOS คือ "เงียบ" ตอน foreground — ต้องเปิดตรงนี้)

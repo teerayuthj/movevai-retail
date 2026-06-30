@@ -12,9 +12,13 @@ import type { SubmitDeliveryInput } from '@/state/retail/types';
 
 // running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
 const IS_NATIVE_APP = Capacitor.isNativePlatform();
+const IS_ANDROID_APP = Capacitor.getPlatform() === 'android';
 
 function normalizeApiBase(value: string | undefined, fallback: string) {
-  return (value?.trim() || fallback).replace(/\/+$/, '');
+  const normalized = (value?.trim() || fallback).replace(/\/+$/, '');
+  if (!IS_ANDROID_APP) return normalized;
+  // Android Emulator resolves localhost to the emulator itself. 10.0.2.2 is the host Mac.
+  return normalized.replace(/^http:\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/, 'http://10.0.2.2');
 }
 
 const MESSENGER_API_BASE = normalizeApiBase(
@@ -47,7 +51,7 @@ const ROAD_ROUTE_TIMEOUT_MS = 7_000;
 export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
 
 export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
-type ApiOrder = Order & { assignedDriver?: ApiDriver };
+type ApiOrder = Order & { assignedDriver?: ApiDriver; coDriverCodes?: string[] };
 
 export type DriverApprovalStatus = NonNullable<Driver['approvalStatus']>;
 
@@ -118,7 +122,7 @@ function clearLocalMessengerSession(notify = false) {
 function assertNativeRequestUrl(url: string) {
   if (!IS_NATIVE_APP || !url.startsWith('/')) return;
   throw new Error(
-    'ตั้งค่า API สำหรับ iOS native ไม่ถูกต้อง: ต้องใช้ backend URL แบบเต็ม เช่น http://localhost:4000/v1/rider หรือรัน npm run build:cap ก่อน npx cap sync ios',
+    'ตั้งค่า API สำหรับ native ไม่ถูกต้อง: ต้องใช้ backend URL แบบเต็ม เช่น http://localhost:4000/v1/rider บน iOS หรือ http://10.0.2.2:4000/v1/rider บน Android',
   );
 }
 
@@ -129,6 +133,9 @@ function networkErrorMessage(url: string, error: unknown) {
   }
   if (IS_NATIVE_APP && url.startsWith('http://localhost:4000')) {
     return `เชื่อมต่อ backend ที่ http://localhost:4000 ไม่ได้ — ตรวจว่า backend รันอยู่บนเครื่อง Mac แล้วลองใหม่ (${message})`;
+  }
+  if (IS_NATIVE_APP && url.startsWith('http://10.0.2.2:4000')) {
+    return `เชื่อมต่อ backend ที่ http://10.0.2.2:4000 ไม่ได้ — ตรวจว่า backend รันอยู่บน Mac ที่ port 4000 แล้วลองใหม่ (${message})`;
   }
   return message;
 }
@@ -289,6 +296,7 @@ function normalizeOrder(order: ApiOrder): Order {
   return {
     ...order,
     assignedDriverId: order.assignedDriver?.code,
+    coDriverIds: order.coDriverCodes,
     proofOfDelivery: order.proofOfDelivery
       ? {
           ...order.proofOfDelivery,
@@ -716,6 +724,7 @@ export async function publishPlanningRoute(input: {
 export async function publishUrgentPlanningRoute(input: {
   orderId: string;
   driverCode: string;
+  coDriverCodes?: string[];
   note?: string;
   origin?: RouteOrigin;
 }) {

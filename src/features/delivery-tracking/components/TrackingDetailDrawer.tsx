@@ -66,6 +66,9 @@ export function TrackingDetailDrawer({
               <Badge variant="destructive">งานด่วน</Badge>
             )}
             {driver && <Badge variant="muted">คนขับ: {driver.name}</Badge>}
+            {order.coDriverIds && order.coDriverIds.length > 0 && (
+              <Badge variant="info">+{order.coDriverIds.length} ร่วมส่ง</Badge>
+            )}
             {isDetailLoading && (
               <Badge variant="muted" className="gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" />

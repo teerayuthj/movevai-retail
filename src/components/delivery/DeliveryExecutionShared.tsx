@@ -48,12 +48,15 @@ export function DriverCard({
   selected,
   onSelect,
   orders,
+  coRole,
 }: {
   driver: Driver;
   selected: boolean;
   onSelect: () => void;
   /** ถ้าส่งมา จะ derive สถานะ "ว่าง/กำลังส่ง" จากงานจริงให้ตรงกับ messenger */
   orders?: Order[];
+  /** co-delivery: บทบาทเมื่อเลือกหลายคน — 'primary' = คนขับหลัก, 'secondary' = คนขับร่วม */
+  coRole?: 'primary' | 'secondary';
 }) {
   const pct = (driver.activeOrders / driver.capacity) * 100;
   const remainingCapacity = Math.max(0, driver.capacity - driver.activeOrders);
@@ -75,6 +78,14 @@ export function DriverCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{driver.name}</span>
+            {coRole && (
+              <Badge
+                variant={coRole === 'primary' ? 'info' : 'muted'}
+                className="h-4 shrink-0 px-1.5 text-[9px]"
+              >
+                {coRole === 'primary' ? 'คนขับหลัก' : 'ร่วมส่ง'}
+              </Badge>
+            )}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <VehicleIcon v={driver.vehicle} />

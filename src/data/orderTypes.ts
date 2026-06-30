@@ -252,6 +252,9 @@ export type Order = {
   requiresIdCheck: boolean;
   insured: boolean;
   assignedDriverId?: string;
+  // คนขับร่วม (co-delivery) — งานที่ต้องใช้ messenger หลายคนขนพร้อมกัน; เก็บ driver code
+  // ของคนช่วย (ไม่รวม primary ที่อยู่ใน assignedDriverId)
+  coDriverIds?: string[];
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
   deliveryPlan?: DeliveryPlan;
   deliveryRoute?: DeliveryRoute;

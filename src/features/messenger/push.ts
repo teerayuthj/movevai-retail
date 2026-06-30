@@ -1,10 +1,19 @@
 // Web Push ฝั่ง client — ขอ permission, subscribe กับ push service, และยิง local notification ทดสอบ
 // public key มาจาก env (VITE_VAPID_PUBLIC_KEY) — ดู .env.example
+import { Capacitor } from '@capacitor/core';
+
 export type NotifPermission = 'default' | 'granted' | 'denied' | 'unsupported';
 
+function normalizeMessengerApiBase(value: string | undefined) {
+  const normalized = (value?.trim() || '/api/messenger').replace(/\/+$/, '');
+  if (Capacitor.getPlatform() !== 'android') return normalized;
+  return normalized.replace(/^http:\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/, 'http://10.0.2.2');
+}
+
 export const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined;
-export const MESSENGER_API_BASE_URL =
-  (import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined) ?? '/api/messenger';
+export const MESSENGER_API_BASE_URL = normalizeMessengerApiBase(
+  import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined,
+);
 export const MESSENGER_TOKEN_STORAGE_KEY = 'movevai:messenger-token';
 export const DEFAULT_MESSENGER_CODE =
   (import.meta.env.VITE_MESSENGER_CODE as string | undefined) ?? 'D-02';

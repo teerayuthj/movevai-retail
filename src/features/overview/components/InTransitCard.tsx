@@ -26,6 +26,9 @@ export function InTransitCard({ orders, drivers }: { orders: Order[]; drivers: D
                 <div className="mt-1 text-sm font-medium">{o.customer.name}</div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   คนขับ: {driver?.name ?? '-'}
+                  {o.coDriverIds && o.coDriverIds.length > 0 && (
+                    <span className="ml-1 text-info">+{o.coDriverIds.length} ร่วมส่ง</span>
+                  )}
                 </div>
                 <Progress value={65} className="mt-2 h-1.5" />
                 <div className="mt-1 text-[11px] text-muted-foreground">ถึงใน ~18 นาที</div>

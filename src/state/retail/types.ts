@@ -125,7 +125,12 @@ export type RetailStore = RetailState & {
   releasePlannedOrders: (orderIds: string[]) => Promise<PlanningRoute>;
   publishUrgentRoute: (
     orderId: string,
-    input: { driverCode: string; note?: string; origin?: { lat: number; lng: number } },
+    input: {
+      driverCode: string;
+      coDriverCodes?: string[];
+      note?: string;
+      origin?: { lat: number; lng: number };
+    },
   ) => Promise<PlanningRoute>;
   cancelRoute: (
     routeId: string,

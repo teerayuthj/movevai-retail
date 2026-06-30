@@ -51,6 +51,16 @@ async function registerTokenWithBackend(
   }
 }
 
+async function clearNativeDeliveredNotifications(
+  PushNotifications: typeof import('@capacitor/push-notifications').PushNotifications,
+) {
+  try {
+    await PushNotifications.removeAllDeliveredNotifications();
+  } catch {
+    // iOS Capacitor rejects this until APNs registration has reported back once.
+  }
+}
+
 /** ขอ permission + register APNs/FCM + ผูก device token กับคนขับใน backend */
 export async function registerNativePush(driverCode: string): Promise<NativePushResult> {
   const platform = nativePlatform();
@@ -76,6 +86,7 @@ export async function registerNativePush(driverCode: string): Promise<NativePush
 
     const registrationHandle = PushNotifications.addListener('registration', async (token) => {
       const backend = await registerTokenWithBackend(driverCode, token.value, platform);
+      if (backend.ok) void clearNativeDeliveredNotifications(PushNotifications);
       finish(
         backend.ok
           ? { ok: true, token: token.value }
@@ -115,11 +126,4 @@ export async function setupNativePushListeners(onOpen?: (url: string) => void): 
     if (onOpen) onOpen(url);
     else window.location.assign('/messenger');
   });
-
-  // เคลียร์ badge ตอนเปิดแอป
-  try {
-    await PushNotifications.removeAllDeliveredNotifications();
-  } catch {
-    // ไม่ critical
-  }
 }

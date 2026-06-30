@@ -7,7 +7,8 @@ import type { Driver, Order } from '@/data/mock';
 type Props = {
   open: boolean;
   order: Order | null;
-  driver: Driver | null;
+  /** คนขับที่เลือก (co-delivery) — index 0 = คนขับหลัก, ที่เหลือ = คนขับร่วม */
+  drivers: Driver[];
   loading: boolean;
   error?: string;
   onCancel: () => void;
@@ -17,7 +18,7 @@ type Props = {
 export function UrgentDispatchDialog({
   open,
   order,
-  driver,
+  drivers,
   loading,
   error,
   onCancel,
@@ -29,7 +30,15 @@ export function UrgentDispatchDialog({
     if (open) setNote('');
   }, [open]);
 
-  if (!open || !order || !driver) return null;
+  if (!open || !order || drivers.length === 0) return null;
+
+  const messengerLabel =
+    drivers.length === 1
+      ? drivers[0].name
+      : `${drivers[0].name} + ร่วมส่งอีก ${drivers.length - 1} คน (${drivers
+          .slice(1)
+          .map((driver) => driver.name)
+          .join(', ')})`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -63,7 +72,7 @@ export function UrgentDispatchDialog({
           <div className="rounded-lg border bg-muted/20 p-3 text-sm">
             <div className="font-mono text-xs font-medium">{order.code}</div>
             <div className="mt-1 font-medium">{order.customer.name}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Messenger: {driver.name}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Messenger: {messengerLabel}</div>
           </div>
           <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
             <div className="flex items-start gap-2">
