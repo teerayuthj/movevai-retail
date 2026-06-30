@@ -1,16 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import { Button } from '@/components/ui/button';
 import { useRetailStore } from '@/state/retailStore';
-import { statusLabel } from '@/data/mock';
+import { paymentLabel, statusLabel } from '@/data/mock';
 import {
   AlertCircle,
+  Banknote,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   List,
   Loader2,
   Map as MapIcon,
   MapPin,
+  MessageSquareText,
+  Navigation,
+  Package,
+  Phone,
   RefreshCw,
 } from 'lucide-react';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
@@ -24,6 +32,7 @@ import {
   isPushSupported,
   subscribeToPush,
 } from './push';
+import { isNativePushSupported, registerNativePush } from './nativePush';
 import { MessengerHeader } from './components/MessengerHeader';
 import { JobCard } from './components/JobCard';
 import { getMessengerJobOverdueMinutes, getMessengerJobScheduledAt } from './messengerSchedule';
@@ -47,8 +56,141 @@ import { MessengerLogin } from './components/MessengerLogin';
 import { TestRouteDialog } from './components/TestRouteDialog';
 import { useMessengerTracking } from './hooks/useMessengerTracking';
 import { useMessengerLocation } from './hooks/useMessengerLocation';
+import { navigationUrl } from './geocode';
+import { Badge } from '@/components/ui/badge';
 
 const MESSENGER_STORAGE_KEY = 'movevai:messenger-code';
+
+function InTransitJobSheet({
+  order,
+  nowMs,
+  expanded,
+  onExpandedChange,
+  onClose,
+}: {
+  order: Order;
+  nowMs: number;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  onClose: () => void;
+}) {
+  const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
+
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-[1100] px-3 pb-3">
+      <div className="overflow-hidden rounded-t-xl border bg-background/98 shadow-[0_-10px_28px_rgba(15,23,42,0.16)] backdrop-blur">
+        <button
+          type="button"
+          className="w-full border-b px-4 pb-3 pt-2 text-left"
+          onClick={() => onExpandedChange(!expanded)}
+          aria-expanded={expanded}
+        >
+          <span className="mx-auto mb-2 block h-1.5 w-12 rounded-full bg-muted-foreground/30" />
+          <div className="flex items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium text-muted-foreground">
+                ปลายทางที่กำลังส่ง
+              </div>
+              <div className="truncate text-sm font-semibold">{order.customer.name}</div>
+            </div>
+            {expanded ? (
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
+            )}
+          </div>
+        </button>
+
+        <div className="px-4 py-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-mono text-xs font-medium">{order.code}</span>
+                <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
+                  <Package className="h-3 w-3" /> พัสดุ
+                </Badge>
+                {isCod && (
+                  <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
+                    <Banknote className="h-3 w-3" />
+                    {paymentLabel[order.payment]}
+                  </Badge>
+                )}
+              </div>
+              {order.deliveryRoute && (
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                    {order.deliveryRoute.code} · จุดที่ {order.deliveryRoute.sequence}
+                  </Badge>
+                  {order.deliveryPlan?.plannedDate && (
+                    <Badge variant="success" className="h-5 px-1.5 text-[10px]">
+                      {formatPlanningDate(order.deliveryPlan.plannedDate)}
+                      {order.deliveryPlan.plannedTime
+                        ? ` · ${order.deliveryPlan.plannedTime} น.`
+                        : ''}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="mt-3 flex gap-2">
+            <Button asChild size="sm" variant="outline" className="flex-1 border-info/30 text-info">
+              <a href={`tel:${order.customer.phone}`}>
+                <Phone className="h-4 w-4" />
+                โทร
+              </a>
+            </Button>
+            <Button asChild size="sm" variant="outline" className="flex-1 border-info/30 text-info">
+              <a
+                href={navigationUrl(order.customer.address, order.customer.geo)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                <Navigation className="h-4 w-4" />
+                นำทาง
+              </a>
+            </Button>
+            <Button size="sm" className="flex-1 bg-success hover:bg-success/90" onClick={onClose}>
+              <CheckCircle2 className="h-4 w-4" />
+              ปิดงาน
+            </Button>
+          </div>
+
+          {expanded && (
+            <div className="app-scroll mt-3 max-h-[34dvh] space-y-3 overflow-auto border-t pt-3">
+              <div className="flex items-start gap-2 text-sm text-muted-foreground">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>{order.customer.address}</span>
+              </div>
+              {order.note && (
+                <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-warning">
+                  <div className="flex items-start gap-2">
+                    <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <div className="text-xs font-medium">หมายเหตุ</div>
+                      <div className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">
+                        {order.note}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div className="text-[11px] text-muted-foreground">
+                อัปเดตระยะทางบนแผนที่ตาม GPS ปัจจุบัน ·{' '}
+                {new Date(nowMs).toLocaleTimeString('th-TH', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}{' '}
+                น.
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function resolveMessengerCode() {
   const fromUrl = new URLSearchParams(window.location.search).get('messenger')?.trim();
@@ -70,12 +212,14 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [assignedView, setAssignedView] = useState<'list' | 'map'>('list');
+  const [deliverySheetExpanded, setDeliverySheetExpanded] = useState(false);
   // โฟกัสแผนที่ไปที่ปลายทางของงานเดียว (กดจากการ์ด) — null = ดูทั้ง Route ที่เลือก
   const [mapFocusOrderId, setMapFocusOrderId] = useState<string | null>(null);
   // กลุ่ม Route+วันส่งที่เลือกดูบนแผนที่ (null = ใช้กลุ่มแรก)
   const [mapGroupKey, setMapGroupKey] = useState<string | null>(null);
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
+  const [startingJobId, setStartingJobId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
   const install = useInstallPrompt();
   const { activeTab, mapOrderId, setTab, openOrderMap, backToPending } = useMessengerTab();
@@ -105,9 +249,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const pendingConfirmationCount = myJobs.filter((o) => o.status === 'pending_confirmation').length;
   const deliveredOrderCount = myJobs.filter((o) => o.status === 'delivered').length;
   const hasTestTrackingSession = tracking.session?.type === 'test';
-  const hasVisibleDeliveryTrackingSession =
-    tracking.session?.type === 'delivery' && inTransitOrderCount > 0;
-  const hasVisibleTrackingSession = hasTestTrackingSession || hasVisibleDeliveryTrackingSession;
   const openCustomerJobCount = assignedOrderCount + inTransitOrderCount + pendingConfirmationCount;
   const effectiveMessengerStatus: NonNullable<typeof messenger>['status'] | undefined =
     messenger?.status === 'off_duty'
@@ -192,10 +333,17 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     void subscribeToPush(messenger.id);
   }, [messenger]);
 
+  // native (iOS/Android): ขอ permission + ผูก device token (APNs/FCM) กับคนขับ
+  useEffect(() => {
+    if (!messenger || !isNativePushSupported()) return;
+    void registerNativePush(messenger.id);
+  }, [messenger]);
+
   // เริ่มส่งงาน = จังหวะ messenger ออกไปส่งของจริง → ถ้ายังไม่ได้บันทึก Route ของรอบนี้
   // ให้ start tracking อัตโนมัติ เพื่อให้ "ทุกรอบถูกบันทึก" โดยไม่ต้องพึ่งความจำ messenger
   const handleStartJob = useCallback(
     async (order: Order) => {
+      setStartingJobId(order.id);
       try {
         await startDelivery(order.id);
         const routeId = order.deliveryRoute?.id;
@@ -210,8 +358,16 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         }
         setTab('in_transit');
       } catch (error) {
-        if (isMessengerAuthError(error)) return;
-        setJobsError(error instanceof Error ? error.message : 'เริ่มงานไม่สำเร็จ');
+        // เดิม fail เงียบ ๆ ทำให้ปุ่ม "นิ่ง" — แสดง toast บอกสาเหตุเสมอ
+        if (isMessengerAuthError(error)) {
+          toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'เริ่มงานไม่สำเร็จ';
+        setJobsError(message);
+        toast.error(`รับงานไม่สำเร็จ — ${message}`);
+      } finally {
+        setStartingJobId(null);
       }
     },
     [setTab, startDelivery, tracking],
@@ -314,10 +470,11 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   );
 
   const showAssignedMap = activeTab === 'assigned' && assignedView === 'map';
+  const closingJobOpen = Boolean(closeTargetId);
   const showTrackingMap = activeTab === 'in_transit' && counts.in_transit > 0;
   // Leaflet ใช้ transform/GPU layers ซึ่งบน iOS Safari สามารถทะลุ fixed modal และ video ได้
   // เมื่อเปิด overlay ต้อง unmount map จริง ไม่ใช่แค่เพิ่ม z-index หรือซ่อนด้วย opacity
-  const suspendMap = Boolean(closeTargetId) || testDialogOpen || profileOpen;
+  const suspendMap = closingJobOpen || testDialogOpen || profileOpen;
 
   // จัดงานใหม่เป็นกลุ่มตาม Route + วันส่ง เพื่อให้แผนที่แยกแต่ละรอบชัดเจน
   // (ไม่รวมงานล่วงหน้าหลายวัน/หลาย Route ไว้บนภาพเดียวจนหมุดทับกัน)
@@ -416,26 +573,13 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           activeOrders={openCustomerJobCount}
           onOpenProfile={() => setProfileOpen(true)}
         />
-        {(activeRouteId || hasVisibleTrackingSession) && (
+        {hasTestTrackingSession && tracking.session && (
           <div className="flex items-center gap-2 border-b bg-background px-3 py-2 text-xs">
-            <span
-              className={cn(
-                'h-2.5 w-2.5 rounded-full',
-                hasVisibleTrackingSession ? 'animate-pulse bg-success' : 'bg-muted-foreground',
-              )}
-            />
+            <span className="h-2.5 w-2.5 rounded-full bg-success" />
             <span className="min-w-0 flex-1 truncate">
-              {hasVisibleTrackingSession && tracking.session
-                ? `${tracking.session.type === 'test' ? `Test${tracking.session.label ? ` · ${tracking.session.label}` : ''} · ` : ''}${
-                    tracking.status === 'tracking'
-                      ? tracking.isOwner
-                        ? `กำลังส่ง GPS · ±${Math.round(tracking.location?.accuracy ?? 0)} ม.`
-                        : `ติดตามจากอีกอุปกรณ์ · ±${Math.round(tracking.location?.accuracy ?? 0)} ม.`
-                      : tracking.error || 'กำลังเปิด GPS…'
-                  }`
-                : 'ระบบจะเริ่มบันทึกเส้นทางเมื่อกดรับงาน'}
+              Test Route{tracking.session.label ? ` · ${tracking.session.label}` : ''}
             </span>
-            {tracking.session?.type === 'test' && tracking.isOwner && (
+            {tracking.isOwner && (
               <Button size="sm" variant="outline" onClick={() => void tracking.end()}>
                 หยุดทดสอบ
               </Button>
@@ -568,19 +712,14 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 />
               )}
             </div>
-            {showTrackingMap && activeDeliveryJob && (
-              <div className="app-scroll max-h-[46dvh] shrink-0 overflow-auto border-t bg-background p-3 pb-4">
-                <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 text-info" />
-                  ปลายทางที่กำลังส่ง
-                </div>
-                <JobCard
-                  order={activeDeliveryJob}
-                  nowMs={nowMs}
-                  onStart={() => undefined}
-                  onClose={() => setCloseTargetId(activeDeliveryJob.id)}
-                />
-              </div>
+            {showTrackingMap && activeDeliveryJob && !closingJobOpen && (
+              <InTransitJobSheet
+                order={activeDeliveryJob}
+                nowMs={nowMs}
+                expanded={deliverySheetExpanded}
+                onExpandedChange={setDeliverySheetExpanded}
+                onClose={() => setCloseTargetId(activeDeliveryJob.id)}
+              />
             )}
           </div>
         ) : (
@@ -657,6 +796,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                       <JobCard
                         order={order}
                         nowMs={nowMs}
+                        starting={startingJobId === order.id}
                         onStart={() => void handleStartJob(order)}
                         onClose={() => setCloseTargetId(order.id)}
                         onViewMap={
@@ -717,14 +857,22 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         onCancel={() => setCloseTargetId(null)}
         onSubmit={async (input) => {
           if (!closeTargetId) return;
+          const submittedOrderId = closeTargetId;
+          const nextInTransitJob = myJobs.find(
+            (order) => order.id !== submittedOrderId && order.status === 'in_transit',
+          );
           const shouldStopTracking =
             tracking.session?.type === 'delivery' &&
             tracking.isOwner &&
             !myJobs.some(
               (order) =>
-                order.id !== closeTargetId && ['assigned', 'in_transit'].includes(order.status),
+                order.id !== submittedOrderId && ['assigned', 'in_transit'].includes(order.status),
             );
-          await submitDelivery(closeTargetId, input);
+          await submitDelivery(submittedOrderId, input);
+          if (!nextInTransitJob) {
+            setDeliverySheetExpanded(false);
+            setTab('pending_confirmation', { replace: true });
+          }
           if (shouldStopTracking) {
             try {
               await tracking.end();

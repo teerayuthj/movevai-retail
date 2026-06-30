@@ -8,9 +8,6 @@ import { getCanonicalPath, getPageFromPath, getPathForPage, type PageKey } from 
 const OverviewPage = lazy(() =>
   import('@/pages/Overview').then((m) => ({ default: m.OverviewPage })),
 );
-const ChatIntakePage = lazy(() =>
-  import('@/pages/ChatIntake').then((m) => ({ default: m.ChatIntakePage })),
-);
 const ScriptTransformPage = lazy(() =>
   import('@/pages/ScriptTransform').then((m) => ({ default: m.ScriptTransformPage })),
 );
@@ -37,6 +34,9 @@ const MessengerConsolePage = lazy(() =>
 );
 const CustomerTrackingPage = lazy(() =>
   import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
+);
+const NotFoundPage = lazy(() =>
+  import('@/pages/NotFound').then((m) => ({ default: m.NotFoundPage })),
 );
 
 // อยู่ "ใน" Suspense → จะ mount ก็ต่อเมื่อ chunk ของหน้าโหลดเสร็จแล้ว
@@ -100,11 +100,25 @@ export default function App() {
     );
   }
 
+  // หมายเหตุ: surface "ลูกค้า" (/track) ย้ายไป entry แยกแล้ว (customer.html → src/main-customer.tsx)
+  // ปกติ vite/hosting rewrite จะเสิร์ฟ customer.html โดยตรง
+  // แต่ถ้า hosting/dev fallback ผิดมาโหลด index.html ให้แสดง customer surface แบบไม่มี AppShell
+  // เพื่อไม่ให้ sidebar/topbar ของ admin หลุดไปหน้าลูกค้า
   if (page === 'customer_tracking') {
     return (
       <Suspense fallback={null}>
         <SplashGate />
         <CustomerTrackingPage pathname={locationPathname} />
+      </Suspense>
+    );
+  }
+
+  // Unknown paths must not expose the admin shell/sidebar to public users.
+  if (page === 'not_found') {
+    return (
+      <Suspense fallback={null}>
+        <SplashGate />
+        <NotFoundPage pathname={locationPathname} />
       </Suspense>
     );
   }
@@ -115,9 +129,10 @@ export default function App() {
         <Suspense fallback={null}>
           <SplashGate />
           {page === 'overview' && <OverviewPage />}
-          {page === 'chat' && <ChatIntakePage onOpenInbox={() => navigateToPage('inbox')} />}
           {page === 'script_transform' && <ScriptTransformPage />}
-          {page === 'inbox' && <InboxPage />}
+          {page === 'inbox' && (
+            <InboxPage onOpenQueue={(search) => navigateToPage('queue', { search })} />
+          )}
           {page === 'queue' && (
             <QueuePage
               locationSearch={locationSearch}

@@ -1,7 +1,14 @@
+import { useState } from 'react';
 import { IdCard, MapPin, Phone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Order } from '@/data/mock';
 import { AddressMapPreview } from '@/components/AddressMapPreview';
+import ThaiAddressPicker from '@/features/inbox/components/ThaiAddressPicker';
+import {
+  EMPTY_THAI_ADDRESS,
+  composeThaiAddress,
+  type ThaiAddressValue,
+} from '@/features/inbox/utils/thaiAddress';
 
 type CustomerInfoFormProps = {
   customer: Order['customer'];
@@ -10,14 +17,26 @@ type CustomerInfoFormProps = {
 };
 
 export default function CustomerInfoForm({ customer, editing, onChange }: CustomerInfoFormProps) {
+  // street = ส่วน free-text, addr = ส่วนที่เลือกจาก picker — รวมแล้วเขียนกลับเป็น customer.address
+  // seed street จากที่อยู่เดิม (parent ใส่ key={order.id} ให้ remount ตอนสลับ order จึง reset ได้)
+  const [street, setStreet] = useState(customer.address);
+  const [addr, setAddr] = useState<ThaiAddressValue>(EMPTY_THAI_ADDRESS);
+
   const updateField = (
     field: keyof Order['customer'],
     value: Order['customer'][keyof Order['customer']],
   ) => {
-    onChange({
-      ...customer,
-      [field]: value,
-    });
+    onChange({ ...customer, [field]: value });
+  };
+
+  const handleStreet = (next: string) => {
+    setStreet(next);
+    onChange({ ...customer, address: composeThaiAddress(next, addr) });
+  };
+
+  const handleAddr = (next: ThaiAddressValue) => {
+    setAddr(next);
+    onChange({ ...customer, address: composeThaiAddress(street, next) });
   };
 
   return (
@@ -63,12 +82,21 @@ export default function CustomerInfoForm({ customer, editing, onChange }: Custom
         <label className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
           <MapPin className="h-3 w-3" /> ที่อยู่จัดส่ง
         </label>
-        <Input
-          value={customer.address}
-          disabled={!editing}
-          onChange={(event) => updateField('address', event.target.value)}
-          className="mt-1"
-        />
+        {editing ? (
+          <div className="mt-1 space-y-3">
+            <Input
+              value={street}
+              placeholder="บ้านเลขที่ / หมู่ / ซอย / ถนน / อาคาร"
+              onChange={(event) => handleStreet(event.target.value)}
+            />
+            <ThaiAddressPicker value={addr} onChange={handleAddr} />
+            <p className="rounded-md bg-muted/50 px-2.5 py-1.5 text-xs text-muted-foreground">
+              ที่อยู่เต็ม: {customer.address || '—'}
+            </p>
+          </div>
+        ) : (
+          <Input value={customer.address} disabled className="mt-1" />
+        )}
         <div className="mt-2">
           <AddressMapPreview address={customer.address} geo={customer.geo} />
         </div>

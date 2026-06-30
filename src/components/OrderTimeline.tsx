@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import {
   ArrowRight,
   Ban,
   Bot,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Clock,
   Cog,
@@ -29,6 +31,7 @@ import {
   OrderActivityEventType,
 } from '@/data/mock';
 import { cn } from '@/lib/utils';
+import { compactActivityLog } from '@/state/retail/timeline';
 
 type IconConfig = {
   Icon: typeof Inbox;
@@ -40,6 +43,7 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   order_created_from_internal_chat: { Icon: Bot, tone: 'info' },
   parsing_completed: { Icon: Sparkles, tone: 'info' },
   customer_updated: { Icon: Pencil, tone: 'neutral' },
+  order_details_updated: { Icon: Pencil, tone: 'neutral' },
   shipping_method_changed: { Icon: TruckIcon, tone: 'neutral' },
   order_confirmed: { Icon: CheckCircle2, tone: 'success' },
   driver_assigned: { Icon: UserCog, tone: 'neutral' },
@@ -176,6 +180,8 @@ export function OrderTimeline({
   description?: string;
   compact?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(true);
+
   if (!order) {
     return (
       <Card className={className}>
@@ -193,34 +199,53 @@ export function OrderTimeline({
     );
   }
 
-  const events = [...(order.activityLog ?? [])].sort((a, b) => b.at.localeCompare(a.at));
+  const events = compactActivityLog(
+    [...(order.activityLog ?? [])].sort((a, b) => a.at.localeCompare(b.at)),
+  )
+    .slice()
+    .sort((a, b) => b.at.localeCompare(a.at));
 
   return (
     <Card className={className}>
       <CardHeader className={compact ? 'pb-3' : undefined}>
-        <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded((current) => !current)}
+          className="flex w-full items-start justify-between gap-2 text-left"
+        >
           <div>
             <CardTitle className="text-sm">{title}</CardTitle>
             {description && <CardDescription className="text-xs">{description}</CardDescription>}
           </div>
-          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-            {events.length} รายการ
+          <span className="flex shrink-0 items-center gap-1">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {events.length} รายการ
+            </span>
+            <ChevronDown
+              className={cn(
+                'h-4 w-4 text-muted-foreground transition-transform',
+                expanded && 'rotate-180',
+              )}
+            />
           </span>
-        </div>
+        </button>
       </CardHeader>
-      <CardContent>
-        {events.length === 0 ? (
-          <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
-            {emptyHint}
-          </div>
-        ) : (
-          <ul className="relative">
-            {events.map((event, idx) => (
-              <TimelineItem key={event.id} event={event} isLast={idx === events.length - 1} />
-            ))}
-          </ul>
-        )}
-      </CardContent>
+      {expanded && (
+        <CardContent>
+          {events.length === 0 ? (
+            <div className="rounded-lg border border-dashed bg-muted/30 px-3 py-6 text-center text-xs text-muted-foreground">
+              {emptyHint}
+            </div>
+          ) : (
+            <ul className="relative">
+              {events.map((event, idx) => (
+                <TimelineItem key={event.id} event={event} isLast={idx === events.length - 1} />
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }

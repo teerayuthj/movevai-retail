@@ -14,6 +14,7 @@ import type {
 } from '@/data/mock';
 import type { ImportRejectReason, PlanningRoute } from '@/lib/retailApi';
 import type { CustomerNotification } from '@/lib/notifications';
+import type { ManualImportOrderInput } from '@/state/retail/manualImport';
 import type { SendCustomerNotificationInput } from '@/state/retail/notifications';
 
 export type RetailState = {
@@ -70,13 +71,21 @@ export type PlanOrdersInput = {
   note?: string;
 };
 
+export type UpdateOrderDetailsInput = {
+  requestedDeliveryDate?: string;
+  requestedDeliveryTime?: string;
+  itemQty?: number;
+};
+
 export type RetailStore = RetailState & {
   createInternalChatOrder: (input: InternalChatOrderInput) => string;
+  createManualImportOrders: (inputs: ManualImportOrderInput[]) => string[];
   refreshMessengerJobs: (driverCode: string) => Promise<void>;
   /** ดึง orders + drivers จาก backend (ฝั่ง web) — ใช้ refresh/poll */
   syncFromBackend: () => Promise<void>;
   updateOrder: (orderId: string, patch: Partial<Order>) => void;
   updateOrderCustomer: (orderId: string, customer: Order['customer']) => void;
+  updateOrderDetails: (orderId: string, input: UpdateOrderDetailsInput) => void;
   setShippingMethod: (orderId: string, method: ShippingMethod) => void;
   confirmOrder: (orderId: string, shippingMethod?: ShippingMethod) => void;
   /** ยืนยันเข้าคิวหลาย order พร้อมกันใน commit เดียว (ใช้กับ batch นำเข้า CSV) */
@@ -90,9 +99,10 @@ export type RetailStore = RetailState & {
   ) => Promise<void>;
   /** ดึงออเดอร์ที่ปฏิเสธกลับมาเป็น 'new' */
   restoreImportOrders: (orderIds: string[]) => Promise<void>;
-  finishParsingOrder: (orderId: string) => void;
   assignOrder: (orderId: string, driverId: string) => Promise<void>;
   autoAssignReadyOrders: (orderIds?: string[]) => Promise<void>;
+  /** จับคู่คนขับ + สร้าง route + เริ่มจัดส่ง ในคำสั่งเดียว — คืน id งานที่ส่งออก */
+  autoAssignAndDispatchReadyOrders: (orderIds?: string[]) => Promise<string[]>;
   startDelivery: (orderId: string) => Promise<void>;
   submitDelivery: (orderId: string, input: SubmitDeliveryInput) => Promise<void>;
   confirmDelivery: (orderId: string, input?: ConfirmDeliveryInput) => Promise<void>;

@@ -1,4 +1,5 @@
 import { drivers as initialDrivers } from '@/data/mock';
+import { migrateOrders } from '@/state/retail/timeline';
 import type { RetailState } from '@/state/retail/types';
 
 // v2 intentionally drops the old cache because v1 mixed demo orders with
@@ -27,7 +28,11 @@ export function loadState(): RetailState {
     }
 
     // notifications เพิ่มทีหลัง — cache เก่าอาจไม่มี field นี้
-    return { ...parsed, notifications: parsed.notifications ?? [] };
+    return {
+      ...parsed,
+      orders: migrateOrders(parsed.orders),
+      notifications: parsed.notifications ?? [],
+    };
   } catch {
     return defaultState;
   }
@@ -40,7 +45,7 @@ export function persistState(next: RetailState) {
     // ที่ยังไม่ sync เพื่อให้ localStorage มีขนาดคงที่เมื่อจำนวน order ในระบบเพิ่มขึ้น
     const persisted: RetailState = {
       ...next,
-      orders: next.orders.filter((order) => LOCAL_DRAFT_STATUSES.has(order.status)),
+      orders: migrateOrders(next.orders.filter((order) => LOCAL_DRAFT_STATUSES.has(order.status))),
       // notifications เป็นข้อความล้วน (เล็ก) ต่างจาก orders — เก็บไว้เต็มเพื่อให้ outbox คงอยู่
       notifications: next.notifications,
     };

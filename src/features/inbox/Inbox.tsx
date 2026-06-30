@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Coins, MessageSquareText } from 'lucide-react';
+import { Coins, FileSpreadsheet, MessageSquareText } from 'lucide-react';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { MobileDetailSheet } from '@/components/MobileDetailSheet';
 import { Badge } from '@/components/ui/badge';
@@ -9,6 +9,7 @@ import { cancelReasonLabel, formatTHB, statusLabel, type CancelReason } from '@/
 import OrderDetail from '@/features/inbox/components/OrderDetail';
 import OrderListPanel from '@/features/inbox/components/OrderListPanel';
 import ImportBatchPanel from '@/features/inbox/components/ImportBatchPanel';
+import ManualImportPanel from '@/features/inbox/components/ManualImportPanel';
 import {
   INBOX_STATUSES,
   type InboxFilter,
@@ -24,20 +25,20 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
   label: cancelReasonLabel[value],
 }));
 
-type InboxTab = 'orders' | 'line_import';
+type InboxTab = 'manual_import' | 'line_import' | 'orders';
 
-export function InboxPage() {
+export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => void }) {
   const {
     orders,
     confirmOrder,
-    finishParsingOrder,
     updateOrderCustomer,
+    updateOrderDetails,
     setShippingMethod,
     cancelOrder,
     syncFromBackend,
   } = useRetailStore();
 
-  const [tab, setTab] = useState<InboxTab>('orders');
+  const [tab, setTab] = useState<InboxTab>('line_import');
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     return orders.find((order) => INBOX_STATUSES.includes(order.status))?.id ?? null;
@@ -77,6 +78,14 @@ export function InboxPage() {
     }
   };
 
+  const openManualOrder = (orderId: string) => {
+    setTab('orders');
+    setFilter('all');
+    setQuery('');
+    setSelectedId(orderId);
+    setMobileDetailOpen(true);
+  };
+
   useEffect(() => {
     if (!selectedId || !inboxOrders.some((order) => order.id === selectedId)) {
       setSelectedId(inboxOrders[0]?.id ?? null);
@@ -89,8 +98,7 @@ export function InboxPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Order Inbox — คำสั่งซื้อ</h1>
           <p className="text-sm text-muted-foreground">
-            รวมออเดอร์จากทุกช่องทาง intake · ระบบช่วยอ่านสลิป/ไฟล์ + จับคู่ SKU · ตรวจสอบก่อนยืนยัน
-            โดยใช้ order เดียวกันต่อเนื่องไปยัง Planning และคิวจัดส่ง
+            รวมออเดอร์จากทุกช่องทาง intake · อ่านข้อมูลจาก CSV/ข้อความต้นทาง · แก้ไขก่อนยืนยัน
           </p>
         </div>
 
@@ -103,7 +111,33 @@ export function InboxPage() {
       </div>
 
       {/* Tab switcher */}
-      <div className="flex gap-1 border-b">
+      <div className="flex flex-wrap gap-1 border-b">
+        <button
+          type="button"
+          onClick={() => setTab('line_import')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+            tab === 'line_import'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <MessageSquareText className="h-3.5 w-3.5" />
+          ประวัติ LINE
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('manual_import')}
+          className={cn(
+            'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
+            tab === 'manual_import'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground',
+          )}
+        >
+          <FileSpreadsheet className="h-3.5 w-3.5" />
+          Manual Import
+        </button>
         <button
           type="button"
           onClick={() => setTab('orders')}
@@ -116,23 +150,17 @@ export function InboxPage() {
         >
           คำสั่งซื้อ
         </button>
-        <button
-          type="button"
-          onClick={() => setTab('line_import')}
-          className={cn(
-            'flex items-center gap-1.5 px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px',
-            tab === 'line_import'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-muted-foreground hover:text-foreground',
-          )}
-        >
-          <MessageSquareText className="h-3.5 w-3.5" />
-          LINE นำเข้า
-        </button>
       </div>
 
-      {tab === 'line_import' ? (
-        <ImportBatchPanel onOpenOrder={openImportedOrder} />
+      {tab === 'manual_import' ? (
+        <ManualImportPanel onOpenOrder={openManualOrder} />
+      ) : tab === 'line_import' ? (
+        <ImportBatchPanel
+          onOpenOrder={openImportedOrder}
+          onFastDispatchOrder={(orderId) =>
+            onOpenQueue?.(`?tab=ready&order=${encodeURIComponent(orderId)}&mode=fast`)
+          }
+        />
       ) : (
         <>
           <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
@@ -155,8 +183,8 @@ export function InboxPage() {
                 <OrderDetail
                   order={selected}
                   onConfirm={confirmOrder}
-                  onFinishParsing={finishParsingOrder}
                   onSaveCustomer={updateOrderCustomer}
+                  onSaveDetails={updateOrderDetails}
                   onChangeShippingMethod={setShippingMethod}
                   onRequestCancel={setCancelTargetId}
                 />
@@ -178,8 +206,8 @@ export function InboxPage() {
               <OrderDetail
                 order={selected}
                 onConfirm={confirmOrder}
-                onFinishParsing={finishParsingOrder}
                 onSaveCustomer={updateOrderCustomer}
+                onSaveDetails={updateOrderDetails}
                 onChangeShippingMethod={setShippingMethod}
                 onRequestCancel={setCancelTargetId}
               />

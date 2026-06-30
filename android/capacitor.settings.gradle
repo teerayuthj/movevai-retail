@@ -5,6 +5,9 @@ project(':capacitor-android').projectDir = new File('../node_modules/.pnpm/@capa
 include ':capacitor-geolocation'
 project(':capacitor-geolocation').projectDir = new File('../node_modules/.pnpm/@capacitor+geolocation@8.2.0_@capacitor+core@8.4.1/node_modules/@capacitor/geolocation/android')
 
+include ':capacitor-push-notifications'
+project(':capacitor-push-notifications').projectDir = new File('../node_modules/.pnpm/@capacitor+push-notifications@8.1.1_@capacitor+core@8.4.1/node_modules/@capacitor/push-notifications/android')
+
 include ':capacitor-screen-orientation'
 project(':capacitor-screen-orientation').projectDir = new File('../node_modules/.pnpm/@capacitor+screen-orientation@8.0.1_@capacitor+core@8.4.1/node_modules/@capacitor/screen-orientation/android')
 

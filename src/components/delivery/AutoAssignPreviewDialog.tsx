@@ -85,6 +85,7 @@ export function AutoAssignPreviewDialog({
             </h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
               {assignable.length} ออเดอร์ · จับคู่ทีละใบ (1 ออเดอร์ = คนขับ 1 คน) เรียงตามความสำคัญ
+              · ยืนยันแล้วสร้าง Route + เริ่มจัดส่งทันที
             </p>
           </div>
           <button
@@ -249,7 +250,7 @@ export function AutoAssignPreviewDialog({
                   onClick={() => onConfirm(Array.from(selected))}
                 >
                   <Sparkles className="h-4 w-4" />
-                  ยืนยันจ่ายงาน {selectedCount} รายการ
+                  จ่ายงาน + ส่งเลย {selectedCount} รายการ
                 </Button>
               </>
             )}

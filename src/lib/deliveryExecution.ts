@@ -31,6 +31,20 @@ export function getDriverQueueTab(order: Order): DriverQueueTab | null {
   return null;
 }
 
+/**
+ * สถานะคนขับที่ derive จากงานจริง เพื่อให้ badge ฝั่ง admin ตรงกับ messenger
+ * — "กำลังส่ง" เฉพาะตอนมีงาน in_transit เท่านั้น (งานรอตรวจ/assigned ถือว่า "ว่าง")
+ * — off_duty เป็นค่าที่ตั้งเอง จึงคงไว้เสมอ
+ * ตรงกับ effectiveMessengerStatus ใน MessengerConsole
+ */
+export function deriveDriverDisplayStatus(driver: Driver, orders: Order[]): Driver['status'] {
+  if (driver.status === 'off_duty') return 'off_duty';
+  const activelyDelivering = orders.some(
+    (order) => order.assignedDriverId === driver.id && order.status === 'in_transit',
+  );
+  return activelyDelivering ? 'on_delivery' : 'available';
+}
+
 export function getDeliveryTrackingTab(order: Order): DeliveryTrackingTab | null {
   if (
     order.status === 'assigned' &&

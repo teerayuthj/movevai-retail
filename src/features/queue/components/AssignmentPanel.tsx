@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import {
-  DriverSummary,
-  OrderSummary,
-  QueueAiAssessment,
-} from '@/components/delivery/DeliveryExecutionShared';
+import { DriverSummary, OrderSummary } from '@/components/delivery/DeliveryExecutionShared';
 import type { Driver, Order } from '@/data/mock';
 
 type AssignmentPanelProps = {
@@ -51,8 +47,6 @@ export function AssignmentPanel({ order, driver, actions }: AssignmentPanelProps
                 )}
               </div>
             </div>
-
-            <QueueAiAssessment />
 
             {actions}
           </>

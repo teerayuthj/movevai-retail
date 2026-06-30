@@ -6,7 +6,7 @@ import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/mock';
 import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
-import { formatRouteDistance } from '@/lib/routeDistance';
+import { formatRouteDistance, formatRouteDuration } from '@/lib/routeDistance';
 import { useOrdersGeo } from '../hooks/useOrdersGeo';
 
 type PlannedRouteOverlay = {
@@ -16,6 +16,7 @@ type PlannedRouteOverlay = {
   code?: string;
   driverName?: string;
   distanceMeters?: number | null;
+  durationSeconds?: number | null;
   geometry: { lat: number; lng: number }[];
 };
 
@@ -223,6 +224,12 @@ export function PlanningMap({
           ) : route.distanceMeters != null && route.distanceMeters > 0 ? (
             <div className="mt-0.5 text-sm font-semibold text-foreground">
               ระยะตามถนนประมาณ {formatRouteDistance(route.distanceMeters)}
+              {route.durationSeconds != null && route.durationSeconds > 0 ? (
+                <span className="text-muted-foreground">
+                  {' · ~'}
+                  {formatRouteDuration(route.durationSeconds)}
+                </span>
+              ) : null}
             </div>
           ) : null}
           <div className="mt-1 flex items-start gap-1 text-[11px] text-muted-foreground">

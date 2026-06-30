@@ -15,7 +15,6 @@ import {
   Phone,
   Route,
   ShieldCheck,
-  Sparkles,
   Truck as TruckIcon,
   X,
   ZoomIn,
@@ -34,7 +33,8 @@ import {
   paymentLabel,
 } from '@/data/mock';
 import { cn } from '@/lib/utils';
-import { describeProof } from '@/lib/deliveryExecution';
+import { deriveDriverDisplayStatus, describeProof } from '@/lib/deliveryExecution';
+import { formatFastDispatchDueAt, getFastDispatchSla } from '@/lib/fastDispatch';
 import { formatRouteDistance } from '@/lib/routeDistance';
 
 export function VehicleIcon({ v }: { v: Driver['vehicle'] }) {
@@ -47,15 +47,17 @@ export function DriverCard({
   driver,
   selected,
   onSelect,
-  recommended,
+  orders,
 }: {
   driver: Driver;
   selected: boolean;
   onSelect: () => void;
-  recommended?: boolean;
+  /** ถ้าส่งมา จะ derive สถานะ "ว่าง/กำลังส่ง" จากงานจริงให้ตรงกับ messenger */
+  orders?: Order[];
 }) {
   const pct = (driver.activeOrders / driver.capacity) * 100;
   const remainingCapacity = Math.max(0, driver.capacity - driver.activeOrders);
+  const displayStatus = orders ? deriveDriverDisplayStatus(driver, orders) : driver.status;
 
   return (
     <button
@@ -73,12 +75,6 @@ export function DriverCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{driver.name}</span>
-            {recommended && (
-              <Badge variant="muted" className="h-4 gap-0.5 px-1 text-[9px]">
-                <Sparkles className="h-2.5 w-2.5" />
-                แนะนำ
-              </Badge>
-            )}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <VehicleIcon v={driver.vehicle} />
@@ -95,18 +91,12 @@ export function DriverCard({
           </div>
         </div>
         <Badge
-          variant={
-            driver.status === 'available'
-              ? 'success'
-              : driver.status === 'on_delivery'
-                ? 'muted'
-                : 'muted'
-          }
+          variant={displayStatus === 'available' ? 'success' : 'muted'}
           className="h-5 shrink-0 px-1.5 text-[10px]"
         >
-          {driver.status === 'available'
+          {displayStatus === 'available'
             ? 'ว่าง'
-            : driver.status === 'on_delivery'
+            : displayStatus === 'on_delivery'
               ? 'กำลังส่ง'
               : 'หยุด'}
         </Badge>
@@ -129,6 +119,8 @@ export function QueueOrderCard({
   /** ลำดับในคิวตาม priority (1 = ควรมอบหมายก่อน) */
   rank?: number;
 }) {
+  const fastSla = getFastDispatchSla(order);
+
   return (
     <button
       onClick={onClick}
@@ -180,6 +172,15 @@ export function QueueOrderCard({
                 จาก Planning
               </Badge>
             )}
+            {fastSla.urgent && (
+              <Badge
+                variant={fastSla.state === 'overdue' ? 'destructive' : 'warning'}
+                className="h-5 gap-0.5 px-1.5 text-[10px]"
+              >
+                <Clock className="h-2.5 w-2.5" />
+                {fastSla.label}
+              </Badge>
+            )}
           </div>
           <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
         </div>
@@ -188,6 +189,23 @@ export function QueueOrderCard({
         </Badge>
       </div>
       <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+        {fastSla.urgent && (
+          <div
+            className={cn(
+              'flex items-center gap-1.5 font-medium',
+              fastSla.state === 'overdue'
+                ? 'text-destructive'
+                : fastSla.state === 'warning'
+                  ? 'text-warning'
+                  : 'text-info',
+            )}
+          >
+            <Clock className="h-3 w-3" />
+            <span>
+              {fastSla.detail} · ต้องถึงก่อน {formatFastDispatchDueAt(fastSla.dueAt)}
+            </span>
+          </div>
+        )}
         <div className="flex items-start gap-1.5">
           <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
           <span className="line-clamp-1">{order.customer.address}</span>
@@ -211,6 +229,8 @@ export function QueueOrderCard({
 }
 
 export function OrderSummary({ order }: { order: Order }) {
+  const fastSla = getFastDispatchSla(order);
+
   return (
     <div className="rounded-lg border p-3">
       <div className="flex items-center justify-between">
@@ -225,6 +245,24 @@ export function OrderSummary({ order }: { order: Order }) {
           {formatTHB(order.totalValue)}
         </span>
       </div>
+      {fastSla.urgent && (
+        <div
+          className={cn(
+            'mt-2 rounded-md border px-2.5 py-2 text-xs',
+            fastSla.state === 'overdue'
+              ? 'border-destructive/30 bg-destructive/5 text-destructive'
+              : 'border-warning/30 bg-warning/10 text-warning',
+          )}
+        >
+          <div className="flex items-center gap-1.5 font-medium">
+            <Clock className="h-3.5 w-3.5" />
+            {fastSla.label}
+          </div>
+          <div className="mt-0.5 text-[10px] opacity-80">
+            {fastSla.detail} · เป้าหมาย {formatFastDispatchDueAt(fastSla.dueAt)}
+          </div>
+        </div>
+      )}
       {order.deliveryRoute?.plannedDistanceMeters != null &&
         order.deliveryRoute.plannedDistanceMeters > 0 && (
           <div className="mt-2 rounded-md border bg-muted/20 px-2.5 py-2 text-xs text-muted-foreground">
@@ -260,7 +298,16 @@ export function OrderSummary({ order }: { order: Order }) {
   );
 }
 
-export function DriverSummary({ driver, order }: { driver: Driver | null; order?: Order | null }) {
+export function DriverSummary({
+  driver,
+  order,
+  orders,
+}: {
+  driver: Driver | null;
+  order?: Order | null;
+  /** ถ้าส่งมา จะ derive สถานะ "ว่าง/กำลังส่ง" จากงานจริงให้ตรงกับ messenger */
+  orders?: Order[];
+}) {
   if (!driver) {
     return (
       <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
@@ -270,6 +317,7 @@ export function DriverSummary({ driver, order }: { driver: Driver | null; order?
   }
 
   const pct = (driver.activeOrders / driver.capacity) * 100;
+  const displayStatus = orders ? deriveDriverDisplayStatus(driver, orders) : driver.status;
 
   return (
     <div className="rounded-lg border p-4">
@@ -279,12 +327,12 @@ export function DriverSummary({ driver, order }: { driver: Driver | null; order?
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{driver.name}</span>
             <Badge
-              variant={driver.status === 'available' ? 'success' : 'muted'}
+              variant={displayStatus === 'available' ? 'success' : 'muted'}
               className="h-5 px-1.5 text-[10px]"
             >
-              {driver.status === 'available'
+              {displayStatus === 'available'
                 ? 'ว่าง'
-                : driver.status === 'on_delivery'
+                : displayStatus === 'on_delivery'
                   ? 'กำลังส่ง'
                   : 'หยุด'}
             </Badge>
@@ -658,32 +706,6 @@ export function EmptyState({ title = 'ไม่มีรายการในส
     <div className="py-12 text-center text-sm text-muted-foreground">
       <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
       {title}
-    </div>
-  );
-}
-
-export function QueueAiAssessment() {
-  return (
-    <div className="rounded-lg border bg-muted/30 p-3 text-xs">
-      <div className="flex items-center gap-1.5 font-medium text-foreground">
-        <Sparkles className="h-3 w-3" />
-        AI ประเมิน
-      </div>
-      <ul className="mt-2 space-y-1 text-muted-foreground">
-        <li className="flex items-center gap-1.5">
-          <ShieldCheck className="h-3 w-3 text-success" />
-          ประกันขนส่งครอบคลุม
-        </li>
-        <li className="flex items-center gap-1.5">
-          <Clock className="h-3 w-3" /> ส่งถึงภายใน ~35 นาที
-        </li>
-        <li className="flex items-center gap-1.5">
-          <MapPin className="h-3 w-3" /> อยู่ในโซนเดียวกับ order อื่น
-        </li>
-        <li className="flex items-center gap-1.5">
-          <Package className="h-3 w-3" /> ยังเหลือ capacity 5/6
-        </li>
-      </ul>
     </div>
   );
 }

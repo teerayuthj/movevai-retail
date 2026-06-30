@@ -224,7 +224,7 @@ function CameraCaptureSheet({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black text-white">
+    <div className="fixed inset-0 z-[2010] flex flex-col bg-black text-white">
       <div className="flex items-center justify-between px-4 pb-3 pt-safe">
         <div>
           <div className="text-sm font-semibold">ถ่ายรูปส่งมอบ</div>
@@ -327,10 +327,12 @@ function CameraCaptureSheet({
 function SignaturePad({
   onChange,
   fill = false,
+  initialDataUrl = null,
 }: {
   onChange: (dataUrl: string | null) => void;
   /** ให้กระดานยืดเต็มพื้นที่ที่เหลือ (ใช้ตอนล็อกแนวนอน เพื่อไม่ให้ลูกค้าต้องเลื่อนจอ) */
   fill?: boolean;
+  initialDataUrl?: string | null;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -341,7 +343,8 @@ function SignaturePad({
     const configureCanvas = (preserveDrawing: boolean) => {
       const canvas = canvasRef.current;
       if (!canvas || canvas.clientWidth === 0 || canvas.clientHeight === 0) return;
-      const previous = preserveDrawing && inked.current ? canvas.toDataURL('image/png') : null;
+      const previous =
+        preserveDrawing && inked.current ? canvas.toDataURL('image/png') : initialDataUrl;
 
       canvas.width = canvas.clientWidth;
       canvas.height = canvas.clientHeight;
@@ -357,10 +360,14 @@ function SignaturePad({
         const image = new Image();
         image.onload = () => {
           ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+          inked.current = true;
           savedDataUrl.current = canvas.toDataURL('image/png');
           onChange(savedDataUrl.current);
         };
         image.src = previous;
+      } else {
+        inked.current = false;
+        savedDataUrl.current = null;
       }
     };
 
@@ -371,7 +378,7 @@ function SignaturePad({
     observer.observe(canvas);
 
     return () => observer.disconnect();
-  }, [onChange]);
+  }, [initialDataUrl, onChange]);
 
   const prepareContext = (canvas: HTMLCanvasElement) => {
     const ctx = canvas.getContext('2d');
@@ -466,6 +473,73 @@ const CLOSE_STEPS: { key: CloseStep; label: string }[] = [
   { key: 'review', label: 'ตรวจสอบ' },
 ];
 
+const CLOSE_JOB_DRAFT_STORAGE_PREFIX = 'movevai:close-job-draft:v1';
+
+type CloseJobDraft = {
+  orderId: string;
+  orderCode: string;
+  editorRole: DeliveryProofEditorRole;
+  photos: string[];
+  signatureDataUrl: string | null;
+  step: CloseStep;
+  savedAt: string;
+};
+
+function closeJobDraftKey(orderId: string, editorRole: DeliveryProofEditorRole) {
+  return `${CLOSE_JOB_DRAFT_STORAGE_PREFIX}:${editorRole}:${orderId}`;
+}
+
+function readCloseJobDraft(
+  orderId: string,
+  editorRole: DeliveryProofEditorRole,
+): CloseJobDraft | null {
+  try {
+    const raw = localStorage.getItem(closeJobDraftKey(orderId, editorRole));
+    if (!raw) return null;
+    const draft = JSON.parse(raw) as Partial<CloseJobDraft>;
+    if (draft.orderId !== orderId || draft.editorRole !== editorRole) return null;
+    return {
+      orderId,
+      orderCode: typeof draft.orderCode === 'string' ? draft.orderCode : '',
+      editorRole,
+      photos: Array.isArray(draft.photos)
+        ? draft.photos.filter((photo): photo is string => typeof photo === 'string')
+        : [],
+      signatureDataUrl: typeof draft.signatureDataUrl === 'string' ? draft.signatureDataUrl : null,
+      step:
+        draft.step === 'photo' || draft.step === 'signature' || draft.step === 'review'
+          ? draft.step
+          : 'photo',
+      savedAt: typeof draft.savedAt === 'string' ? draft.savedAt : new Date().toISOString(),
+    };
+  } catch (error) {
+    console.warn('[MessengerCloseJobDialog] read draft skipped:', error);
+    return null;
+  }
+}
+
+function writeCloseJobDraft(draft: CloseJobDraft) {
+  try {
+    localStorage.setItem(closeJobDraftKey(draft.orderId, draft.editorRole), JSON.stringify(draft));
+  } catch (error) {
+    console.warn('[MessengerCloseJobDialog] save draft skipped:', error);
+  }
+}
+
+function clearCloseJobDraft(orderId: string, editorRole: DeliveryProofEditorRole) {
+  try {
+    localStorage.removeItem(closeJobDraftKey(orderId, editorRole));
+  } catch (error) {
+    console.warn('[MessengerCloseJobDialog] clear draft skipped:', error);
+  }
+}
+
+function restoreStep(step: CloseStep, hasPhoto: boolean, hasSignature: boolean): CloseStep {
+  if (hasPhoto && hasSignature && step === 'review') return 'review';
+  if (hasPhoto && ['signature', 'review'].includes(step)) return 'signature';
+  return hasPhoto ? 'signature' : 'photo';
+}
+
 export function MessengerCloseJobDialog({
   open,
   order,
@@ -483,10 +557,12 @@ export function MessengerCloseJobDialog({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const initializedOrderIdRef = useRef<string | null>(null);
+  const [hydratedOrderId, setHydratedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
       initializedOrderIdRef.current = null;
+      setHydratedOrderId(null);
       setCameraOpen(false);
       void restorePortraitOrientation().catch((error) => {
         console.warn('[MessengerCloseJobDialog] restore portrait skipped:', error);
@@ -498,16 +574,45 @@ export function MessengerCloseJobDialog({
 
     initializedOrderIdRef.current = order.id;
     const existingProof = order.proofOfDelivery;
-    setPhotos(existingProof?.photos ?? []);
-    setSignatureDataUrl(existingProof?.signatureDataUrl ?? null);
-    setStep(existingProof ? 'review' : 'photo');
+    const draft = readCloseJobDraft(order.id, editorRole);
+    const nextPhotos = draft?.photos.length ? draft.photos : (existingProof?.photos ?? []);
+    const nextSignatureDataUrl = draft?.signatureDataUrl ?? existingProof?.signatureDataUrl ?? null;
+    const nextStep = draft
+      ? restoreStep(draft.step, nextPhotos.length > 0, !!nextSignatureDataUrl)
+      : existingProof
+        ? 'review'
+        : 'photo';
+
+    setPhotos(nextPhotos);
+    setSignatureDataUrl(nextSignatureDataUrl);
+    setStep(nextStep);
     // อย่าเด้งเข้าหน้ากล้องเอง — บน iOS/Capacitor (WKWebView) getUserMedia
     // ใช้ไม่ได้แล้วจะเจอจอดำ ให้ผู้ใช้เลือกเองว่าจะเปิดกล้องหรือเลือกจากคลังภาพ
     setCameraOpen(false);
     setSubmitting(false);
     setSubmitError(null);
     setPhotoError(null);
-  }, [open, order]);
+    setHydratedOrderId(order.id);
+  }, [editorRole, open, order]);
+
+  useEffect(() => {
+    if (!open || !order || hydratedOrderId !== order.id) return;
+
+    if (photos.length === 0 && !signatureDataUrl) {
+      clearCloseJobDraft(order.id, editorRole);
+      return;
+    }
+
+    writeCloseJobDraft({
+      orderId: order.id,
+      orderCode: order.code,
+      editorRole,
+      photos,
+      signatureDataUrl,
+      step,
+      savedAt: new Date().toISOString(),
+    });
+  }, [editorRole, hydratedOrderId, open, order, photos, signatureDataUrl, step]);
 
   useEffect(() => {
     if (!open) return;
@@ -569,6 +674,7 @@ export function MessengerCloseJobDialog({
             }
           : undefined,
       });
+      clearCloseJobDraft(order.id, editorRole);
     } catch (error) {
       setSubmitError(
         error instanceof Error ? error.message : 'บันทึกหลักฐานไม่สำเร็จ กรุณาลองใหม่',
@@ -600,7 +706,7 @@ export function MessengerCloseJobDialog({
   return (
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-end justify-center bg-black/40 sm:items-center',
+        'fixed inset-0 z-[2000] flex items-end justify-center bg-black/40 sm:items-center',
         signatureMode ? 'sm:p-2' : 'sm:p-4',
       )}
     >
@@ -794,20 +900,13 @@ export function MessengerCloseJobDialog({
 
           {step === 'signature' && (
             <div className="flex min-h-0 flex-1 flex-col gap-2">
-              <div className="flex shrink-0 items-center justify-between gap-3">
-                <div className="flex min-w-0 items-center gap-2 text-xs font-semibold">
-                  <PenLine className="h-3.5 w-3.5 shrink-0 text-primary" />
-                  <span className="truncate">ลูกค้าเซ็นรับ</span>
-                </div>
-                {signatureCaptured && (
-                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-1 text-[11px] font-medium text-success">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    บันทึกลายเซ็นแล้ว
-                  </span>
-                )}
-              </div>
-
-              <SignaturePad fill onChange={setSignatureDataUrl} />
+              <SignaturePad fill initialDataUrl={signatureDataUrl} onChange={setSignatureDataUrl} />
+              {signatureCaptured && (
+                <span className="inline-flex shrink-0 items-center justify-center gap-1 rounded-full border border-success/30 bg-success/10 px-2 py-1 text-[11px] font-medium text-success">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  บันทึกลายเซ็นแล้ว
+                </span>
+              )}
             </div>
           )}
 

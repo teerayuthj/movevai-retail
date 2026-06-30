@@ -1,0 +1,15 @@
+{
+  "Simulator Target Bundle": "com.movevai.retail",
+  "aps": {
+    "alert": {
+      "title": "มีงานใหม่เข้ามา",
+      "body": "ORD-TEST-001 · คุณศรัณย์ วงศ์วัฒนา"
+    },
+    "sound": "default",
+    "badge": 1
+  },
+  "data": {
+    "url": "/messenger",
+    "orderId": "test-order-001"
+  }
+}

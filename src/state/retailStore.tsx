@@ -15,6 +15,7 @@ import {
   submitDeliveryState,
 } from '@/state/retail/delivery';
 import { createInternalChatOrderState } from '@/state/retail/internalChat';
+import { createManualImportOrdersState } from '@/state/retail/manualImport';
 import {
   sendCustomerNotificationState,
   sendCustomerNotificationsState,
@@ -23,9 +24,9 @@ import { defaultState, loadState, persistState } from '@/state/retail/persistenc
 import {
   cancelOrderState,
   confirmOrderState,
-  finishParsingOrderState,
   setShippingMethodState,
   updateOrderCustomerState,
+  updateOrderDetailsState,
   updateOrderState,
 } from '@/state/retail/orders';
 import {
@@ -163,6 +164,21 @@ export function RetailProvider({
     [commit],
   );
 
+  const createManualImportOrders = useCallback(
+    (inputs: Parameters<RetailStore['createManualImportOrders']>[0]) => {
+      let createdIds: string[] = [];
+
+      commit((current) => {
+        const result = createManualImportOrdersState(current, inputs);
+        createdIds = result.createdIds;
+        return result.nextState;
+      });
+
+      return createdIds;
+    },
+    [commit],
+  );
+
   const refreshMessengerJobs = useCallback(
     async (driverCode: string) => {
       const remote = await fetchMessengerOrders(driverCode);
@@ -225,6 +241,13 @@ export function RetailProvider({
     [commit],
   );
 
+  const updateOrderDetails = useCallback(
+    (orderId: string, input: Parameters<RetailStore['updateOrderDetails']>[1]) => {
+      commit((current) => updateOrderDetailsState(current, orderId, input));
+    },
+    [commit],
+  );
+
   const confirmOrder = useCallback(
     (orderId: string, shippingMethod?: Parameters<RetailStore['confirmOrder']>[1]) => {
       commit((current) => confirmOrderState(current, orderId, shippingMethod));
@@ -258,8 +281,9 @@ export function RetailProvider({
       commit((current) =>
         [...ids].reduce((acc, id) => confirmOrderState(acc, id, shippingMethod), current),
       );
+      await syncFromBackend();
     },
-    [commit],
+    [commit, syncFromBackend],
   );
 
   const rejectImportOrders = useCallback(
@@ -276,13 +300,6 @@ export function RetailProvider({
       if (orderIds.length === 0) return;
       await restoreImportOrdersApi(orderIds);
       commit((current) => restoreImportOrdersState(current, orderIds));
-    },
-    [commit],
-  );
-
-  const finishParsingOrder = useCallback(
-    (orderId: string) => {
-      commit((current) => finishParsingOrderState(current, orderId));
     },
     [commit],
   );
@@ -314,6 +331,38 @@ export function RetailProvider({
         ...next,
         orders: canonical.reduce(replaceOrder, next.orders),
       }));
+    },
+    [commit, state],
+  );
+
+  // จับคู่คนขับ + สร้าง route + เริ่มจัดส่ง ในคำสั่งเดียว (one-click dispatch)
+  // ข้ามขั้น "รอสร้าง Route" — ใช้เมื่อไว้ใจการจับคู่ของ auto-assign เต็มที่
+  const autoAssignAndDispatchReadyOrders = useCallback(
+    async (orderIds?: string[]) => {
+      const next = autoAssignReadyOrdersState(state, orderIds);
+      const changed = next.orders.filter((order) => {
+        const before = state.orders.find((item) => item.id === order.id);
+        return before?.assignedDriverId !== order.assignedDriverId && order.assignedDriverId;
+      });
+      // 1) sync + assign บน backend
+      const assigned = await Promise.all(
+        changed.map((order) => syncAndAssignOrder(order, order.assignedDriverId!)),
+      );
+      // 2) เริ่มจัดส่งทันทีด้วย id/คนขับจาก canonical ที่เพิ่ง assign
+      const started = await Promise.all(
+        assigned.map((order, index) =>
+          startMessengerOrder(order.id, order.assignedDriverId ?? changed[index].assignedDriverId!),
+        ),
+      );
+      commit(() => {
+        let result: RetailState = { ...next, orders: assigned.reduce(replaceOrder, next.orders) };
+        for (const order of started) {
+          const advanced = startDeliveryState(result, order.id);
+          result = { ...advanced, orders: replaceOrder(advanced.orders, order) };
+        }
+        return result;
+      });
+      return started.map((order) => order.id);
     },
     [commit, state],
   );
@@ -640,19 +689,21 @@ export function RetailProvider({
     () => ({
       ...state,
       createInternalChatOrder,
+      createManualImportOrders,
       refreshMessengerJobs,
       syncFromBackend,
       updateOrder,
       updateOrderCustomer,
+      updateOrderDetails,
       setShippingMethod,
       confirmOrder,
       confirmOrders,
       approveImportOrders,
       rejectImportOrders,
       restoreImportOrders,
-      finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
+      autoAssignAndDispatchReadyOrders,
       startDelivery,
       submitDelivery,
       confirmDelivery,
@@ -681,19 +732,21 @@ export function RetailProvider({
     [
       state,
       createInternalChatOrder,
+      createManualImportOrders,
       refreshMessengerJobs,
       syncFromBackend,
       updateOrder,
       updateOrderCustomer,
+      updateOrderDetails,
       setShippingMethod,
       confirmOrder,
       confirmOrders,
       approveImportOrders,
       rejectImportOrders,
       restoreImportOrders,
-      finishParsingOrder,
       assignOrder,
       autoAssignReadyOrders,
+      autoAssignAndDispatchReadyOrders,
       startDelivery,
       submitDelivery,
       confirmDelivery,

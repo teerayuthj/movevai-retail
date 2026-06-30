@@ -21,13 +21,12 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   formatTHB,
-  orders as mockOrders,
   paymentLabel,
   shippingMethodLabel,
   statusLabel,
   type Order,
   type OrderStatus,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import {
   fetchCustomerOrder,
   fetchCustomerLiveTracking,
@@ -321,28 +320,22 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
   const orderId = useMemo(() => getCustomerTrackingOrderId(pathname), [pathname]);
   const [order, setOrder] = useState<Order | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [loadSource, setLoadSource] = useState<'api' | 'demo' | null>(null);
   const [liveTracking, setLiveTracking] = useState<CustomerLiveTracking | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
     setOrder(null);
-    setLoadSource(null);
 
     void fetchCustomerOrder(orderId)
       .then((nextOrder) => {
         if (cancelled) return;
         setOrder(nextOrder);
-        setLoadSource('api');
       })
       .catch(() => {
         if (cancelled) return;
-        const fallbackOrder = import.meta.env.DEV
-          ? mockOrders.find((item) => item.id === orderId || item.code === orderId)
-          : undefined;
-        setOrder(fallbackOrder ?? null);
-        setLoadSource(fallbackOrder ? 'demo' : null);
+        // ไม่มี mock fallback แล้ว — customer surface ใช้ข้อมูลจริงจาก backend อย่างเดียว
+        setOrder(null);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -355,15 +348,16 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
 
   // ระหว่างกำลังจัดส่ง: poll ตำแหน่งคนส่งเพื่ออัปเดต "กำลังมาส่ง" แบบ near real-time
   const isInTransit = order?.status === 'in_transit';
+  const liveTrackingOrderId = order?.id ?? orderId;
   useEffect(() => {
-    if (!isInTransit || !orderId) {
+    if (!isInTransit || !liveTrackingOrderId) {
       setLiveTracking(null);
       return;
     }
 
     let cancelled = false;
     const poll = () => {
-      void fetchCustomerLiveTracking(orderId)
+      void fetchCustomerLiveTracking(liveTrackingOrderId)
         .then((next) => {
           if (!cancelled) setLiveTracking(next);
         })
@@ -378,7 +372,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isInTransit, orderId]);
+  }, [isInTransit, liveTrackingOrderId]);
 
   if (isLoading) return <CustomerTrackingSkeleton />;
   if (!order) return <CustomerTrackingNotFound orderId={orderId} />;
@@ -567,7 +561,6 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
           <section className="rounded-lg border bg-card p-4 shadow-sm">
             <div className="flex items-center justify-between gap-2">
               <div className="text-sm font-semibold">Timeline</div>
-              {loadSource === 'demo' && <Badge variant="muted">demo</Badge>}
             </div>
             {timelineEvents.length === 0 ? (
               <div className="mt-3 rounded-md border border-dashed bg-muted/20 px-3 py-4 text-center text-xs text-muted-foreground">
@@ -576,14 +569,15 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
             ) : (
               <ol className="mt-5">
                 {timelineEvents.map((event, index) => {
+                  const isLast = index === timelineEvents.length - 1;
+                  const isLatest = index === 0;
+                  const isCurrentLatest = isLatest && event.tone === 'default';
                   const Icon =
                     event.tone === 'success'
                       ? CheckCircle2
                       : event.tone === 'problem'
                         ? AlertCircle
                         : Clock;
-                  const isLast = index === timelineEvents.length - 1;
-                  const isLatest = index === 0 && event.tone !== 'problem';
                   return (
                     <li key={event.id} className="relative flex gap-3.5 pb-5 last:pb-0">
                       {/* เส้นเชื่อม timeline (ซ่อนที่จุดสุดท้าย) */}
@@ -592,11 +586,13 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
                           aria-hidden
                           className={cn(
                             'absolute left-[15px] top-8 h-[calc(100%-1.5rem)] w-px -translate-x-1/2',
-                            event.tone === 'success'
-                              ? 'bg-gradient-to-b from-success/60 to-success/15'
-                              : event.tone === 'problem'
-                                ? 'bg-gradient-to-b from-warning/60 to-warning/15'
-                                : 'bg-gradient-to-b from-primary/50 to-primary/15',
+                            isCurrentLatest
+                              ? 'bg-gradient-to-b from-info/60 to-info/15'
+                              : event.tone === 'success'
+                                ? 'bg-gradient-to-b from-success/60 to-success/15'
+                                : event.tone === 'problem'
+                                  ? 'bg-gradient-to-b from-warning/60 to-warning/15'
+                                  : 'bg-gradient-to-b from-primary/50 to-primary/15',
                           )}
                         />
                       )}
@@ -606,15 +602,18 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
                             'relative flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-card',
                             event.tone === 'success' && 'bg-success/12 text-success',
                             event.tone === 'problem' && 'bg-warning/12 text-warning',
-                            event.tone === 'default' && 'bg-primary/12 text-primary',
-                            isLatest && 'ring-2 ring-primary/40 ring-offset-2 ring-offset-card',
+                            event.tone === 'default' &&
+                              (isCurrentLatest
+                                ? 'bg-info/12 text-info'
+                                : 'bg-primary/12 text-primary'),
+                            isCurrentLatest && 'ring-2 ring-info/40 ring-offset-2 ring-offset-card',
                           )}
                         >
                           <Icon className="h-4 w-4" />
                         </div>
                       </div>
                       <div className="min-w-0 flex-1 pt-0.5">
-                        <div className={cn('text-sm font-medium', isLatest && 'text-primary')}>
+                        <div className={cn('text-sm font-medium', isCurrentLatest && 'text-info')}>
                           {event.label}
                         </div>
                         <div className="mt-1 inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5 text-[11px] text-muted-foreground">

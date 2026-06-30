@@ -1,6 +1,8 @@
 import type { Order, OrderActivityEventType, OrderStatus, ProofOfDelivery } from '@/data/mock';
 
-const CUSTOMER_TRACKING_BASE_PATH = '/customer-track';
+const CUSTOMER_TRACKING_BASE_PATH = '/track';
+// path เดิม — เก็บไว้รองรับลิงก์เก่าที่เคยส่งให้ลูกค้าไปแล้ว (อย่าใช้สร้างลิงก์ใหม่)
+const CUSTOMER_TRACKING_LEGACY_BASE_PATHS = ['/customer-track'];
 
 // สถานะที่ถือว่าออเดอร์เดินเข้าสู่ flow จัดส่งแล้ว (ผ่าน Planning/ปล่อยคิว/ส่งจริง)
 const SCHEDULED_STATUSES = new Set<OrderStatus>([
@@ -17,22 +19,44 @@ export function getCustomerTrackingPath(orderId: string) {
   return `${CUSTOMER_TRACKING_BASE_PATH}/${encodeURIComponent(orderId)}`;
 }
 
+const ALL_CUSTOMER_TRACKING_BASE_PATHS = [
+  CUSTOMER_TRACKING_BASE_PATH,
+  ...CUSTOMER_TRACKING_LEGACY_BASE_PATHS,
+];
+
 export function isCustomerTrackingPath(pathname: string) {
-  return (
-    pathname === CUSTOMER_TRACKING_BASE_PATH ||
-    pathname.startsWith(`${CUSTOMER_TRACKING_BASE_PATH}/`)
+  return ALL_CUSTOMER_TRACKING_BASE_PATHS.some(
+    (base) => pathname === base || pathname.startsWith(`${base}/`),
   );
 }
 
 export function getCustomerTrackingOrderId(pathname: string) {
   const normalized = pathname.replace(/\/+$/, '');
-  const prefix = `${CUSTOMER_TRACKING_BASE_PATH}/`;
-  if (!normalized.startsWith(prefix)) return '';
-  return decodeURIComponent(normalized.slice(prefix.length));
+  for (const base of ALL_CUSTOMER_TRACKING_BASE_PATHS) {
+    const prefix = `${base}/`;
+    if (normalized.startsWith(prefix)) {
+      return decodeURIComponent(normalized.slice(prefix.length));
+    }
+  }
+  return '';
 }
 
-export function buildCustomerTrackingUrl(orderId: string, origin = window.location.origin) {
-  return `${origin}${getCustomerTrackingPath(orderId)}`;
+function normalizeOrigin(origin: string | undefined) {
+  return origin?.trim().replace(/\/+$/, '') ?? '';
+}
+
+function getDefaultCustomerTrackingOrigin() {
+  const publicOrigin = normalizeOrigin(import.meta.env.VITE_CUSTOMER_TRACKING_PUBLIC_ORIGIN);
+  if (publicOrigin) return publicOrigin;
+  return typeof window === 'undefined' ? '' : window.location.origin;
+}
+
+export function buildCustomerTrackingUrl(
+  orderId: string,
+  origin = getDefaultCustomerTrackingOrigin(),
+) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  return `${normalizedOrigin}${getCustomerTrackingPath(orderId)}`;
 }
 
 export function maskPhone(phone: string) {
@@ -104,8 +128,46 @@ export function isOrderReleased(order: Order): boolean {
   return SCHEDULED_STATUSES.has(order.status);
 }
 
+const PLANNING_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const PLANNING_TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+function firstImportColumn(columns: Record<string, string> | undefined, keys: string[]) {
+  if (!columns) return undefined;
+  for (const key of keys) {
+    const value = columns[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function getImportedDelivery(order: Order): { date: string; time?: string } | null {
+  const columns = order.metadataJson?.import?.columns;
+  const date = firstImportColumn(columns, [
+    'deliveryDate',
+    'plannedDate',
+    'delivery_date',
+    'วันที่ส่ง',
+    'วันที่จัดส่ง',
+  ]);
+  const time = firstImportColumn(columns, [
+    'deliveryTime',
+    'plannedTime',
+    'delivery_time',
+    'เวลาส่ง',
+    'เวลาจัดส่ง',
+  ]);
+
+  if (!date || !PLANNING_DATE_RE.test(date)) return null;
+  if (time && !PLANNING_TIME_RE.test(time)) return { date };
+  return { date, time };
+}
+
 /** กำหนดวัน/เวลาส่งที่จะโชว์ให้ลูกค้า — รอบส่งจริง (deliveryRoute) มาก่อนแผนร่าง */
 export function getPlannedDelivery(order: Order): { date: string; time?: string } | null {
+  const importedDelivery = getImportedDelivery(order);
+  if (order.deliveryRoute?.dispatchMode === 'urgent' && importedDelivery) {
+    return importedDelivery;
+  }
   if (order.deliveryRoute?.plannedDate) {
     return { date: order.deliveryRoute.plannedDate, time: order.deliveryRoute.plannedTime };
   }
