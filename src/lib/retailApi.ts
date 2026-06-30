@@ -928,6 +928,27 @@ export type MessengerSession = {
   rider: { id: string; code: string; name: string; phone: string };
 };
 
+export type MessengerRegisterInput = {
+  name: string;
+  phone: string;
+  pin: string;
+  vehicle: Driver['vehicle'];
+  licensePlate: string;
+  idCardNumber: string;
+  idCardPhotoDataUrl: string;
+  profilePhotoDataUrl: string;
+};
+
+export type MessengerRegisterResult = {
+  driver: {
+    id: string;
+    code: string;
+    name: string;
+    phone: string;
+    approvalStatus: DriverApprovalStatus;
+  };
+};
+
 export async function loginMessenger(phone: string, pin: string, deviceId: string) {
   const session = await request<MessengerSession>(`${MESSENGER_API_BASE}/auth/login`, {
     method: 'POST',
@@ -936,6 +957,13 @@ export async function loginMessenger(phone: string, pin: string, deviceId: strin
   localStorage.setItem(MESSENGER_TOKEN_KEY, session.token);
   localStorage.setItem('movevai:messenger-code', session.rider.code);
   return session;
+}
+
+export function registerMessengerDriver(input: MessengerRegisterInput) {
+  return request<MessengerRegisterResult>(`${MESSENGER_API_BASE}/register`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function hasMessengerSession() {
