@@ -8,6 +8,7 @@ import {
   type MessengerSession,
 } from '@/lib/retailApi';
 import type { Driver } from '@/data/mock';
+import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
 import { Camera, CheckCircle2, FileImage, Loader2, UserPlus } from 'lucide-react';
 
 const TEST_PHONE = '0891112233';
@@ -78,37 +79,6 @@ function clearPendingRegistration() {
   localStorage.removeItem(PENDING_REGISTRATION_KEY);
 }
 
-function fileToImage(file: File) {
-  return new Promise<HTMLImageElement>((resolve, reject) => {
-    const url = URL.createObjectURL(file);
-    const image = new Image();
-    image.onload = () => {
-      URL.revokeObjectURL(url);
-      resolve(image);
-    };
-    image.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('อ่านรูปไม่สำเร็จ'));
-    };
-    image.src = url;
-  });
-}
-
-async function resizeImageFile(file: File) {
-  const image = await fileToImage(file);
-  const maxSide = 1200;
-  const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight));
-  const width = Math.max(1, Math.round(image.naturalWidth * scale));
-  const height = Math.max(1, Math.round(image.naturalHeight * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('ย่อรูปไม่สำเร็จ');
-  ctx.drawImage(image, 0, 0, width, height);
-  return canvas.toDataURL('image/jpeg', 0.78);
-}
-
 function Field({
   label,
   children,
@@ -139,7 +109,7 @@ function ImageCaptureField({
     if (!file) return;
     setLoading(true);
     try {
-      onChange(await resizeImageFile(file));
+      onChange(await resizeImageFileToDataUrl(file));
     } catch (error) {
       window.alert(error instanceof Error ? error.message : 'อ่านรูปไม่สำเร็จ');
     } finally {

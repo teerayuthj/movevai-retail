@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
 import {
   archiveDriver,
   approveDriver,
@@ -139,15 +140,6 @@ function formatKm(meters: number) {
   return `${(meters / 1000).toFixed(2)} กม.`;
 }
 
-function readFileAsDataUrl(file: File) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result ?? ''));
-    reader.onerror = () => reject(new Error('อ่านไฟล์รูปไม่สำเร็จ'));
-    reader.readAsDataURL(file);
-  });
-}
-
 function Field({
   label,
   children,
@@ -210,7 +202,7 @@ function DriverFormModal({
   async function attachImage(field: 'profilePhotoDataUrl' | 'idCardPhotoDataUrl', file?: File) {
     if (!file) return;
     try {
-      const dataUrl = await readFileAsDataUrl(file);
+      const dataUrl = await resizeImageFileToDataUrl(file);
       setForm((current) => ({ ...current, [field]: dataUrl }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'อ่านไฟล์รูปไม่สำเร็จ');
@@ -790,6 +782,24 @@ function DriverActions({
           )}
         </div>
 
+        {tab !== 'approved' && (
+          <div className="grid gap-2 rounded-lg border bg-muted/20 p-2 text-xs">
+            <div className="grid grid-cols-2 gap-2">
+              <ReviewImage label="โปรไฟล์" src={driver.profilePhotoDataUrl} />
+              <ReviewImage label="บัตรประชาชน" src={driver.idCardPhotoDataUrl} />
+            </div>
+            <div className="grid gap-1 text-muted-foreground">
+              <div>
+                เลขบัตร:{' '}
+                <span className="font-mono text-foreground">{driver.idCardNumber || '—'}</span>
+              </div>
+              {driver.rejectedReason && (
+                <div className="text-destructive">เหตุผล: {driver.rejectedReason}</div>
+              )}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 gap-2">
           {tab === 'pending' ? (
             <>
@@ -830,5 +840,20 @@ function DriverActions({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ReviewImage({ label, src }: { label: string; src?: string }) {
+  return (
+    <div className="space-y-1">
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md border bg-background">
+        {src ? (
+          <img src={src} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <FileImage className="h-5 w-5 text-muted-foreground" />
+        )}
+      </div>
+    </div>
   );
 }
