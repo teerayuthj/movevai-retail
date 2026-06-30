@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   FileSpreadsheet,
@@ -8,24 +8,34 @@ import {
   Loader2,
   Clock,
   Pencil,
-  AlertTriangle,
   Coins,
   Copy,
   RotateCcw,
   Layers,
   Download,
   Sparkles,
+  Package,
+  CalendarDays,
+  X,
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { th } from 'date-fns/locale';
+import type { DateRange } from 'react-day-picker';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   fetchImportBatches,
   fetchImportBatch,
   downloadImportBatchCsv,
   updateImportedOrder,
+  addOrderActivity,
   parseAddress,
+  fetchAddressSubdistricts,
   type ImportBatch,
   type ImportBatchDetail,
   type ImportBatchRow,
@@ -38,6 +48,11 @@ import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';
 import ThaiAddressPicker from '@/features/inbox/components/ThaiAddressPicker';
 import {
+  buildNoteWithRequestedDelivery,
+  getRequestedDeliveryDraft,
+  parseDeliveryFromText,
+} from '@/features/inbox/utils/orderSchedule';
+import {
   EMPTY_THAI_ADDRESS,
   composeThaiAddress,
   extractStreet,
@@ -48,29 +63,51 @@ import {
 const REVIEW_STATUSES: Order['status'][] = ['new', 'needs_review', 'parsing'];
 const ALL_SCOPE = 'all';
 
-function batchStatusVariant(status: ImportBatch['status']) {
-  if (status === 'DONE') return 'success';
-  if (status === 'ERROR') return 'destructive';
-  if (status === 'PROCESSING') return 'info';
-  return 'muted';
+// ดึงทีละหน้า แล้ว infinite scroll ต่อ — ค่า default 30 วันย้อนหลัง (0 = ทั้งหมด)
+const BATCH_PAGE_SIZE = 20;
+const DEFAULT_DAYS = 30;
+// ค่าพิเศษใน dropdown = โหมดเลือกช่วงวันที่เอง (from–to)
+const CUSTOM_DAYS = -1;
+const DAY_WINDOW_OPTIONS: { value: number; label: string }[] = [
+  { value: 30, label: '30 วันล่าสุด' },
+  { value: 90, label: '90 วันล่าสุด' },
+  { value: 180, label: '180 วันล่าสุด' },
+  { value: 365, label: '1 ปีล่าสุด' },
+  { value: 0, label: 'ทั้งหมด' },
+  { value: CUSTOM_DAYS, label: 'กำหนดช่วงเอง…' },
+];
+const IMPORT_BATCH_READ_STORAGE_KEY = 'movevai:inbox-import-batch-read-v1';
+
+function readStoredBatchIds() {
+  if (typeof window === 'undefined') return new Set<string>();
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(IMPORT_BATCH_READ_STORAGE_KEY) ?? '[]');
+    return new Set(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []);
+  } catch {
+    return new Set<string>();
+  }
 }
 
-function batchStatusLabel(status: ImportBatch['status']) {
-  if (status === 'DONE') return 'สำเร็จ';
-  if (status === 'ERROR') return 'มีข้อผิดพลาด';
-  if (status === 'PROCESSING') return 'กำลังนำเข้า...';
-  return 'รอดำเนินการ';
+function writeStoredBatchIds(ids: Set<string>) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(IMPORT_BATCH_READ_STORAGE_KEY, JSON.stringify([...ids]));
+  } catch {
+    // localStorage may be disabled or full; keep the in-memory read state for this session.
+  }
 }
 
 function BatchListItem({
   batch,
   selected,
+  unread,
   onClick,
   onDownload,
   downloading,
 }: {
   batch: ImportBatch;
   selected: boolean;
+  unread: boolean;
   onClick: () => void;
   onDownload: () => void;
   downloading: boolean;
@@ -80,20 +117,28 @@ function BatchListItem({
       className={cn(
         'rounded-lg border p-3 transition-colors',
         selected ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
+        unread && !selected && 'border-primary/40 bg-primary/[0.03]',
       )}
     >
       <button type="button" onClick={onClick} className="w-full text-left">
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            <FileSpreadsheet className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-            <span className="truncate text-xs font-medium">{batch.fileName}</span>
+            {unread && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
+            <FileSpreadsheet
+              className={cn(
+                'h-3.5 w-3.5 shrink-0',
+                unread ? 'text-primary' : 'text-muted-foreground',
+              )}
+            />
+            <span className={cn('truncate text-xs font-medium', unread && 'font-semibold')}>
+              {batch.fileName}
+            </span>
           </div>
-          <Badge
-            variant={batchStatusVariant(batch.status)}
-            className="h-5 shrink-0 px-1.5 text-[10px]"
-          >
-            {batchStatusLabel(batch.status)}
-          </Badge>
+          {unread && (
+            <Badge variant="info" className="h-5 shrink-0 px-1.5 text-[10px]">
+              รายการใหม่
+            </Badge>
+          )}
         </div>
 
         <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
@@ -155,9 +200,20 @@ type RowVM = {
   name: string;
   address: string;
   value?: number;
+  item?: string;
   errorMessage?: string | null;
   duplicateOfCode?: string | null;
 };
+
+// สรุปสินค้าให้สั้น: "ชื่อสินค้า ×2 (+1)" — โชว์ชิ้นแรก แล้วบอกจำนวนรายการที่เหลือ
+function itemSummary(order: Order | undefined, raw: Record<string, string>): string | undefined {
+  const first = order?.items[0];
+  const name = first?.name || rawField(raw, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า');
+  if (!name) return undefined;
+  const qty = first?.qty ?? (Number(rawField(raw, 'qty', 'quantity', 'จำนวน')) || 0);
+  const extra = order && order.items.length > 1 ? ` (+${order.items.length - 1})` : '';
+  return `${name}${qty > 1 ? ` ×${qty}` : ''}${extra}`;
+}
 
 type ImportEditDraft = {
   rawData: Record<string, string>;
@@ -169,6 +225,8 @@ type ImportEditDraft = {
   totalValue: string;
   payment: Order['payment'];
   note: string;
+  deliveryDate: string;
+  deliveryTime: string;
   itemName: string;
   itemSku: string;
   itemPurity: string;
@@ -203,6 +261,7 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
       kind: 'error',
       name: rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') || '(ไม่ระบุชื่อ)',
       address: rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') || '—',
+      item: itemSummary(undefined, row.rawData),
       errorMessage: row.errorMessage,
     };
   }
@@ -223,6 +282,7 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
       rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') ||
       '—',
     value: order?.totalValue,
+    item: itemSummary(order, row.rawData),
     duplicateOfCode: row.duplicateOfCode,
   };
 }
@@ -233,6 +293,16 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
   const rawItemQty = Number(rawField(row.rawData, 'qty', 'quantity', 'จำนวน'));
   const rawItemUnitPrice = Number(rawField(row.rawData, 'price', 'unitPrice', 'itemPrice', 'ราคา'));
   const rawPayment = rawField(row.rawData, 'payment', 'การชำระ', 'ชำระ');
+  const rawDelivery = parseDeliveryFromText(
+    [
+      rawField(row.rawData, 'deliveryDate', 'delivery_date', 'นัดส่ง', 'วันส่ง'),
+      rawField(row.rawData, 'deliveryTime', 'delivery_time', 'เวลา', 'เวลาส่ง'),
+      rawField(row.rawData, 'note', 'หมายเหตุ'),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  const requestedDelivery = order ? getRequestedDeliveryDraft(order) : rawDelivery;
   return {
     rawData: row.rawData,
     customerName:
@@ -248,6 +318,8 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
     totalValue: String(order?.totalValue ?? (Number.isFinite(rawTotalValue) ? rawTotalValue : 0)),
     payment: normalizePaymentMethod(order?.payment ?? rawPayment),
     note: order?.note ?? rawField(row.rawData, 'note', 'หมายเหตุ'),
+    deliveryDate: requestedDelivery.date,
+    deliveryTime: requestedDelivery.time,
     itemName:
       item?.name ?? rawField(row.rawData, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า'),
     itemSku: item?.sku ?? rawField(row.rawData, 'sku', 'itemSku', 'รหัสสินค้า') ?? '-',
@@ -293,6 +365,14 @@ function toNonNegativeNumber(value: string, fallback = 0) {
   return Number.isFinite(next) && next >= 0 ? next : fallback;
 }
 
+async function fillMissingPostalCode(addr: ThaiAddressValue): Promise<ThaiAddressValue> {
+  if (/^\d{5}$/.test(addr.postalCode.trim())) return addr;
+  if (!addr.province.trim() || !addr.district.trim() || !addr.subdistrict.trim()) return addr;
+  const subdistricts = await fetchAddressSubdistricts(addr.province, addr.district);
+  const match = subdistricts.find((item) => item.subdistrict === addr.subdistrict);
+  return match?.postalCode ? { ...addr, postalCode: match.postalCode } : addr;
+}
+
 function TabChip({
   active,
   onClick,
@@ -304,16 +384,14 @@ function TabChip({
   onClick: () => void;
   label: string;
   count: number;
-  tone: 'accent' | 'muted' | 'success' | 'warning';
+  tone: 'accent' | 'muted' | 'success';
 }) {
   const activeClass =
     tone === 'success'
       ? 'border-success bg-success/10 text-success'
-      : tone === 'warning'
-        ? 'border-warning bg-warning/10 text-warning'
-        : tone === 'muted'
-          ? 'border-foreground/40 text-foreground'
-          : 'border-primary bg-primary/5 text-primary';
+      : tone === 'muted'
+        ? 'border-foreground/40 text-foreground'
+        : 'border-primary bg-primary/5 text-primary';
   return (
     <button
       type="button"
@@ -328,6 +406,62 @@ function TabChip({
   );
 }
 
+// เมื่อ filter ของแท็บปัจจุบันว่าง ให้ชี้ว่ารายการไปอยู่แท็บไหน (ไม่ได้หาย — แค่เปลี่ยนสถานะ)
+function TabEmptyState({
+  tab,
+  stats,
+  onJump,
+}: {
+  tab: Tab;
+  stats: { review: number; approved: number; rejected: number; error: number; total: number };
+  onJump: (tab: Tab) => void;
+}) {
+  const reviewCount = stats.review + stats.error;
+  const suggestions: { tab: Tab; label: string; count: number }[] = [];
+  if (tab !== 'approved' && stats.approved > 0)
+    suggestions.push({ tab: 'approved', label: 'อนุมัติแล้ว', count: stats.approved });
+  if (tab !== 'review' && reviewCount > 0)
+    suggestions.push({ tab: 'review', label: 'รอตรวจ', count: reviewCount });
+  if (tab !== 'rejected' && stats.rejected > 0)
+    suggestions.push({ tab: 'rejected', label: 'ปฏิเสธ', count: stats.rejected });
+
+  // ตรวจครบแล้ว (ไม่เหลือรอตรวจ แต่มีของในไฟล์) → เป็นสถานะที่ดี ไม่ใช่ error
+  const reviewedClean = tab === 'review' && stats.total > 0;
+  const title = reviewedClean
+    ? 'ตรวจครบแล้ว — ไม่มีรายการรอตรวจ'
+    : tab === 'approved'
+      ? 'ยังไม่มีรายการที่อนุมัติเข้าคิว'
+      : tab === 'rejected'
+        ? 'ไม่มีรายการที่ปฏิเสธ'
+        : 'ไม่มีรายการในกลุ่มนี้';
+
+  return (
+    <div className="flex flex-col items-center gap-2">
+      {reviewedClean ? (
+        <CheckCircle2 className="h-6 w-6 text-success/70" />
+      ) : (
+        <Clock className="h-6 w-6 text-muted-foreground/50" />
+      )}
+      <div className="text-sm text-muted-foreground">{title}</div>
+      {suggestions.length > 0 && (
+        <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
+          <span>รายการอยู่ที่:</span>
+          {suggestions.map((s) => (
+            <button
+              key={s.tab}
+              type="button"
+              onClick={() => onJump(s.tab)}
+              className="rounded-full border border-border px-2.5 py-1 font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
+            >
+              {s.label} {s.count}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RowStatusBadge({ kind }: { kind: RowKind }) {
   if (kind === 'error') {
     return (
@@ -338,8 +472,8 @@ function RowStatusBadge({ kind }: { kind: RowKind }) {
   }
   if (kind === 'review') {
     return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
-        <AlertTriangle className="h-3 w-3 shrink-0" /> รอตรวจ
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+        <Clock className="h-3 w-3 shrink-0" /> รอตรวจ
       </span>
     );
   }
@@ -352,7 +486,7 @@ function RowStatusBadge({ kind }: { kind: RowKind }) {
   }
   return (
     <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
-      <CheckCircle2 className="h-3 w-3 shrink-0" /> เข้าคิวแล้ว
+      <CheckCircle2 className="h-3 w-3 shrink-0" /> อนุมัติแล้ว
     </span>
   );
 }
@@ -384,6 +518,12 @@ function BatchWorkspace({
   const [details, setDetails] = useState<ImportBatchDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('review');
+  // ผู้ใช้กดเลือกแท็บเองหรือยัง — ถ้ายัง ให้ระบบเลือก default ที่มีของให้
+  const [tabTouched, setTabTouched] = useState(false);
+  const selectTab = (next: Tab) => {
+    setTabTouched(true);
+    setTab(next);
+  };
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [method, setMethod] = useState<ShippingMethod>('internal_driver');
   const [reason, setReason] = useState<ImportRejectReason | ''>('');
@@ -445,6 +585,15 @@ function BatchWorkspace({
     }
     return { review, approved, rejected, error, duplicate, value, total: rows.length };
   }, [rows]);
+
+  // ถ้าผู้ใช้ยังไม่กดแท็บเอง ให้เด้งไปแท็บแรกที่มีรายการ (ตรวจครบแล้ว → ไปดู "อนุมัติแล้ว" แทนหน้าว่าง)
+  useEffect(() => {
+    if (loading || tabTouched) return;
+    if (stats.review + stats.error > 0) setTab('review');
+    else if (stats.approved > 0) setTab('approved');
+    else if (stats.rejected > 0) setTab('rejected');
+    else setTab('all');
+  }, [loading, tabTouched, stats.review, stats.error, stats.approved, stats.rejected]);
 
   const visibleRows = useMemo(() => {
     if (tab === 'all') return rows;
@@ -554,12 +703,23 @@ function BatchWorkspace({
 
   const saveEditRow = async () => {
     if (!editingRow?.orderId || !editDraft) return;
+    let addr = editDraft.addr;
+    try {
+      addr = await fillMissingPostalCode(editDraft.addr);
+      if (addr.postalCode !== editDraft.addr.postalCode) {
+        setEditDraft((prev) => (prev ? { ...prev, addr } : prev));
+      }
+    } catch {
+      // ถ้า lookup ไม่สำเร็จ ให้ validation ด้านล่างแจ้งผู้ใช้กรอกเอง
+    }
     // customerAddress = ส่วน free-text, addr = ที่เลือกจาก picker → รวมเป็นที่อยู่เต็ม
-    const fullAddress = composeThaiAddress(editDraft.customerAddress, editDraft.addr);
+    const fullAddress = composeThaiAddress(editDraft.customerAddress, addr);
     const missing = [
       !editDraft.customerName.trim() && 'ชื่อผู้รับ',
       !editDraft.customerPhone.trim() && 'เบอร์โทร',
       !fullAddress.trim() && 'ที่อยู่',
+      // กันลืมรหัสไปรษณีย์ (เผลอกด X แล้วไม่เติมกลับ) — ต้องครบ 5 หลัก
+      !/^\d{5}$/.test(addr.postalCode.trim()) && 'รหัสไปรษณีย์ (5 หลัก)',
       !editDraft.itemName.trim() && 'สินค้า',
     ].filter(Boolean);
     if (missing.length > 0) {
@@ -569,6 +729,37 @@ function BatchWorkspace({
 
     setSavingEdit(true);
     try {
+      const existingOrder = ordersById.get(editingRow.orderId);
+      const beforeDelivery = existingOrder
+        ? getRequestedDeliveryDraft(existingOrder)
+        : { date: '', time: '' };
+      const afterDelivery = {
+        date: editDraft.deliveryDate,
+        time: editDraft.deliveryTime,
+      };
+      const beforeQty = existingOrder?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
+      const afterQty = toPositiveInt(editDraft.itemQty);
+      const changeRows = [
+        beforeDelivery.date !== afterDelivery.date && {
+          field: 'deliveryPlan.plannedDate',
+          label: 'วันนัดส่ง',
+          before: beforeDelivery.date || undefined,
+          after: afterDelivery.date || undefined,
+        },
+        beforeDelivery.time !== afterDelivery.time && {
+          field: 'deliveryPlan.plannedTime',
+          label: 'เวลานัดส่ง',
+          before: beforeDelivery.time || undefined,
+          after: afterDelivery.time || undefined,
+        },
+        beforeQty !== afterQty && {
+          field: 'items.qty',
+          label: 'จำนวนสินค้า',
+          before: beforeQty ? `${beforeQty} ชิ้น` : undefined,
+          after: `${afterQty} ชิ้น`,
+        },
+      ].filter(Boolean);
+
       await updateImportedOrder(editingRow.orderId, {
         rawData: editDraft.rawData,
         customer: {
@@ -582,14 +773,29 @@ function BatchWorkspace({
           name: editDraft.itemName.trim() || 'สินค้า',
           purity: editDraft.itemPurity.trim() || '-',
           weight: editDraft.itemWeight.trim() || '0',
-          qty: toPositiveInt(editDraft.itemQty),
+          qty: afterQty,
           unitPrice: toNonNegativeNumber(editDraft.itemUnitPrice),
           note: editDraft.itemNote.trim() || undefined,
         },
         totalValue: toNonNegativeNumber(editDraft.totalValue),
         payment: normalizePaymentMethod(editDraft.payment),
-        note: editDraft.note.trim() || null,
+        note: buildNoteWithRequestedDelivery(editDraft.note.trim(), afterDelivery).trim() || null,
       });
+      if (changeRows.length > 0) {
+        await addOrderActivity(editingRow.orderId, {
+          type: 'order_details_updated',
+          actor: {
+            kind: 'operator',
+            handler: existingOrder?.handledBy ?? {
+              name: 'พนักงาน Ausiris',
+              department: 'Import Review',
+            },
+          },
+          summary: 'แก้ไขวันนัด / จำนวนสินค้า',
+          details: `${editingRow.fileName} · แถวที่ ${editingRow.rowIndex + 1}`,
+          changes: changeRows,
+        });
+      }
       await Promise.all([reloadDetails(), syncFromBackend()]);
       toast.success('บันทึกข้อมูลจาก CSV แล้ว');
       setEditingRow(null);
@@ -633,14 +839,9 @@ function BatchWorkspace({
             </Badge>
           </div>
           <div className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Coins className="h-3 w-3 text-warning" />
+            <Coins className="h-3 w-3 text-muted-foreground" />
             {stats.total} แถว · มูลค่ารวม {formatTHB(stats.value)}
           </div>
-          {onFastDispatchOrder && (
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              Local demo: อนุมัติแล้วเปิดคิวส่งด่วนได้ทันที โดย dispatcher ยังกดยืนยัน Route เอง
-            </div>
-          )}
         </div>
         {scope !== ALL_SCOPE && details[0] && (
           <Button
@@ -660,51 +861,32 @@ function BatchWorkspace({
         )}
       </div>
 
-      <div className="mt-3 grid grid-cols-4 gap-2">
-        <div className="rounded-lg bg-warning/10 p-2.5 text-center">
-          <div className="text-lg font-bold text-warning">{stats.review}</div>
-          <div className="text-[11px] text-muted-foreground">รอตรวจ</div>
-        </div>
-        <div className="rounded-lg bg-success/10 p-2.5 text-center">
-          <div className="text-lg font-bold text-success">{stats.approved}</div>
-          <div className="text-[11px] text-muted-foreground">เข้าคิวแล้ว</div>
-        </div>
-        <div className="rounded-lg bg-muted p-2.5 text-center">
-          <div className="text-lg font-bold text-muted-foreground">{stats.rejected}</div>
-          <div className="text-[11px] text-muted-foreground">ปฏิเสธ</div>
-        </div>
-        <div className="rounded-lg bg-destructive/10 p-2.5 text-center">
-          <div className="text-lg font-bold text-destructive">{stats.error + stats.duplicate}</div>
-          <div className="text-[11px] text-muted-foreground">ผิดพลาด/ซ้ำ</div>
-        </div>
-      </div>
-
       {/* status tabs */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <TabChip
           active={tab === 'review'}
-          onClick={() => setTab('review')}
+          onClick={() => selectTab('review')}
           label="รอตรวจ"
           count={stats.review + stats.error}
-          tone="warning"
+          tone="accent"
         />
         <TabChip
           active={tab === 'approved'}
-          onClick={() => setTab('approved')}
+          onClick={() => selectTab('approved')}
           label="อนุมัติแล้ว"
           count={stats.approved}
           tone="success"
         />
         <TabChip
           active={tab === 'rejected'}
-          onClick={() => setTab('rejected')}
+          onClick={() => selectTab('rejected')}
           label="ปฏิเสธ"
           count={stats.rejected}
           tone="muted"
         />
         <TabChip
           active={tab === 'all'}
-          onClick={() => setTab('all')}
+          onClick={() => selectTab('all')}
           label="ทั้งหมด"
           count={stats.total}
           tone="accent"
@@ -740,8 +922,8 @@ function BatchWorkspace({
           <tbody className="divide-y">
             {visibleRows.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-3 py-10 text-center text-muted-foreground">
-                  ไม่มีรายการในกลุ่มนี้
+                <td colSpan={5} className="px-3 py-10 text-center">
+                  <TabEmptyState tab={tab} stats={stats} onJump={selectTab} />
                 </td>
               </tr>
             )}
@@ -752,11 +934,7 @@ function BatchWorkspace({
               return (
                 <tr
                   key={r.rowId}
-                  className={cn(
-                    'transition-colors hover:bg-muted/40',
-                    checked && 'bg-primary/5',
-                    r.duplicateOfCode && 'bg-destructive/5',
-                  )}
+                  className={cn('transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}
                 >
                   <td className="px-3 py-2.5 align-top">
                     <input
@@ -793,6 +971,12 @@ function BatchWorkspace({
                         )}
                       </div>
                     )}
+                    {r.item && (
+                      <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground/80">
+                        <Package className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{r.item}</span>
+                      </div>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-2 py-2.5 text-right align-top tabular-nums">
                     {r.value != null ? formatTHB(r.value) : '—'}
@@ -813,14 +997,25 @@ function BatchWorkspace({
                       {r.kind === 'review' && r.orderId && (
                         <>
                           {onFastDispatchOrder && (
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => approveAndOpenFastDispatch(r.orderId!)}
-                              className="rounded-md border border-warning/60 px-2 py-1 text-[11px] font-medium text-warning hover:bg-warning/10 disabled:opacity-40"
-                            >
-                              Fast Dispatch
-                            </button>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => approveAndOpenFastDispatch(r.orderId!)}
+                                  className="rounded-md border border-primary/40 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/5 disabled:opacity-40"
+                                >
+                                  Fast Dispatch
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" align="end" className="max-w-[240px]">
+                                <p className="font-semibold">ส่งด่วน 1 วัน</p>
+                                <p className="mt-0.5 font-normal leading-snug text-background/80">
+                                  อนุมัติแล้วดันเข้าคิวส่งด่วนทันที ข้ามขั้นวางแผนรอบ — dispatcher
+                                  ยังกดยืนยัน Route เอง
+                                </p>
+                              </TooltipContent>
+                            </Tooltip>
                           )}
                           <button
                             type="button"
@@ -910,7 +1105,7 @@ function BatchWorkspace({
             </div>
           </div>
 
-          <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <div className="mt-3 grid gap-2 md:grid-cols-4">
             <label className="space-y-1 text-xs">
               <span className="text-muted-foreground">ชื่อผู้รับ</span>
               <input
@@ -935,7 +1130,7 @@ function BatchWorkspace({
                 className="h-8 w-full rounded-md border bg-background px-2"
               />
             </label>
-            <div className="space-y-2 text-xs md:col-span-3">
+            <div className="space-y-2 text-xs md:col-span-4">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-muted-foreground">ที่อยู่ (บ้านเลขที่ / ถนน)</span>
                 <Button
@@ -978,6 +1173,24 @@ function BatchWorkspace({
               />
             </label>
             <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">วันนัดส่ง</span>
+              <input
+                type="date"
+                value={editDraft.deliveryDate}
+                onChange={(e) => setEditDraft({ ...editDraft, deliveryDate: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
+              <span className="text-muted-foreground">เวลานัดส่ง</span>
+              <input
+                type="time"
+                value={editDraft.deliveryTime}
+                onChange={(e) => setEditDraft({ ...editDraft, deliveryTime: e.target.value })}
+                className="h-8 w-full rounded-md border bg-background px-2"
+              />
+            </label>
+            <label className="space-y-1 text-xs">
               <span className="text-muted-foreground">การชำระเงิน</span>
               <select
                 value={editDraft.payment}
@@ -991,7 +1204,7 @@ function BatchWorkspace({
                 <option value="transfer_on_delivery">โอนตอนส่ง</option>
               </select>
             </label>
-            <label className="space-y-1 text-xs">
+            <label className="space-y-1 text-xs md:col-span-4">
               <span className="text-muted-foreground">หมายเหตุ</span>
               <input
                 value={editDraft.note}
@@ -1140,8 +1353,42 @@ export default function ImportBatchPanel({
 }) {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [selectedId, setSelectedId] = useState<string>(ALL_SCOPE);
+  const [readBatchIds, setReadBatchIds] = useState<Set<string>>(() => readStoredBatchIds());
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [total, setTotal] = useState(0);
+  const [days, setDays] = useState(DEFAULT_DAYS);
+  const [range, setRange] = useState<DateRange | undefined>();
+  const [rangeOpen, setRangeOpen] = useState(false);
   const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  // กันยิงซ้ำระหว่างกำลังโหลดหน้าใหม่ (ref อ่านได้ทันทีไม่ต้องรอ re-render)
+  const loadingRef = useRef(false);
+  const pageRef = useRef(1);
+
+  const customMode = days === CUSTOM_DAYS;
+  const rangeReady = !!(range?.from && range?.to);
+  // พารามิเตอร์ช่วงเวลาที่จะส่งให้ backend — null = โหมดกำหนดเองแต่ยังเลือกไม่ครบ (ยังไม่ยิง)
+  const windowParams = useMemo<{ days?: number; from?: string; to?: string } | null>(() => {
+    if (!customMode) return { days };
+    if (range?.from && range?.to) {
+      return { from: format(range.from, 'yyyy-MM-dd'), to: format(range.to, 'yyyy-MM-dd') };
+    }
+    return null;
+  }, [customMode, days, range]);
+  // key คงที่สำหรับ dep ของ reload — กัน object identity เปลี่ยนทุก render
+  const windowKey = windowParams ? JSON.stringify(windowParams) : 'pending';
+
+  const markBatchRead = (batchId: string) => {
+    setReadBatchIds((current) => {
+      if (current.has(batchId)) return current;
+      const next = new Set(current);
+      next.add(batchId);
+      writeStoredBatchIds(next);
+      return next;
+    });
+  };
 
   const exportBatchCsv = async (batch: Pick<ImportBatch, 'id' | 'fileName'>) => {
     setDownloadingBatchId(batch.id);
@@ -1156,22 +1403,85 @@ export default function ImportBatchPanel({
     }
   };
 
-  const load = () => {
+  // โหลดหน้าแรก (reset) ตามช่วงเวลาปัจจุบัน
+  const reload = useCallback(() => {
+    if (loadingRef.current) return;
+    // โหมดกำหนดเองแต่ยังเลือกช่วงไม่ครบ → ล้างรายการ รอผู้ใช้เลือก
+    if (!windowParams) {
+      setBatches([]);
+      setTotal(0);
+      setHasMore(false);
+      setLoading(false);
+      return;
+    }
+    loadingRef.current = true;
     setLoading(true);
-    fetchImportBatches({ limit: 30 })
-      .then((res) => setBatches(res.batches))
+    pageRef.current = 1;
+    fetchImportBatches({ page: 1, limit: BATCH_PAGE_SIZE, ...windowParams })
+      .then((res) => {
+        setBatches(res.batches);
+        setTotal(res.total);
+        setHasMore(res.hasMore);
+      })
       .catch((error) => {
         console.error(error);
         toast.error('โหลดประวัติการนำเข้าไม่สำเร็จ');
       })
-      .finally(() => setLoading(false));
-  };
+      .finally(() => {
+        setLoading(false);
+        loadingRef.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowKey]);
+
+  // โหลดหน้าถัดไปต่อท้าย (infinite scroll)
+  const loadMore = useCallback(() => {
+    if (loadingRef.current || !hasMore || !windowParams) return;
+    loadingRef.current = true;
+    setLoadingMore(true);
+    const nextPage = pageRef.current + 1;
+    fetchImportBatches({ page: nextPage, limit: BATCH_PAGE_SIZE, ...windowParams })
+      .then((res) => {
+        pageRef.current = nextPage;
+        // กันรายการซ้ำ (เผลอมีไฟล์ใหม่เข้ามาระหว่างเลื่อน) — dedupe ตาม id
+        setBatches((prev) => {
+          const seen = new Set(prev.map((b) => b.id));
+          return [...prev, ...res.batches.filter((b) => !seen.has(b.id))];
+        });
+        setTotal(res.total);
+        setHasMore(res.hasMore);
+      })
+      .catch((error) => {
+        console.error(error);
+        toast.error('โหลดรายการเพิ่มไม่สำเร็จ');
+      })
+      .finally(() => {
+        setLoadingMore(false);
+        loadingRef.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, windowKey]);
 
   useEffect(() => {
-    load();
-  }, []);
+    reload();
+  }, [reload]);
+
+  // เลื่อน scrollbar ลงใกล้สุด → โหลดหน้าถัดไป
+  const handleScroll = useCallback(() => {
+    const el = listRef.current;
+    if (!el || !hasMore || loadingRef.current) return;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();
+  }, [hasMore, loadMore]);
+
+  // ถ้าหน้าแรกสั้นจนไม่มี scrollbar แต่ยังมีรายการต่อ → โหลดต่อเองให้เลื่อนได้
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el || loading || loadingMore || !hasMore) return;
+    if (el.scrollHeight <= el.clientHeight) loadMore();
+  }, [loading, loadingMore, hasMore, batches.length, loadMore]);
 
   const hasBatches = batches.length > 0;
+  const unreadCount = batches.filter((batch) => !readBatchIds.has(batch.id)).length;
   const workspaceKey =
     selectedId === ALL_SCOPE ? `all:${batches.map((b) => b.id).join(',')}` : selectedId;
 
@@ -1185,24 +1495,107 @@ export default function ImportBatchPanel({
               variant="ghost"
               size="icon"
               className="h-7 w-7"
-              onClick={load}
+              onClick={reload}
               disabled={loading}
             >
               <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
             </Button>
           </div>
+          <div className="mt-2 flex items-center gap-2">
+            <select
+              value={days}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setDays(next);
+                if (next === CUSTOM_DAYS && !rangeReady) setRangeOpen(true);
+              }}
+              disabled={loading}
+              className="h-8 flex-1 rounded-md border bg-background px-2 text-sm"
+              aria-label="ช่วงเวลาย้อนหลัง"
+            >
+              {DAY_WINDOW_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {total > 0 && (
+              <span className="shrink-0 text-xs text-muted-foreground">
+                {batches.length}/{total}
+              </span>
+            )}
+          </div>
+          {customMode && (
+            <div className="mt-2 flex items-center gap-2">
+              <Popover open={rangeOpen} onOpenChange={setRangeOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 flex-1 justify-start px-2 text-sm font-normal"
+                  >
+                    <CalendarDays className="mr-1.5 h-4 w-4" />
+                    {rangeReady ? (
+                      <span>
+                        {format(range!.from!, 'd MMM yy', { locale: th })} –{' '}
+                        {format(range!.to!, 'd MMM yy', { locale: th })}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">เลือกช่วงวันที่</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="range"
+                    locale={th}
+                    selected={range}
+                    onSelect={setRange}
+                    numberOfMonths={1}
+                    disabled={{ after: new Date() }}
+                    autoFocus
+                  />
+                </PopoverContent>
+              </Popover>
+              {range?.from && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 shrink-0"
+                  aria-label="ล้างช่วงวันที่"
+                  onClick={() => setRange(undefined)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          )}
         </CardHeader>
         <Separator />
-        <CardContent className="flex-1 space-y-2 overflow-auto p-3">
+        <CardContent
+          ref={listRef}
+          onScroll={handleScroll}
+          className="flex-1 space-y-2 overflow-auto p-3"
+        >
           {loading && batches.length === 0 && (
             <div className="flex h-20 items-center justify-center">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
           )}
-          {!loading && !hasBatches && (
+          {!loading && customMode && !rangeReady && (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              ยังไม่มีการนำเข้าไฟล์
-              <div className="mt-1 text-[11px]">ส่งไฟล์ .csv ใน LINE Group เพื่อเริ่มต้น</div>
+              เลือกช่วงวันที่เพื่อดูรายการ
+              <div className="mt-1 text-[11px]">กดปุ่มปฏิทินด้านบนแล้วเลือกวันเริ่ม–สิ้นสุด</div>
+            </div>
+          )}
+          {!loading && !hasBatches && !(customMode && !rangeReady) && (
+            <div className="py-12 text-center text-sm text-muted-foreground">
+              {customMode ? 'ไม่พบไฟล์ในช่วงวันที่ที่เลือก' : 'ยังไม่มีการนำเข้าไฟล์'}
+              <div className="mt-1 text-[11px]">
+                {customMode ? 'ลองขยายช่วงวันที่' : 'ส่งไฟล์ .csv ใน LINE Group เพื่อเริ่มต้น'}
+              </div>
             </div>
           )}
           {hasBatches && (
@@ -1217,9 +1610,16 @@ export default function ImportBatchPanel({
               <span className="flex items-center gap-1.5 text-xs font-medium">
                 <Layers className="h-3.5 w-3.5 text-primary" /> ทุกไฟล์ (รวม)
               </span>
-              <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
-                {batches.length} ไฟล์
-              </Badge>
+              <span className="flex items-center gap-1.5">
+                {unreadCount > 0 && (
+                  <Badge variant="info" className="h-5 px-1.5 text-[10px]">
+                    ใหม่ {unreadCount}
+                  </Badge>
+                )}
+                <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
+                  {batches.length} ไฟล์
+                </Badge>
+              </span>
             </button>
           )}
           {batches.map((batch) => (
@@ -1227,11 +1627,25 @@ export default function ImportBatchPanel({
               key={batch.id}
               batch={batch}
               selected={selectedId === batch.id}
-              onClick={() => setSelectedId(batch.id)}
+              unread={!readBatchIds.has(batch.id)}
+              onClick={() => {
+                markBatchRead(batch.id);
+                setSelectedId(batch.id);
+              }}
               onDownload={() => void exportBatchCsv(batch)}
               downloading={downloadingBatchId === batch.id}
             />
           ))}
+          {loadingMore && (
+            <div className="flex items-center justify-center py-3">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          )}
+          {!loading && !loadingMore && hasBatches && !hasMore && (
+            <div className="py-3 text-center text-[11px] text-muted-foreground">
+              แสดงครบทุกรายการในช่วงเวลานี้แล้ว
+            </div>
+          )}
         </CardContent>
       </Card>
 

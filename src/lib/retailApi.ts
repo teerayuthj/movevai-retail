@@ -1,5 +1,12 @@
 import { Capacitor } from '@capacitor/core';
-import type { Driver, Order, PlanningCancelReason, ShippingMethod } from '@/data/mock';
+import type {
+  Driver,
+  Order,
+  OrderActivityActor,
+  OrderActivityEvent,
+  PlanningCancelReason,
+  ShippingMethod,
+} from '@/data/mock';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 
@@ -1069,21 +1076,52 @@ export function updateImportedOrder(orderId: string, input: ImportOrderUpdateInp
   );
 }
 
+export function addOrderActivity(
+  orderId: string,
+  input: {
+    type: string;
+    actor: OrderActivityActor;
+    summary: string;
+    details?: string;
+    changes?: unknown;
+  },
+) {
+  return request<OrderActivityEvent>(
+    `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/activity`,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
 export type ImportBatchDetail = ImportBatch & { rows: ImportBatchRow[] };
 
 export async function fetchImportBatches(params?: {
   page?: number;
   limit?: number;
   status?: string;
+  /** ย้อนหลังกี่วัน (default backend = 30); <= 0 = ทั้งหมด — ถูกข้ามถ้าส่ง from/to */
+  days?: number;
+  /** ช่วงวันที่กำหนดเอง (yyyy-MM-dd) — ถ้าส่งแล้ว days จะถูกข้าม */
+  from?: string;
+  to?: string;
 }) {
   const search = new URLSearchParams();
   if (params?.page) search.set('page', String(params.page));
   if (params?.limit) search.set('limit', String(params.limit));
   if (params?.status) search.set('status', params.status);
+  if (params?.days != null) search.set('days', String(params.days));
+  if (params?.from) search.set('from', params.from);
+  if (params?.to) search.set('to', params.to);
   const qs = search.toString();
-  return request<{ total: number; page: number; limit: number; batches: ImportBatch[] }>(
-    `${APP_API_BASE}/import-batches${qs ? `?${qs}` : ''}`,
-  );
+  return request<{
+    total: number;
+    page: number;
+    limit: number;
+    hasMore: boolean;
+    batches: ImportBatch[];
+  }>(`${APP_API_BASE}/import-batches${qs ? `?${qs}` : ''}`);
 }
 
 export async function fetchImportBatch(id: string) {

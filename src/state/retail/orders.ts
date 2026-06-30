@@ -8,7 +8,7 @@ import {
   operatorActor,
   shippingLabel,
 } from '@/state/retail/timeline';
-import type { CancelOrderInput, RetailState } from '@/state/retail/types';
+import type { CancelOrderInput, RetailState, UpdateOrderDetailsInput } from '@/state/retail/types';
 
 export const CANCELLABLE: Order['status'][] = ['new', 'needs_review', 'ready', 'assigned'];
 const DRIVER_BUSY_STATUSES: Order['status'][] = ['in_transit', 'pending_confirmation', 'returning'];
@@ -26,6 +26,33 @@ function driverHasBusyOrder(
       order.assignedDriverId === driverId &&
       DRIVER_BUSY_STATUSES.includes(order.status),
   );
+}
+
+function requestedDeliveryFromOrder(order: Order) {
+  const metadata = order.metadataJson?.requestedDelivery as
+    | { date?: unknown; time?: unknown }
+    | undefined;
+  const metadataDate = typeof metadata?.date === 'string' ? metadata.date : '';
+  const metadataTime = typeof metadata?.time === 'string' ? metadata.time : '';
+  if (metadataDate || metadataTime) return { date: metadataDate, time: metadataTime };
+
+  if (order.deliveryPlan?.plannedDate) {
+    return { date: order.deliveryPlan.plannedDate, time: order.deliveryPlan.plannedTime ?? '' };
+  }
+
+  const match = order.note?.match(
+    /นัดส่ง(?:ล่าสุด)?\s+(\d{4}-\d{2}-\d{2})(?:\s+((?:[01]\d|2[0-3]):[0-5]\d))?/,
+  );
+  return { date: match?.[1] ?? '', time: match?.[2] ?? '' };
+}
+
+function requestedDeliveryLabel(date: string | undefined, time: string | undefined) {
+  if (!date) return 'ยังไม่ระบุ';
+  return time ? `${date} ${time}` : date;
+}
+
+function totalItemQty(order: Order) {
+  return order.items.reduce((sum, item) => sum + item.qty, 0);
 }
 
 export function updateOrderState(
@@ -58,6 +85,85 @@ export function updateOrderCustomerState(
           at: nowIso(),
           actor: operatorActor(order.handledBy),
           summary: 'แก้ไขข้อมูลผู้รับ',
+          changes,
+        },
+      );
+    }),
+  };
+}
+
+export function updateOrderDetailsState(
+  current: RetailState,
+  orderId: string,
+  input: UpdateOrderDetailsInput,
+): RetailState {
+  return {
+    ...current,
+    orders: current.orders.map((order) => {
+      if (order.id !== orderId) return order;
+
+      const previousDelivery = requestedDeliveryFromOrder(order);
+      const nextDelivery = {
+        date: input.requestedDeliveryDate ?? previousDelivery.date,
+        time: input.requestedDeliveryTime ?? previousDelivery.time,
+      };
+      const previousQty = totalItemQty(order);
+      const nextQty = input.itemQty ?? previousQty;
+
+      const changes = [];
+      if (previousDelivery.date !== nextDelivery.date) {
+        changes.push({
+          field: 'deliveryPlan.plannedDate' as const,
+          label: 'วันนัดส่ง',
+          before: previousDelivery.date || undefined,
+          after: nextDelivery.date || undefined,
+        });
+      }
+      if (previousDelivery.time !== nextDelivery.time) {
+        changes.push({
+          field: 'deliveryPlan.plannedTime' as const,
+          label: 'เวลานัดส่ง',
+          before: previousDelivery.time || undefined,
+          after: nextDelivery.time || undefined,
+        });
+      }
+      if (previousQty !== nextQty) {
+        changes.push({
+          field: 'items.qty' as const,
+          label: 'จำนวนสินค้า',
+          before: `${previousQty} ชิ้น`,
+          after: `${nextQty} ชิ้น`,
+        });
+      }
+      if (changes.length === 0) return order;
+
+      const nextItems =
+        input.itemQty == null || order.items.length === 0
+          ? order.items
+          : order.items.map((item, index) => (index === 0 ? { ...item, qty: nextQty } : item));
+      const metadataJson = {
+        ...(order.metadataJson ?? {}),
+        requestedDelivery: {
+          date: nextDelivery.date,
+          time: nextDelivery.time,
+          original: order.metadataJson?.requestedDelivery
+            ? (order.metadataJson.requestedDelivery as Record<string, unknown>).original
+            : requestedDeliveryLabel(previousDelivery.date, previousDelivery.time),
+          updatedAt: nowIso(),
+        },
+      };
+
+      return appendEvent(
+        {
+          ...order,
+          items: nextItems,
+          metadataJson,
+        },
+        {
+          type: 'order_details_updated',
+          at: nowIso(),
+          actor: operatorActor(order.handledBy),
+          summary: 'แก้ไขวันนัด / จำนวนสินค้า',
           changes,
         },
       );

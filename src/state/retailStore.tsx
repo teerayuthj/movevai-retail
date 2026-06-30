@@ -15,6 +15,7 @@ import {
   submitDeliveryState,
 } from '@/state/retail/delivery';
 import { createInternalChatOrderState } from '@/state/retail/internalChat';
+import { createManualImportOrdersState } from '@/state/retail/manualImport';
 import {
   sendCustomerNotificationState,
   sendCustomerNotificationsState,
@@ -25,6 +26,7 @@ import {
   confirmOrderState,
   setShippingMethodState,
   updateOrderCustomerState,
+  updateOrderDetailsState,
   updateOrderState,
 } from '@/state/retail/orders';
 import {
@@ -162,6 +164,21 @@ export function RetailProvider({
     [commit],
   );
 
+  const createManualImportOrders = useCallback(
+    (inputs: Parameters<RetailStore['createManualImportOrders']>[0]) => {
+      let createdIds: string[] = [];
+
+      commit((current) => {
+        const result = createManualImportOrdersState(current, inputs);
+        createdIds = result.createdIds;
+        return result.nextState;
+      });
+
+      return createdIds;
+    },
+    [commit],
+  );
+
   const refreshMessengerJobs = useCallback(
     async (driverCode: string) => {
       const remote = await fetchMessengerOrders(driverCode);
@@ -220,6 +237,13 @@ export function RetailProvider({
   const updateOrderCustomer = useCallback(
     (orderId: string, customer: Parameters<RetailStore['updateOrderCustomer']>[1]) => {
       commit((current) => updateOrderCustomerState(current, orderId, customer));
+    },
+    [commit],
+  );
+
+  const updateOrderDetails = useCallback(
+    (orderId: string, input: Parameters<RetailStore['updateOrderDetails']>[1]) => {
+      commit((current) => updateOrderDetailsState(current, orderId, input));
     },
     [commit],
   );
@@ -665,10 +689,12 @@ export function RetailProvider({
     () => ({
       ...state,
       createInternalChatOrder,
+      createManualImportOrders,
       refreshMessengerJobs,
       syncFromBackend,
       updateOrder,
       updateOrderCustomer,
+      updateOrderDetails,
       setShippingMethod,
       confirmOrder,
       confirmOrders,
@@ -706,10 +732,12 @@ export function RetailProvider({
     [
       state,
       createInternalChatOrder,
+      createManualImportOrders,
       refreshMessengerJobs,
       syncFromBackend,
       updateOrder,
       updateOrderCustomer,
+      updateOrderDetails,
       setShippingMethod,
       confirmOrder,
       confirmOrders,

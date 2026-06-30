@@ -7,75 +7,46 @@ import {
   CalendarClock,
   Check,
   Coins,
-  FileSpreadsheet,
   Headset,
-  IdCard,
+  Package,
   Pencil,
   ShieldCheck,
   StickyNote,
+  Truck,
   UserCircle2,
-  Wallet,
   Scale,
 } from 'lucide-react';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import {
   Order,
   OrderItem,
   ShippingMethod,
-  dispatchReadinessLabel,
   formatTHB,
-  paymentLabel,
+  shippingMethodLabel,
   sourceLabel,
 } from '@/data/mock';
 import CustomerInfoForm from '@/features/inbox/components/CustomerInfoForm';
 import ShippingMethodSelector from '@/features/inbox/components/ShippingMethodSelector';
 import { SourceIcon } from '@/features/inbox/components/OrderListItem';
-import { buildRawText } from '@/features/inbox/utils/orderFormatting';
-import { formatPlanningDate, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
-import { cn } from '@/lib/utils';
+import {
+  formatRequestedDelivery,
+  getOrderItemQty,
+  getRawRequestedDelivery,
+  getRequestedDeliveryDraft,
+} from '@/features/inbox/utils/orderSchedule';
 import { CANCELLABLE } from '@/state/retail/orders';
+import type { UpdateOrderDetailsInput } from '@/state/retail/types';
 
 const SHIPPING_EDITABLE_STATUSES: Order['status'][] = ['new', 'needs_review', 'ready'];
 
-function getOperationalStage(order: Order, shippingMethod: ShippingMethod) {
-  if (shippingMethod === 'thai_post') {
-    return {
-      label: 'Postal flow',
-      detail: 'order เดียวกันนี้จะไปต่อที่ไปรษณีย์ไทยหลังยืนยัน',
-      variant: 'info' as const,
-    };
-  }
-
-  if (isUnreleasedPlannedOrder(order) && order.deliveryPlan) {
-    return {
-      label: 'Planning',
-      detail: `อยู่ในแผนจัดส่งวันที่ ${formatPlanningDate(order.deliveryPlan.plannedDate)}`,
-      variant: 'info' as const,
-    };
-  }
-
-  if (
-    order.deliveryPlan?.releaseState === 'released' ||
-    ['assigned', 'in_transit'].includes(order.status)
-  ) {
-    return {
-      label: 'Queue / Dispatch',
-      detail: 'order เดียวกันนี้ถูกปล่อยเข้าคิวปฏิบัติการแล้ว',
-      variant: 'success' as const,
-    };
-  }
-
-  return {
-    label: 'Inbox',
-    detail: 'กำลังตรวจข้อมูลและเตรียมส่งต่อไป Planning หรือ Queue',
-    variant: 'secondary' as const,
-  };
+function getItemCountSummary(order: Order): string {
+  const totalQty = order.items.reduce((sum, item) => sum + item.qty, 0);
+  return `${totalQty.toLocaleString('th-TH')} ชิ้น · ${order.items.length.toLocaleString('th-TH')} รายการ`;
 }
 
 function ItemRow({ item, index }: { item: OrderItem; index: number }) {
@@ -129,6 +100,7 @@ type OrderDetailProps = {
   order: Order;
   onConfirm: (orderId: string, shippingMethod: ShippingMethod) => void;
   onSaveCustomer: (orderId: string, customer: Order['customer']) => void;
+  onSaveDetails: (orderId: string, input: UpdateOrderDetailsInput) => void;
   onChangeShippingMethod: (orderId: string, method: ShippingMethod) => void;
   onRequestCancel: (orderId: string) => void;
 };
@@ -137,15 +109,22 @@ export default function OrderDetail({
   order,
   onConfirm,
   onSaveCustomer,
+  onSaveDetails,
   onChangeShippingMethod,
   onRequestCancel,
 }: OrderDetailProps) {
   const [editing, setEditing] = useState(false);
   const [draftCustomer, setDraftCustomer] = useState(order.customer);
+  const [draftRequestedDelivery, setDraftRequestedDelivery] = useState(() =>
+    getRequestedDeliveryDraft(order),
+  );
+  const [draftItemQty, setDraftItemQty] = useState(() => String(getOrderItemQty(order) || 1));
 
   useEffect(() => {
     setEditing(false);
     setDraftCustomer(order.customer);
+    setDraftRequestedDelivery(getRequestedDeliveryDraft(order));
+    setDraftItemQty(String(getOrderItemQty(order) || 1));
     // reset only on order switch, not on external customer updates during editing
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
@@ -160,7 +139,16 @@ export default function OrderDetail({
       : shippingMethod === 'thai_post'
         ? 'ยืนยันเข้าคิวไปรษณีย์'
         : 'ยืนยันเข้าคิว';
-  const operationalStage = getOperationalStage(order, shippingMethod);
+  const requestedDeliveryDraft = getRequestedDeliveryDraft(order);
+  const rawRequestedDelivery = getRawRequestedDelivery(order);
+  const requestedDelivery = formatRequestedDelivery(requestedDeliveryDraft);
+  const rawRequestedDeliveryLabel =
+    rawRequestedDelivery.date &&
+    (rawRequestedDelivery.date !== requestedDeliveryDraft.date ||
+      rawRequestedDelivery.time !== requestedDeliveryDraft.time)
+      ? formatRequestedDelivery(rawRequestedDelivery)
+      : '';
+  const itemCountSummary = getItemCountSummary(order);
 
   return (
     <div className="space-y-4">
@@ -201,6 +189,8 @@ export default function OrderDetail({
                 size="sm"
                 onClick={() => {
                   setDraftCustomer(order.customer);
+                  setDraftRequestedDelivery(getRequestedDeliveryDraft(order));
+                  setDraftItemQty(String(getOrderItemQty(order) || 1));
                   setEditing(false);
                 }}
               >
@@ -210,6 +200,11 @@ export default function OrderDetail({
                 size="sm"
                 onClick={() => {
                   onSaveCustomer(order.id, draftCustomer);
+                  onSaveDetails(order.id, {
+                    requestedDeliveryDate: draftRequestedDelivery.date,
+                    requestedDeliveryTime: draftRequestedDelivery.time,
+                    itemQty: Math.max(1, Number.parseInt(draftItemQty, 10) || 1),
+                  });
                   setEditing(false);
                 }}
               >
@@ -244,187 +239,182 @@ export default function OrderDetail({
         </div>
       </div>
 
-      <Card>
-        <CardContent className="flex flex-wrap items-center gap-3 py-3">
-          {order.lineContact ? (
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <Avatar className="h-9 w-9 bg-[#06c755]/10">
-                  <AvatarFallback className="bg-[#06c755]/10 text-[#06c755]">
-                    {order.lineContact.displayName.slice(0, 1)}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#06c755] text-[8px] font-bold text-white">
-                  L
-                </span>
-              </div>
-              <div className="leading-tight">
-                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  ส่งจาก LINE OA
-                </div>
-                <div className="text-sm font-medium">{order.lineContact.displayName}</div>
-                <div className="font-mono text-[10px] text-muted-foreground">
-                  {order.lineContact.lineUserId}
-                  {order.lineContact.isOfficialContact && ' · ✓ ผูกบัญชีลูกค้าแล้ว'}
-                </div>
-              </div>
-            </div>
-          ) : order.source === 'internal_chat' ? (
-            <div className="flex items-center gap-2">
-              <Avatar className="h-9 w-9 bg-primary/10">
-                <AvatarFallback className="bg-primary/10 text-primary">
-                  <Bot className="h-4 w-4" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="leading-tight">
-                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  ส่งจาก Chat ภายใน
-                </div>
-                <div className="text-sm font-medium">Internal order intake</div>
-                <div className="text-[10px] text-muted-foreground">
-                  พนักงาน drop ข้อความหรือไฟล์เข้าระบบโดยตรง
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <Avatar className="h-9 w-9">
-                <AvatarFallback>
-                  <UserCircle2 className="h-5 w-5 text-muted-foreground" />
-                </AvatarFallback>
-              </Avatar>
-              <div className="leading-tight">
-                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                  ที่มา
-                </div>
-                <div className="text-sm font-medium">บันทึกหน้าเคาน์เตอร์</div>
-                <div className="text-[10px] text-muted-foreground">ไม่ผ่าน LINE OA</div>
-              </div>
-            </div>
-          )}
-
-          <ArrowRight className="h-4 w-4 text-muted-foreground" />
-
-          <div className="flex items-center gap-2">
-            <Avatar className="h-9 w-9 bg-primary/10">
-              <AvatarFallback className="bg-primary/10 text-primary">
-                {order.handledBy.name.slice(0, 1)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="leading-tight">
-              <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                <Headset className="mr-1 inline h-3 w-3" />
-                รับเรื่อง / ส่งเข้าระบบโดย
-              </div>
-              <div className="text-sm font-medium">{order.handledBy.name}</div>
-              <div className="text-[10px] text-muted-foreground">
-                {order.handledBy.department}
-                {order.handledBy.role && ` · ${order.handledBy.role}`}
-              </div>
-            </div>
+      <div className="grid gap-2 rounded-lg border bg-muted/30 p-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="flex items-start gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-info/10 text-info">
+            <CalendarClock className="h-4 w-4" />
           </div>
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-3 rounded-lg border bg-linear-to-r from-warning/10 to-background p-4 md:grid-cols-4">
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground">มูลค่ารวม</div>
-          <div className="mt-0.5 text-xl font-semibold tabular-nums text-warning">
-            {formatTHB(order.totalValue)}
+          <div className="min-w-0">
+            <div className="text-[11px] font-medium text-muted-foreground">นัดส่ง</div>
+            {editing ? (
+              <div className="mt-1 grid grid-cols-[minmax(0,1fr)_88px] gap-1">
+                <input
+                  type="date"
+                  value={draftRequestedDelivery.date}
+                  onChange={(event) =>
+                    setDraftRequestedDelivery((current) => ({
+                      ...current,
+                      date: event.target.value,
+                    }))
+                  }
+                  className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs"
+                />
+                <input
+                  type="time"
+                  value={draftRequestedDelivery.time}
+                  onChange={(event) =>
+                    setDraftRequestedDelivery((current) => ({
+                      ...current,
+                      time: event.target.value,
+                    }))
+                  }
+                  className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs"
+                />
+              </div>
+            ) : (
+              <div className="mt-0.5 text-sm font-medium">{requestedDelivery}</div>
+            )}
+            {rawRequestedDeliveryLabel && (
+              <div className="mt-0.5 text-[10px] text-muted-foreground">
+                ต้นฉบับ {rawRequestedDeliveryLabel}
+              </div>
+            )}
           </div>
         </div>
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground">การชำระเงิน</div>
-          <div className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium">
-            <Wallet className="h-3.5 w-3.5 text-muted-foreground" />
-            {paymentLabel[order.payment]}
+
+        <div className="flex items-start gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-warning/15 text-warning">
+            <Package className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-medium text-muted-foreground">จำนวนสินค้า</div>
+            {editing ? (
+              <input
+                type="number"
+                min={1}
+                inputMode="numeric"
+                value={draftItemQty}
+                onChange={(event) => setDraftItemQty(event.target.value)}
+                className="mt-1 h-8 w-24 rounded-md border bg-background px-2 text-xs"
+              />
+            ) : (
+              <div className="mt-0.5 text-sm font-medium">{itemCountSummary}</div>
+            )}
           </div>
         </div>
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground">ตรวจบัตรประชาชน</div>
-          <div className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium">
-            <IdCard className="h-3.5 w-3.5 text-muted-foreground" />
-            {order.requiresIdCheck ? 'ต้องตรวจ' : 'ไม่ต้องตรวจ'}
+
+        <div className="flex items-start gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <Truck className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-medium text-muted-foreground">วิธีจัดส่ง</div>
+            <div className="mt-0.5 text-sm font-medium">{shippingMethodLabel[shippingMethod]}</div>
           </div>
         </div>
-        <div>
-          <div className="text-[11px] font-medium text-muted-foreground">ประกันขนส่ง</div>
-          <div className="mt-0.5 inline-flex items-center gap-1 text-sm font-medium">
-            <ShieldCheck
-              className={cn(
-                'h-3.5 w-3.5',
-                order.insured ? 'text-success' : 'text-muted-foreground',
-              )}
-            />
-            {order.insured ? 'คุ้มครอง 100%' : 'ยังไม่ทำประกัน'}
+
+        <div className="flex items-start gap-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-success/10 text-success">
+            <Coins className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-[11px] font-medium text-muted-foreground">มูลค่ารวม</div>
+            <div className="mt-0.5 text-sm font-medium tabular-nums">
+              {formatTHB(order.totalValue)}
+            </div>
           </div>
         </div>
       </div>
+
+      {order.source !== 'manual' && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-3 py-3">
+            {order.lineContact ? (
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Avatar className="h-9 w-9 bg-[#06c755]/10">
+                    <AvatarFallback className="bg-[#06c755]/10 text-[#06c755]">
+                      {order.lineContact.displayName.slice(0, 1)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[#06c755] text-[8px] font-bold text-white">
+                    L
+                  </span>
+                </div>
+                <div className="leading-tight">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    ส่งจาก LINE OA
+                  </div>
+                  <div className="text-sm font-medium">{order.lineContact.displayName}</div>
+                  <div className="font-mono text-[10px] text-muted-foreground">
+                    {order.lineContact.lineUserId}
+                    {order.lineContact.isOfficialContact && ' · ✓ ผูกบัญชีลูกค้าแล้ว'}
+                  </div>
+                </div>
+              </div>
+            ) : order.source === 'internal_chat' ? (
+              <div className="flex items-center gap-2">
+                <Avatar className="h-9 w-9 bg-primary/10">
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    <Bot className="h-4 w-4" />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="leading-tight">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    ส่งจาก Chat ภายใน
+                  </div>
+                  <div className="text-sm font-medium">Internal order intake</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    พนักงาน drop ข้อความหรือไฟล์เข้าระบบโดยตรง
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback>
+                    <UserCircle2 className="h-5 w-5 text-muted-foreground" />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="leading-tight">
+                  <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    ที่มา
+                  </div>
+                  <div className="text-sm font-medium">บันทึกหน้าเคาน์เตอร์</div>
+                  <div className="text-[10px] text-muted-foreground">ไม่ผ่าน LINE OA</div>
+                </div>
+              </div>
+            )}
+
+            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+
+            <div className="flex items-center gap-2">
+              <Avatar className="h-9 w-9 bg-primary/10">
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {order.handledBy.name.slice(0, 1)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="leading-tight">
+                <div className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <Headset className="mr-1 inline h-3 w-3" />
+                  รับเรื่อง / ส่งเข้าระบบโดย
+                </div>
+                <div className="text-sm font-medium">{order.handledBy.name}</div>
+                <div className="text-[10px] text-muted-foreground">
+                  {order.handledBy.department}
+                  {order.handledBy.role && ` · ${order.handledBy.role}`}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <ShippingMethodSelector
         value={shippingMethod}
         disabled={shippingLocked}
         onChange={(method) => onChangeShippingMethod(order.id, method)}
       />
-
-      <Card className="border-border bg-muted">
-        <CardContent className="space-y-3 py-4">
-          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-            <div>
-              <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                1 order = 1 source of truth
-              </div>
-              <div className="mt-1 text-sm font-medium">
-                {order.code} ถูกใช้ต่อเนื่องใน Inbox, Planning และ Queue
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                ไม่มีการสร้าง order ใหม่เมื่อเปลี่ยนจากตรวจข้อมูล ไปวางแผน หรือปล่อยเข้าคิวส่งจริง
-              </div>
-            </div>
-            <Badge variant={operationalStage.variant} className="h-6 w-fit px-2 text-[11px]">
-              {operationalStage.label}
-            </Badge>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="gap-1">
-              <Check className="h-3 w-3" />
-              Inbox
-            </Badge>
-            <Badge
-              variant={shippingMethod === 'internal_driver' ? 'info' : 'secondary'}
-              className="gap-1"
-            >
-              <CalendarClock className="h-3 w-3" />
-              Planning
-            </Badge>
-            <Badge
-              variant={
-                order.deliveryPlan?.releaseState === 'released' ||
-                ['assigned', 'in_transit'].includes(order.status)
-                  ? 'success'
-                  : 'secondary'
-              }
-              className="gap-1"
-            >
-              <ShieldCheck className="h-3 w-3" />
-              Queue
-            </Badge>
-            {order.deliveryPlan && (
-              <Badge variant="outline">
-                วันส่ง {formatPlanningDate(order.deliveryPlan.plannedDate)}
-              </Badge>
-            )}
-            <Badge variant={order.dispatchReadiness === 'awaiting_items' ? 'warning' : 'success'}>
-              {dispatchReadinessLabel[order.dispatchReadiness ?? 'ready']}
-            </Badge>
-          </div>
-
-          <div className="rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground">
-            {operationalStage.detail}
-          </div>
-        </CardContent>
-      </Card>
 
       {lowConfidence && (
         <div className="flex items-start gap-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
@@ -438,285 +428,55 @@ export default function OrderDetail({
         </div>
       )}
 
-      <Tabs defaultValue="parsed">
-        <TabsList>
-          <TabsTrigger value="parsed" className="gap-2 pr-4">
-            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-info text-white shadow-xs">
-              <FileSpreadsheet className="h-3 w-3" />
-            </span>
-            <span>{order.source === 'line_csv' ? 'ข้อมูลจาก CSV' : 'ข้อมูลออเดอร์'}</span>
-          </TabsTrigger>
-          <TabsTrigger value="raw">ต้นฉบับ</TabsTrigger>
-        </TabsList>
+      <div className="space-y-4">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm">ข้อมูลผู้รับ</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <CustomerInfoForm
+              key={order.id}
+              customer={draftCustomer}
+              editing={editing}
+              onChange={setDraftCustomer}
+            />
+          </CardContent>
+        </Card>
 
-        <TabsContent value="parsed" className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">ข้อมูลผู้รับ</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <CustomerInfoForm
-                key={order.id}
-                customer={draftCustomer}
-                editing={editing}
-                onChange={setDraftCustomer}
-              />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Coins className="h-4 w-4 text-warning" /> รายการทองคำ / เงิน
-                </CardTitle>
-                <Badge variant="muted">{order.items.length} รายการ</Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {order.items.map((item, index) => (
-                  <ItemRow key={index} item={item} index={index} />
-                ))}
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between px-6 py-3">
-                <span className="text-xs text-muted-foreground">
-                  ราคาปิด (อ้างอิงสมาคมค้าทองคำ{' '}
-                  {new Date(order.receivedAt).toLocaleDateString('th')})
-                </span>
-                <span className="text-base font-semibold tabular-nums text-warning">
-                  {formatTHB(order.totalValue)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-
-          {order.note && (
-            <div className="flex gap-3 rounded-lg border bg-muted/30 p-3">
-              <StickyNote className="mt-0.5 h-4 w-4 text-muted-foreground" />
-              <div className="text-sm text-muted-foreground">{order.note}</div>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="raw">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">
-                {order.source === 'line_csv'
-                  ? 'ไฟล์ CSV จาก LINE Group'
-                  : order.lineContact
-                    ? 'บทสนทนาใน LINE OA'
-                    : order.source === 'internal_chat'
-                      ? 'ข้อความ / ไฟล์จาก Chat ภายใน'
-                      : 'บันทึกข้อมูลหน้าเคาน์เตอร์'}
+        <Card>
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Coins className="h-4 w-4 text-warning" /> รายการทองคำ / เงิน
               </CardTitle>
-              <CardDescription>
-                {order.source === 'line_csv'
-                  ? order.metadataJson?.import
-                    ? `${order.metadataJson.import.fileName} · แถวที่ ${order.metadataJson.import.rowIndex + 1}`
-                    : 'นำเข้าจากไฟล์ CSV ที่ส่งในกลุ่ม LINE'
-                  : order.lineContact
-                    ? `ลูกค้า ${order.lineContact.displayName} → Ausiris LINE OA`
-                    : order.source === 'internal_chat'
-                      ? 'พนักงานส่งข้อมูลเข้าระบบโดยตรง ไม่ต้องผ่าน LINE'
-                      : `บันทึกโดย ${order.handledBy.name}`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {order.source === 'internal_chat' && (
-                <div className="space-y-3">
-                  <div className="flex items-end gap-2">
-                    <Avatar className="h-7 w-7 bg-primary/10">
-                      <AvatarFallback className="bg-primary/10 text-xs text-primary">
-                        <Bot className="h-3.5 w-3.5" />
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="max-w-xl">
-                      <div className="mb-0.5 text-[10px] text-muted-foreground">Internal Chat</div>
-                      <div className="whitespace-pre-line rounded-2xl rounded-bl-sm border bg-info/10 p-3 font-mono text-xs text-info">
-                        {order.rawText ?? 'ไม่มีข้อความต้นฉบับ'}
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-muted-foreground">
-                        {new Date(order.receivedAt).toLocaleTimeString('th', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                    ระบบสร้างรายการเบื้องต้นจากข้อมูลที่ส่งมา · พนักงานต้องตรวจสินค้า จำนวน น้ำหนัก
-                    และยอดรวมก่อนยืนยัน
-                  </div>
-                </div>
-              )}
+              <Badge variant="muted">{order.items.length} รายการ</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="divide-y">
+              {order.items.map((item, index) => (
+                <ItemRow key={index} item={item} index={index} />
+              ))}
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between px-6 py-3">
+              <span className="text-xs text-muted-foreground">
+                ราคาปิด (อ้างอิงสมาคมค้าทองคำ {new Date(order.receivedAt).toLocaleDateString('th')})
+              </span>
+              <span className="text-base font-semibold tabular-nums text-warning">
+                {formatTHB(order.totalValue)}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
 
-              {order.source === 'line_image' && order.rawPreview && order.lineContact && (
-                <div className="space-y-3">
-                  <div className="flex items-end gap-2">
-                    <Avatar className="h-7 w-7 bg-[#06c755]/10">
-                      <AvatarFallback className="bg-[#06c755]/10 text-xs text-[#06c755]">
-                        {order.lineContact.displayName.slice(0, 1)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="max-w-sm">
-                      <div className="mb-0.5 text-[10px] text-muted-foreground">
-                        {order.lineContact.displayName}
-                      </div>
-                      <div className="overflow-hidden rounded-2xl rounded-bl-sm border bg-white">
-                        <img
-                          src={order.rawPreview}
-                          alt="order slip"
-                          className="w-full object-cover"
-                        />
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-muted-foreground">
-                        {new Date(order.receivedAt).toLocaleTimeString('th', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                    ระบบอ่านข้อมูลจากรูปและเตรียมรายการเบื้องต้น ·{' '}
-                    <span className="font-medium text-foreground">{order.handledBy.name}</span>{' '}
-                    เป็นผู้ยืนยันส่งเข้าระบบ
-                  </div>
-                </div>
-              )}
-
-              {order.source === 'line_text' && order.lineContact && (
-                <div className="space-y-2">
-                  <div className="flex items-end gap-2">
-                    <Avatar className="h-7 w-7 bg-[#06c755]/10">
-                      <AvatarFallback className="bg-[#06c755]/10 text-xs text-[#06c755]">
-                        {order.lineContact.displayName.slice(0, 1)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="max-w-xl">
-                      <div className="mb-0.5 text-[10px] text-muted-foreground">
-                        {order.lineContact.displayName}
-                      </div>
-                      <div className="whitespace-pre-line rounded-2xl rounded-bl-sm border border-success/20 bg-success/10 p-3 font-mono text-xs text-success">
-                        {buildRawText(order)}
-                      </div>
-                      <div className="mt-0.5 text-[10px] text-muted-foreground">
-                        {new Date(order.receivedAt).toLocaleTimeString('th', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {order.source === 'line_excel' && (
-                <div className="space-y-3">
-                  {order.lineContact && (
-                    <div className="flex items-end gap-2">
-                      <Avatar className="h-7 w-7 bg-[#06c755]/10">
-                        <AvatarFallback className="bg-[#06c755]/10 text-xs text-[#06c755]">
-                          {order.lineContact.displayName.slice(0, 1)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <div className="mb-0.5 text-[10px] text-muted-foreground">
-                          {order.lineContact.displayName}
-                        </div>
-                        <div className="rounded-2xl rounded-bl-sm border p-3">
-                          <div className="flex items-center gap-2 text-sm">
-                            <FileSpreadsheet className="h-4 w-4 text-success" />
-                            <span className="font-medium">ausiris_orders_20260424.xlsx</span>
-                            <Badge variant="muted">24 KB</Badge>
-                          </div>
-                          <div className="mt-1 text-[11px] text-muted-foreground">
-                            ไฟล์รายการสั่งซื้อรายเดือน — sheet &quot;รายการส่งพรุ่งนี้&quot; · 18
-                            แถว
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {order.source === 'line_csv' && (
-                <div className="space-y-3">
-                  {(() => {
-                    const meta = order.metadataJson?.import;
-                    const columns = meta?.columns
-                      ? Object.entries(meta.columns).filter(([, v]) => String(v).trim() !== '')
-                      : [];
-                    return (
-                      <>
-                        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-[#06c755]/5 p-3">
-                          <FileSpreadsheet className="h-4 w-4 text-[#06c755]" />
-                          <span className="text-sm font-medium">
-                            {meta?.fileName ?? 'ไฟล์ CSV'}
-                          </span>
-                          {meta && (
-                            <Badge variant="muted" className="text-[10px]">
-                              แถวที่ {meta.rowIndex + 1}
-                            </Badge>
-                          )}
-                          {meta?.source && (
-                            <Badge variant="muted" className="text-[10px]">
-                              {meta.source}
-                            </Badge>
-                          )}
-                        </div>
-
-                        {columns.length > 0 ? (
-                          <div className="overflow-hidden rounded-lg border">
-                            <table className="w-full text-xs">
-                              <tbody className="divide-y">
-                                {columns.map(([key, value]) => (
-                                  <tr key={key} className="align-top">
-                                    <td className="w-2/5 bg-muted/40 px-3 py-1.5 font-medium text-muted-foreground">
-                                      {key}
-                                    </td>
-                                    <td className="px-3 py-1.5 font-mono">{value}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : order.rawText ? (
-                          <pre className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 font-mono text-[11px] text-muted-foreground">
-                            {order.rawText}
-                          </pre>
-                        ) : (
-                          <div className="rounded-lg border bg-muted/30 p-4 text-xs text-muted-foreground">
-                            ไม่พบข้อมูลต้นฉบับของแถวนี้
-                          </div>
-                        )}
-
-                        <div className="rounded-md bg-muted/40 px-3 py-2 text-[11px] text-muted-foreground">
-                          ระบบอ่านไฟล์ CSV ที่ส่งในกลุ่ม LINE เป็นออเดอร์เบื้องต้น ·
-                          ข้อมูลต้นฉบับด้านบนถูกเก็บไว้คู่กับออเดอร์ · แก้ไขข้อมูลได้จากแท็บ “LINE
-                          นำเข้า” ก่อนอนุมัติเข้าคิว
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-              )}
-
-              {order.source === 'manual' && (
-                <div className="rounded-lg border bg-muted/30 p-4 text-xs text-muted-foreground">
-                  ออเดอร์นี้ไม่ได้มาจาก LINE OA · บันทึกจากหน้าเคาน์เตอร์ / ระบบ ERP โดย{' '}
-                  <span className="font-medium text-foreground">{order.handledBy.name}</span> (
-                  {order.handledBy.department})
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        {order.note && (
+          <div className="flex gap-3 rounded-lg border bg-muted/30 p-3">
+            <StickyNote className="mt-0.5 h-4 w-4 text-muted-foreground" />
+            <div className="text-sm text-muted-foreground">{order.note}</div>
+          </div>
+        )}
+      </div>
 
       <OrderTimeline
         order={order}

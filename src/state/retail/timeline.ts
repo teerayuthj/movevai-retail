@@ -53,6 +53,64 @@ function deterministicEventId(orderId: string, type: OrderActivityEventType, at:
   return `seed:${orderId}:${type}:${at}`;
 }
 
+function actorKey(actor: OrderActivityActor): string {
+  if (actor.kind === 'system') return `system:${actor.label}`;
+  return ['operator', actor.handler.name, actor.handler.department, actor.handler.role ?? ''].join(
+    ':',
+  );
+}
+
+function shippingMethodChange(event: OrderActivityEvent): OrderActivityChange | undefined {
+  if (event.type !== 'shipping_method_changed') return undefined;
+  return event.changes?.find((change) => change.field === 'shippingMethod');
+}
+
+function canCoalesceShippingChange(
+  previous: OrderActivityEvent | undefined,
+  next: OrderActivityEvent,
+): boolean {
+  if (!previous) return false;
+  if (!shippingMethodChange(previous) || !shippingMethodChange(next)) return false;
+  return actorKey(previous.actor) === actorKey(next.actor);
+}
+
+export function compactActivityLog(events: OrderActivityEvent[] | undefined): OrderActivityEvent[] {
+  if (!events?.length) return [];
+
+  return events.reduce<OrderActivityEvent[]>((result, event) => {
+    const previous = result[result.length - 1];
+    if (!canCoalesceShippingChange(previous, event)) {
+      result.push(event);
+      return result;
+    }
+
+    const previousChange = shippingMethodChange(previous);
+    const nextChange = shippingMethodChange(event);
+    if (!previousChange || !nextChange) {
+      result.push(event);
+      return result;
+    }
+
+    if ((previousChange.before ?? '') === (nextChange.after ?? '')) {
+      result.pop();
+      return result;
+    }
+
+    result[result.length - 1] = {
+      ...event,
+      changes: [
+        ...(event.changes ?? []).filter((change) => change.field !== 'shippingMethod'),
+        {
+          ...nextChange,
+          before: previousChange.before,
+          after: nextChange.after,
+        },
+      ],
+    };
+    return result;
+  }, []);
+}
+
 export function appendEvent(
   order: Order,
   event: Omit<OrderActivityEvent, 'id'> & { id?: string },
@@ -69,7 +127,7 @@ export function appendEvent(
 
   return {
     ...order,
-    activityLog: [...(order.activityLog ?? []), next],
+    activityLog: compactActivityLog([...(order.activityLog ?? []), next]),
   };
 }
 
@@ -353,7 +411,12 @@ export function migrateOrders(orders: Order[]): Order[] {
   return orders.map((order) => {
     const withPlanning = normalizeOrderPlanning(order);
     return withPlanning.activityLog && withPlanning.activityLog.length > 0
-      ? withPlanning
+      ? {
+          ...withPlanning,
+          activityLog: compactActivityLog(
+            [...withPlanning.activityLog].sort((a, b) => a.at.localeCompare(b.at)),
+          ),
+        }
       : synthesizeBaseline(withPlanning);
   });
 }

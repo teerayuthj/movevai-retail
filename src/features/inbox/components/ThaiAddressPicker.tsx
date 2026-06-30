@@ -70,6 +70,11 @@ export default function ThaiAddressPicker({ value, disabled, onChange }: ThaiAdd
     };
   }, [value.province, value.district]);
 
+  const inferredPostalCode =
+    !value.postalCode && value.subdistrict
+      ? subdistricts.find((s) => s.subdistrict === value.subdistrict)?.postalCode
+      : '';
+
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <Combobox
@@ -120,9 +125,26 @@ export default function ThaiAddressPicker({ value, disabled, onChange }: ThaiAdd
             className={cn(value.postalCode && 'pr-8')}
           />
           {value.postalCode && !disabled ? (
-            <ClearButton onClick={() => onChange({ ...value, postalCode: '' })} />
+            <div className="absolute inset-y-0 right-1 flex items-center text-muted-foreground">
+              <ClearButton onClick={() => onChange({ ...value, postalCode: '' })} />
+            </div>
           ) : null}
         </div>
+        {/* เลือกตำบล/อำเภอ/จังหวัดแล้วแต่ยังไม่มีรหัส → เตือนกันลืมทันที (เช่น เผลอกด X) */}
+        {!value.postalCode && (value.province || value.district || value.subdistrict) ? (
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="text-[11px] font-medium text-warning">ยังไม่ได้กรอกรหัสไปรษณีย์</p>
+            {inferredPostalCode && !disabled ? (
+              <button
+                type="button"
+                className="rounded-full border border-warning/40 px-2 py-0.5 text-[11px] font-medium text-warning transition-colors hover:bg-warning/10"
+                onClick={() => onChange({ ...value, postalCode: inferredPostalCode })}
+              >
+                เติม {inferredPostalCode}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );
