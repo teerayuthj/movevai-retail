@@ -49,8 +49,14 @@ if (IS_NATIVE_APP && (MESSENGER_API_BASE.startsWith('/') || APP_API_BASE.startsW
 const MESSENGER_TOKEN_KEY = 'movevai:messenger-token';
 const ROAD_ROUTE_TIMEOUT_MS = 7_000;
 export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
+const DEFAULT_DRIVER_CAPACITY = 99;
 
-export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
+export type ApiDriver = Omit<Driver, 'id' | 'zone' | 'capacity'> & {
+  id: string;
+  code: string;
+  zone?: string;
+  capacity?: number;
+};
 type ApiOrder = Order & { assignedDriver?: ApiDriver; coDriverCodes?: string[] };
 
 export type DriverApprovalStatus = NonNullable<Driver['approvalStatus']>;
@@ -61,15 +67,32 @@ export type DriverMutationInput = {
   phone: string;
   avatarKey?: string;
   vehicle: Driver['vehicle'];
+  vehicleColor?: string;
   status?: Driver['status'];
   approvalStatus?: DriverApprovalStatus;
-  capacity: number;
-  rating?: number;
+  capacity?: number;
   highValueCertified?: boolean;
   licensePlate?: string;
   idCardNumber?: string;
   idCardPhotoDataUrl?: string;
   profilePhotoDataUrl?: string;
+  addressLine?: string;
+  addressSubdistrict?: string;
+  addressDistrict?: string;
+  addressProvince?: string;
+  addressPostalCode?: string;
+};
+
+// field ที่ messenger แก้เองได้จากหน้า "บัญชี messenger" — ต้องตรงกับ whitelist
+// ของ backend (riderProfileUpdateSchema): ชื่อ/บัตรประชาชน/ยานพาหนะ แก้ได้เฉพาะ admin
+export type MessengerProfileUpdateInput = {
+  phone?: string;
+  profilePhotoDataUrl?: string;
+  addressLine?: string;
+  addressSubdistrict?: string;
+  addressDistrict?: string;
+  addressProvince?: string;
+  addressPostalCode?: string;
 };
 
 export type DriverStats = {
@@ -289,7 +312,12 @@ export async function fetchAddressSubdistricts(
 }
 
 function normalizeDriver(driver: ApiDriver): Driver {
-  return { ...driver, id: driver.code };
+  return {
+    ...driver,
+    id: driver.code,
+    zone: driver.zone ?? '',
+    capacity: driver.capacity ?? DEFAULT_DRIVER_CAPACITY,
+  };
 }
 
 function normalizeOrder(order: ApiOrder): Order {
@@ -849,6 +877,19 @@ export async function fetchMessengerRoadRoute(points: { lat: number; lng: number
   ]);
 }
 
+export async function fetchMessengerProfile() {
+  const result = await request<ApiDriver>(`${MESSENGER_API_BASE}/me`);
+  return normalizeDriver(result);
+}
+
+export async function updateMessengerProfile(input: MessengerProfileUpdateInput) {
+  const result = await request<ApiDriver>(`${MESSENGER_API_BASE}/me`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return normalizeDriver(result);
+}
+
 export async function fetchMessengerOrders(_driverCode: string) {
   const result = await request<{ driver: ApiDriver; items: ApiOrder[] }>(
     `${MESSENGER_API_BASE}/orders`,
@@ -867,6 +908,8 @@ export type MessengerCompletedDelivery = {
   id: string;
   code: string;
   deliveredAt: string;
+  /** เวลาเริ่มส่ง — ใช้โชว์ "ใช้เวลา X นาที" หลังจบงาน (undefined = งานเก่าก่อนมีข้อมูลนี้) */
+  inTransitAt?: string;
   itemCount: number;
   cod?: { collected: boolean; amount?: number };
   proof?: { photoCount: number; signatureCaptured: boolean; otpVerified: boolean };
@@ -942,6 +985,7 @@ export type MessengerRegisterInput = {
   phone: string;
   pin: string;
   vehicle: Driver['vehicle'];
+  vehicleColor?: string;
   licensePlate: string;
   idCardNumber: string;
   idCardPhotoDataUrl: string;

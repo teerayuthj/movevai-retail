@@ -15,6 +15,7 @@ import {
   failReasonLabel,
 } from '@/data/mock';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
+import { getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
 import {
   canReviseDeliveryProof,
   deliveryProofRevisionLimits,
@@ -557,7 +558,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           error={routeActionError}
           reasons={drivers
             .filter((driver) => driver.id !== routeAction.order.assignedDriverId)
-            .map((driver) => ({ value: driver.id, label: `${driver.name} · ${driver.zone}` }))}
+            .map((driver) => ({ value: driver.id, label: driver.name }))}
           notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
           confirmLabel="ย้ายงาน"
           onCancel={() => setRouteAction(null)}
@@ -596,6 +597,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
               onSelect={() => setSelectedOrderId(order.id)}
               actions={renderActions(order)}
               overdueMinutes={getAssignedOrderOverdueMinutes(order, nowMs)}
+              inTransitMinutes={getInTransitElapsedMinutes(order, nowMs)}
               settling={!!settlingOrders[order.id]}
               settledLabel={settlingOrders[order.id]}
             />
@@ -666,6 +668,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
         isDetailLoading={isDetailLoading}
         onClose={() => setSelectedOrderId(null)}
         actions={selectedOrder ? renderActions(selectedOrder) : undefined}
+        nowMs={nowMs}
       />
 
       {routeHistoryOrderId && (

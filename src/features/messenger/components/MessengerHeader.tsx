@@ -24,9 +24,7 @@ export function MessengerHeader({
 }) {
   const status = effectiveStatus ?? messenger?.status;
   const displayedActiveOrders = activeOrders ?? messenger?.activeOrders;
-  const workSummary = `${messenger?.zone ?? '—'} · งานวันนี้ ${displayedActiveOrders ?? '—'}/${
-    messenger?.capacity ?? '—'
-  }`;
+  const workSummary = `งานวันนี้ ${displayedActiveOrders ?? '—'}`;
   return (
     <header className="sticky top-0 z-10 border-b bg-primary/5 backdrop-blur-sm">
       <button

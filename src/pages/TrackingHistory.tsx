@@ -110,7 +110,7 @@ function sessionTitle(session: { route: { code: string } | null; label: string |
 }
 
 function messengerOptionLabel(driver: { id: string; name: string; zone?: string }) {
-  return `${driver.name} (${driver.id})${driver.zone ? ` · ${driver.zone}` : ''}`;
+  return `${driver.name} (${driver.id})`;
 }
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>) {

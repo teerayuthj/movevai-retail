@@ -16,7 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
+import { EMPTY_THAI_ADDRESS, type ThaiAddressValue } from '@/lib/thaiAddress';
 import {
   archiveDriver,
   approveDriver,
@@ -56,7 +58,20 @@ const vehicleLabel: Record<Driver['vehicle'], string> = {
   pickup: 'รถกระบะ',
 };
 
-const avatarOptions = ['emerald', 'sky', 'rose', 'amber', 'violet'];
+const vehicleColorOptions = [
+  'ขาว',
+  'ดำ',
+  'เทา',
+  'เงิน',
+  'แดง',
+  'น้ำเงิน',
+  'ฟ้า',
+  'เขียว',
+  'เหลือง',
+  'ส้ม',
+  'น้ำตาล',
+  'ทอง',
+];
 
 type DriverTab = 'approved' | 'pending' | 'rejected';
 
@@ -64,28 +79,26 @@ type DriverFormState = {
   name: string;
   phone: string;
   vehicle: Driver['vehicle'];
-  status: Driver['status'];
-  capacity: string;
-  avatarKey: string;
-  highValueCertified: boolean;
+  vehicleColor: string;
   licensePlate: string;
   idCardNumber: string;
   idCardPhotoDataUrl: string;
   profilePhotoDataUrl: string;
+  addressLine: string;
+  address: ThaiAddressValue;
 };
 
 const emptyForm: DriverFormState = {
   name: '',
   phone: '',
   vehicle: 'motorcycle',
-  status: 'off_duty',
-  capacity: '6',
-  avatarKey: 'emerald',
-  highValueCertified: false,
+  vehicleColor: '',
   licensePlate: '',
   idCardNumber: '',
   idCardPhotoDataUrl: '',
   profilePhotoDataUrl: '',
+  addressLine: '',
+  address: EMPTY_THAI_ADDRESS,
 };
 
 function temporaryPin() {
@@ -103,14 +116,18 @@ function toForm(driver?: Driver): DriverFormState {
     name: driver.name,
     phone: driver.phone,
     vehicle: driver.vehicle,
-    status: driver.status,
-    capacity: String(driver.capacity),
-    avatarKey: driver.avatarKey || 'emerald',
-    highValueCertified: driver.highValueCertified,
+    vehicleColor: driver.vehicleColor ?? '',
     licensePlate: driver.licensePlate ?? '',
     idCardNumber: driver.idCardNumber ?? '',
     idCardPhotoDataUrl: driver.idCardPhotoDataUrl ?? '',
     profilePhotoDataUrl: driver.profilePhotoDataUrl ?? '',
+    addressLine: driver.addressLine ?? '',
+    address: {
+      province: driver.addressProvince ?? '',
+      district: driver.addressDistrict ?? '',
+      subdistrict: driver.addressSubdistrict ?? '',
+      postalCode: driver.addressPostalCode ?? '',
+    },
   };
 }
 
@@ -124,15 +141,18 @@ function formPayload(form: DriverFormState, status: DriverTab): DriverMutationIn
     name: form.name.trim(),
     phone: form.phone.trim(),
     vehicle: form.vehicle,
-    status: form.status,
+    vehicleColor: trimOptional(form.vehicleColor),
     approvalStatus: status,
-    capacity: Number(form.capacity) || 6,
-    avatarKey: form.avatarKey,
-    highValueCertified: form.highValueCertified,
     licensePlate: trimOptional(form.licensePlate),
     idCardNumber: trimOptional(form.idCardNumber),
     idCardPhotoDataUrl: trimOptional(form.idCardPhotoDataUrl),
     profilePhotoDataUrl: trimOptional(form.profilePhotoDataUrl),
+    // ค่าว่าง = ตั้งใจล้างค่าใน backend
+    addressLine: form.addressLine.trim(),
+    addressProvince: form.address.province.trim(),
+    addressDistrict: form.address.district.trim(),
+    addressSubdistrict: form.address.subdistrict.trim(),
+    addressPostalCode: form.address.postalCode.trim(),
   };
 }
 
@@ -140,13 +160,7 @@ function formatKm(meters: number) {
   return `${(meters / 1000).toFixed(2)} กม.`;
 }
 
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="grid gap-1.5 text-sm">
       <span className="font-medium">{label}</span>
@@ -210,13 +224,23 @@ function DriverFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-lg border bg-background shadow-xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="driver-form-title"
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <div className="app-scroll max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-lg border bg-background shadow-xl">
         <div className="flex items-center justify-between border-b px-5 py-4">
           <div>
-            <h2 className="text-lg font-semibold">{driver ? 'แก้ไขคนขับ' : 'เพิ่มคนขับ'}</h2>
+            <h2 id="driver-form-title" className="text-lg font-semibold">
+              {driver ? 'แก้ไขคนขับ' : 'เพิ่มคนขับ'}
+            </h2>
             <p className="text-sm text-muted-foreground">
-              เก็บเฉพาะข้อมูล register รอบแรก โดยยังไม่ใช้ zone
+              ข้อมูลสมัครและที่อยู่คนขับ โดยยังไม่ใช้ zone
             </p>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="ปิด">
@@ -227,6 +251,7 @@ function DriverFormModal({
         <div className="grid gap-4 p-5 md:grid-cols-2">
           <Field label="ชื่อ">
             <Input
+              autoComplete="off"
               value={form.name}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
             />
@@ -234,8 +259,11 @@ function DriverFormModal({
           <Field label="เบอร์โทร">
             <Input
               inputMode="tel"
+              autoComplete="off"
               value={form.phone}
-              onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))}
+              onChange={(event) =>
+                setForm((current) => ({ ...current, phone: event.target.value }))
+              }
             />
           </Field>
           <Field label="ยานพาหนะ">
@@ -256,24 +284,25 @@ function DriverFormModal({
               ))}
             </select>
           </Field>
-          <Field label="สถานะงาน">
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
-              value={form.status}
+          <Field label="สีของรถ">
+            <Input
+              list="driver-vehicle-color-options"
+              autoComplete="off"
+              placeholder="เลือกหรือพิมพ์สีรถ"
+              value={form.vehicleColor}
               onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  status: event.target.value as Driver['status'],
-                }))
+                setForm((current) => ({ ...current, vehicleColor: event.target.value }))
               }
-            >
-              <option value="off_duty">หยุดงาน</option>
-              <option value="available">ว่าง</option>
-              <option value="on_delivery">กำลังส่ง</option>
-            </select>
+            />
+            <datalist id="driver-vehicle-color-options">
+              {vehicleColorOptions.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
           </Field>
           <Field label="ทะเบียนรถ">
             <Input
+              autoComplete="off"
               value={form.licensePlate}
               onChange={(event) =>
                 setForm((current) => ({ ...current, licensePlate: event.target.value }))
@@ -283,52 +312,29 @@ function DriverFormModal({
           <Field label="เลขบัตรประชาชน">
             <Input
               inputMode="numeric"
+              autoComplete="off"
               value={form.idCardNumber}
               onChange={(event) =>
                 setForm((current) => ({ ...current, idCardNumber: event.target.value }))
               }
             />
           </Field>
-          <Field label="ความจุงาน">
-            <Input
-              type="number"
-              min={1}
-              value={form.capacity}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, capacity: event.target.value }))
-              }
-            />
-          </Field>
-          <Field label="สี avatar fallback">
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
-              value={form.avatarKey}
-              onChange={(event) =>
-                setForm((current) => ({ ...current, avatarKey: event.target.value }))
-              }
-            >
-              {avatarOptions.map((value) => (
-                <option key={value} value={value}>
-                  {value}
-                </option>
-              ))}
-            </select>
-          </Field>
 
-          <div className="md:col-span-2">
-            <label className="inline-flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={form.highValueCertified}
+          <div className="space-y-3 md:col-span-2">
+            <Field label="ที่อยู่ (บ้านเลขที่ / หมู่บ้าน / ถนน)">
+              <Input
+                autoComplete="off"
+                value={form.addressLine}
+                placeholder="เช่น 88/12 ถ.สีลม"
                 onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    highValueCertified: event.target.checked,
-                  }))
+                  setForm((current) => ({ ...current, addressLine: event.target.value }))
                 }
               />
-              ผ่านการขนส่งของมีค่า
-            </label>
+            </Field>
+            <ThaiAddressPicker
+              value={form.address}
+              onChange={(address) => setForm((current) => ({ ...current, address }))}
+            />
           </div>
 
           <ImageField
@@ -388,11 +394,7 @@ function ImageField({
             <FileImage className="h-6 w-6 text-muted-foreground" />
           )}
         </div>
-        <Input
-          type="file"
-          accept="image/*"
-          onChange={(event) => onFile(event.target.files?.[0])}
-        />
+        <Input type="file" accept="image/*" onChange={(event) => onFile(event.target.files?.[0])} />
       </div>
     </div>
   );
@@ -452,9 +454,7 @@ function StatsModal({
                     stats.frequentDestinations.map((item) => (
                       <div key={item.label} className="rounded-lg border p-3 text-sm">
                         <div className="line-clamp-2 font-medium">{item.label}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {item.count} ครั้ง
-                        </div>
+                        <div className="mt-1 text-xs text-muted-foreground">{item.count} ครั้ง</div>
                       </div>
                     ))
                   )}
@@ -609,7 +609,8 @@ export function DriversPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">คนขับ</h1>
           <p className="text-sm text-muted-foreground">
-            ทีมจัดส่ง {groupedDrivers.approved.length} คน · รออนุมัติ {groupedDrivers.pending.length}
+            ทีมจัดส่ง {groupedDrivers.approved.length} คน · รออนุมัติ{' '}
+            {groupedDrivers.pending.length}
           </p>
         </div>
         <div className="flex gap-2">
@@ -825,7 +826,12 @@ function DriverActions({
             </>
           )}
           {tab === 'approved' && (
-            <Button size="sm" variant="outline" className="col-span-2" onClick={() => onResetPin(driver)}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="col-span-2"
+              onClick={() => onResetPin(driver)}
+            >
               สร้าง / รีเซ็ต Messenger PIN
             </Button>
           )}

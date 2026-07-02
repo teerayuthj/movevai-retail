@@ -49,9 +49,7 @@ export function AssignmentPanel({ order, drivers, actions }: AssignmentPanelProp
                               {index === 0 ? 'คนขับหลัก' : 'ร่วมส่ง'}
                             </Badge>
                           </div>
-                          <div className="text-xs text-muted-foreground">
-                            {driver.zone} · ⭐ {driver.rating}
-                          </div>
+                          <div className="text-xs text-muted-foreground">{driver.phone}</div>
                         </div>
                       </div>
                     </div>

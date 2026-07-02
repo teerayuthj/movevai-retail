@@ -161,7 +161,7 @@ export function AutoAssignPreviewDialog({
                       <div className="truncate text-sm font-medium">{driver.name}</div>
                       <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
                         <VehicleIcon v={driver.vehicle} />
-                        <span className="truncate">{driver.zone}</span>
+                        <span className="truncate">รับงานอยู่ {driver.activeOrders} งาน</span>
                       </div>
                     </div>
                   </div>

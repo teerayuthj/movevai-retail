@@ -9,7 +9,7 @@ import {
   type MessengerLocationPayload,
 } from '@/lib/retailApi';
 import { isPlausibleThaiCoord } from '../geocode';
-import { useMessengerLocation } from './useMessengerLocation';
+import { useMessengerLocation, type MessengerLocation } from './useMessengerLocation';
 
 const QUEUE_KEY = 'movevai:messenger-location-queue';
 const SESSION_KEY = 'movevai:messenger-tracking-session';
@@ -59,31 +59,39 @@ export function useMessengerTracking(enabled = true) {
   const [remoteLocation, setRemoteLocation] =
     useState<ReturnType<typeof useMessengerLocation>['location']>(null);
   const [syncError, setSyncError] = useState('');
+  const [activeSessionChecked, setActiveSessionChecked] = useState(false);
   const lastQueued = useRef<{ at: number; lat: number; lng: number } | null>(null);
   const flushing = useRef(false);
-  const flush = useCallback(async () => {
-    if (!enabled || !session?.isOwner || flushing.current || !navigator.onLine) return;
-    const queue = readQueue();
-    if (!queue.length) return;
-    flushing.current = true;
-    try {
-      await sendMessengerLocations(session.id, deviceId(), queue.slice(0, 50));
-      saveQueue(queue.slice(50));
-    } finally {
-      flushing.current = false;
-    }
-  }, [enabled, session]);
 
-  useEffect(() => {
-    if (!session?.isOwner || !ownLocation.location) return;
-    const location = ownLocation.location;
-    if (!isPlausibleThaiCoord(location)) return;
+  const flushSessionQueue = useCallback(
+    async (sessionId: string) => {
+      if (!enabled || flushing.current || !navigator.onLine) return;
+      const queue = readQueue();
+      if (!queue.length) return;
+      flushing.current = true;
+      try {
+        await sendMessengerLocations(sessionId, deviceId(), queue.slice(0, 50));
+        saveQueue(queue.slice(50));
+      } finally {
+        flushing.current = false;
+      }
+    },
+    [enabled],
+  );
+
+  const flush = useCallback(async () => {
+    if (!session?.isOwner) return;
+    await flushSessionQueue(session.id);
+  }, [flushSessionQueue, session]);
+
+  const enqueueLocation = useCallback((location: MessengerLocation, force = false) => {
+    if (!isPlausibleThaiCoord(location)) return false;
     const last = lastQueued.current;
     const elapsed = last ? location.timestamp - last.at : Infinity;
     const moved = last
       ? Math.hypot(location.lat - last.lat, location.lng - last.lng) * 111_000
       : Infinity;
-    if (elapsed < 10_000 && moved < 25) return;
+    if (!force && elapsed < 10_000 && moved < 25) return false;
     const point: MessengerLocationPayload = {
       clientPointId: crypto.randomUUID(),
       lat: location.lat,
@@ -95,16 +103,29 @@ export function useMessengerTracking(enabled = true) {
     };
     saveQueue([...readQueue(), point]);
     lastQueued.current = { at: location.timestamp, lat: location.lat, lng: location.lng };
-    void flush();
-  }, [flush, ownLocation.location, session]);
+    return true;
+  }, []);
+
+  const flushQueueForOwner = useCallback(async () => {
+    if (!enabled || !session?.isOwner) return;
+    const queue = readQueue();
+    if (!queue.length) return;
+    await flushSessionQueue(session.id);
+  }, [enabled, flushSessionQueue, session]);
+
   useEffect(() => {
-    const id = window.setInterval(() => void flush(), 10_000);
-    window.addEventListener('online', flush);
+    if (!session?.isOwner || !ownLocation.location) return;
+    const location = ownLocation.location;
+    if (enqueueLocation(location)) void flush();
+  }, [enqueueLocation, flush, ownLocation.location, session]);
+  useEffect(() => {
+    const id = window.setInterval(() => void flushQueueForOwner(), 10_000);
+    window.addEventListener('online', flushQueueForOwner);
     return () => {
       clearInterval(id);
-      window.removeEventListener('online', flush);
+      window.removeEventListener('online', flushQueueForOwner);
     };
-  }, [flush]);
+  }, [flushQueueForOwner]);
 
   // ทุก Web/PWA restore session จาก backend และตามตำแหน่งล่าสุดของเครื่องเจ้าของ
   const syncActiveSession = useCallback(async () => {
@@ -116,6 +137,7 @@ export function useMessengerTracking(enabled = true) {
         localStorage.removeItem(SESSION_KEY);
         setSession(null);
         setRemoteLocation(null);
+        setActiveSessionChecked(true);
         return;
       }
       const value: StoredSession = {
@@ -143,8 +165,10 @@ export function useMessengerTracking(enabled = true) {
         return;
       }
       setRemoteLocation(latestLocation);
+      setActiveSessionChecked(true);
     } catch (reason) {
       setSyncError(reason instanceof Error ? reason.message : 'ซิงก์ Tracking ไม่สำเร็จ');
+      setActiveSessionChecked(true);
     }
   }, [enabled]);
 
@@ -182,7 +206,8 @@ export function useMessengerTracking(enabled = true) {
     error,
     retry: session?.isOwner ? ownLocation.retry : syncActiveSession,
     isOwner: session?.isOwner ?? false,
-    start: async (routeId: string) => {
+    activeSessionChecked,
+    start: async (routeId: string, initialLocation?: MessengerLocation | null) => {
       const started = await startMessengerRoute(routeId, deviceId());
       const value: StoredSession = {
         id: started.id,
@@ -192,6 +217,10 @@ export function useMessengerTracking(enabled = true) {
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(value));
       setSession(value);
+      setActiveSessionChecked(true);
+      if (value.isOwner && initialLocation && enqueueLocation(initialLocation, true)) {
+        await flushSessionQueue(started.id);
+      }
     },
     // Test Route: เริ่มบันทึกเส้นทางโดยไม่ผูกกับงานลูกค้า (ทดสอบ GPS ตอนไปกินข้าว ฯลฯ)
     startTest: async (label?: string) => {

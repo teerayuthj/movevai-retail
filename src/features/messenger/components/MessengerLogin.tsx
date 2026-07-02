@@ -58,6 +58,7 @@ type RegisterForm = {
   pin: string;
   confirmPin: string;
   vehicle: Driver['vehicle'];
+  vehicleColor: string;
   licensePlate: string;
   idCardNumber: string;
   profilePhotoDataUrl: string;
@@ -70,6 +71,7 @@ const emptyRegisterForm: RegisterForm = {
   pin: '',
   confirmPin: '',
   vehicle: 'motorcycle',
+  vehicleColor: '',
   licensePlate: '',
   idCardNumber: '',
   profilePhotoDataUrl: '',
@@ -81,6 +83,21 @@ const vehicleLabel: Record<Driver['vehicle'], string> = {
   van: 'รถตู้',
   pickup: 'รถกระบะ',
 };
+
+const vehicleColorOptions = [
+  'ขาว',
+  'ดำ',
+  'เทา',
+  'เงิน',
+  'แดง',
+  'น้ำเงิน',
+  'ฟ้า',
+  'เขียว',
+  'เหลือง',
+  'ส้ม',
+  'น้ำตาล',
+  'ทอง',
+];
 
 const registerSteps: Array<{
   id: RegisterStepId;
@@ -337,6 +354,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
         phone: registerForm.phone.trim(),
         pin: registerForm.pin,
         vehicle: registerForm.vehicle,
+        vehicleColor: registerForm.vehicleColor.trim() || undefined,
         licensePlate: registerForm.licensePlate.trim(),
         idCardNumber: registerForm.idCardNumber.trim(),
         profilePhotoDataUrl: registerForm.profilePhotoDataUrl,
@@ -499,6 +517,25 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                     })}
                   </div>
                 </Field>
+                <Field label="สีของรถ">
+                  <Input
+                    list="messenger-vehicle-color-options"
+                    autoComplete="off"
+                    placeholder="เลือกหรือพิมพ์สีรถ"
+                    value={registerForm.vehicleColor}
+                    onChange={(event) =>
+                      setRegisterForm((current) => ({
+                        ...current,
+                        vehicleColor: event.target.value,
+                      }))
+                    }
+                  />
+                  <datalist id="messenger-vehicle-color-options">
+                    {vehicleColorOptions.map((value) => (
+                      <option key={value} value={value} />
+                    ))}
+                  </datalist>
+                </Field>
                 <Field label="ทะเบียนรถ">
                   <Input
                     value={registerForm.licensePlate}
@@ -565,6 +602,12 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                     <div className="flex justify-between gap-3">
                       <span>ยานพาหนะ</span>
                       <span className="text-foreground">{vehicleLabel[registerForm.vehicle]}</span>
+                    </div>
+                    <div className="flex justify-between gap-3">
+                      <span>สีรถ</span>
+                      <span className="truncate text-foreground">
+                        {registerForm.vehicleColor || '-'}
+                      </span>
                     </div>
                     <div className="flex justify-between gap-3">
                       <span>ทะเบียนรถ</span>

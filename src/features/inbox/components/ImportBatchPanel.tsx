@@ -46,7 +46,7 @@ import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from 
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';
-import ThaiAddressPicker from '@/features/inbox/components/ThaiAddressPicker';
+import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import {
   buildNoteWithRequestedDelivery,
   getRequestedDeliveryDraft,
@@ -57,7 +57,7 @@ import {
   composeThaiAddress,
   extractStreet,
   type ThaiAddressValue,
-} from '@/features/inbox/utils/thaiAddress';
+} from '@/lib/thaiAddress';
 
 // order ที่ยังอยู่ขั้นตรวจใน Inbox (ยังไม่ปล่อยเข้าคิว)
 const REVIEW_STATUSES: Order['status'][] = ['new', 'needs_review', 'parsing'];

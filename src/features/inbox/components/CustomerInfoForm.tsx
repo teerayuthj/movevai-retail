@@ -3,12 +3,8 @@ import { IdCard, MapPin, Phone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Order } from '@/data/mock';
 import { AddressMapPreview } from '@/components/AddressMapPreview';
-import ThaiAddressPicker from '@/features/inbox/components/ThaiAddressPicker';
-import {
-  EMPTY_THAI_ADDRESS,
-  composeThaiAddress,
-  type ThaiAddressValue,
-} from '@/features/inbox/utils/thaiAddress';
+import ThaiAddressPicker from '@/components/ThaiAddressPicker';
+import { EMPTY_THAI_ADDRESS, composeThaiAddress, type ThaiAddressValue } from '@/lib/thaiAddress';
 
 type CustomerInfoFormProps = {
   customer: Order['customer'];

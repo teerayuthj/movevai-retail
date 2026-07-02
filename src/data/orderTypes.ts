@@ -232,6 +232,7 @@ export type Order = {
   source: OrderSource;
   status: OrderStatus;
   receivedAt: string;
+  inTransitAt?: string; // เวลาเริ่มส่งจริง (rider กดเริ่มงาน → in_transit) — ใช้คำนวณเวลาที่ใช้ส่ง
   lineContact?: LineContact; // ลูกค้าฝั่ง LINE OA (undefined เฉพาะ source=manual)
   handledBy: Handler; // พนักงาน Ausiris ที่รับเรื่อง
   confidence: number; // 0-100 — AI parse confidence
@@ -289,18 +290,24 @@ export type Driver = {
   phone: string;
   avatarKey: string;
   vehicle: 'motorcycle' | 'van' | 'pickup';
+  vehicleColor?: string;
   zone: string;
   status: 'available' | 'on_delivery' | 'off_duty';
   approvalStatus?: 'pending' | 'approved' | 'rejected';
   archivedAt?: string;
   activeOrders: number;
   capacity: number;
-  rating: number;
   highValueCertified: boolean; // อบรมขนส่งของมีค่าแล้ว
   licensePlate?: string;
   idCardNumber?: string;
   idCardPhotoDataUrl?: string;
   profilePhotoDataUrl?: string;
+  // ที่อยู่ messenger — โครงเดียวกับ ThaiAddressPicker (บ้านเลขที่/ถนน + ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์)
+  addressLine?: string;
+  addressSubdistrict?: string;
+  addressDistrict?: string;
+  addressProvince?: string;
+  addressPostalCode?: string;
   submittedAt?: string;
   approvedAt?: string;
   approvedBy?: string;

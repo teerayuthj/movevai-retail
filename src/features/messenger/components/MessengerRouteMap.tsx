@@ -191,6 +191,9 @@ export function MessengerRouteMap({
       : roadRouteStatus === 'error'
         ? 'คำนวณระยะตามถนนไม่ได้'
         : null;
+  const showRoadRouteLoading = showRemainingDistance && roadRouteStatus === 'loading';
+  const roadRouteLoadingLabel =
+    roadGeometry.length >= 2 ? 'กำลังอัปเดตเส้นทางล่าสุด…' : 'กำลังโหลดเส้นทางบนแผนที่…';
 
   return (
     <div className="relative isolate h-full w-full">
@@ -270,6 +273,24 @@ export function MessengerRouteMap({
         })}
         <FitBounds points={points} messengerPoint={messengerPoint} />
       </MapContainer>
+
+      {showRoadRouteLoading && (
+        <div className="pointer-events-none absolute inset-x-3 top-14 z-[1000] flex justify-center">
+          <div className="flex max-w-[min(22rem,100%)] items-center gap-2 rounded-lg border bg-background/95 px-3 py-2 text-xs font-medium text-foreground shadow-md backdrop-blur">
+            <span className="relative flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-info/10 text-info">
+              <Loader2 className="h-4 w-4 animate-spin" />
+            </span>
+            <div className="min-w-0">
+              <div>{roadRouteLoadingLabel}</div>
+              <div className="truncate text-[10px] font-normal text-muted-foreground">
+                {destination
+                  ? `ปลายทางถัดไป: ${destination.order.customer.name}`
+                  : 'กำลังเตรียมจุดส่ง'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* การติดตามสำเร็จไม่ต้องโชว์ card ทับแผนที่ — แสดงเฉพาะตอน GPS ยังไม่พร้อม/กำลังขอ */}
       {displayedLocationStatus !== 'tracking' && (

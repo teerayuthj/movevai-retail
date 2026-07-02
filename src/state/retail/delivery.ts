@@ -119,10 +119,7 @@ export function assignOrderState(
         summary: previousDriverId
           ? `เปลี่ยนคนขับเป็น ${nextDriver.name}`
           : `มอบหมายคนขับ ${nextDriver.name}`,
-        details: `${nextDriver.zone} · งาน ${Math.min(
-          nextDriver.capacity,
-          nextDriver.activeOrders + 1,
-        )}/${nextDriver.capacity}`,
+        details: `งานที่รับอยู่ ${nextDriver.activeOrders + 1}`,
         changes: [
           {
             field: 'assignedDriverId',
@@ -195,7 +192,7 @@ export function autoAssignReadyOrdersState(current: RetailState, orderIds?: stri
         at,
         actor: SYSTEM_ACTOR,
         summary: driver ? `Auto-assign คนขับ ${driver.name}` : 'Auto-assign คนขับ',
-        details: driver ? `${driver.zone} · ⭐ ${driver.rating}` : undefined,
+        details: driver ? `คนขับ ${driver.name}` : undefined,
         changes: [
           {
             field: 'assignedDriverId',
@@ -227,7 +224,7 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
       });
 
       return appendEvent(
-        { ...order, status: 'in_transit' },
+        { ...order, status: 'in_transit', inTransitAt: nowIso() },
         {
           type: 'delivery_started',
           at: nowIso(),
@@ -247,7 +244,7 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
 /**
  * messenger ปิดงาน: บันทึกหลักฐาน (POD) แล้ว
  * - ทุกงานต้องเข้ารอตรวจสอบก่อน เพื่อให้ CS/admin ยืนยันหลักฐานก่อนปิดจริง
- * - capacity คนขับยังถูกถือไว้จนกว่า CS/admin จะยืนยันปิดงาน
+ * - โหลดงานของคนขับยังถูกถือไว้จนกว่า CS/admin จะยืนยันปิดงาน
  */
 export function submitDeliveryState(
   current: RetailState,
@@ -328,7 +325,7 @@ export function submitDeliveryState(
   };
 }
 
-/** CS ยืนยันหลักฐาน → ปิดงานเป็น delivered และคืน capacity คนขับ */
+/** CS ยืนยันหลักฐาน → ปิดงานเป็น delivered และคืนโหลดงานคนขับ */
 export function confirmDeliveryState(
   current: RetailState,
   orderId: string,

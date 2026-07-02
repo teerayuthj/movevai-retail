@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BellRing, X } from 'lucide-react';
+import { BellRing, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Driver, Order } from '@/data/mock';
@@ -46,7 +46,7 @@ export function UrgentDispatchDialog({
         <div className="flex items-start justify-between border-b px-5 py-4">
           <div>
             <h2 className="flex items-center gap-2 text-base font-semibold">
-              <AlertTriangle className="h-4 w-4 text-destructive" /> ส่งด่วนทันที
+              <Send className="h-4 w-4 text-info" /> ส่งทันที
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               สร้าง Route และ Push ไปหา Messenger ทันที
@@ -100,14 +100,9 @@ export function UrgentDispatchDialog({
           <Button variant="outline" size="sm" onClick={onCancel} disabled={loading}>
             กลับ
           </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={loading}
-            onClick={() => onConfirm(note.trim() || undefined)}
-          >
-            <BellRing className="h-4 w-4" />
-            {loading ? 'กำลังสร้าง Route…' : 'ยืนยันส่งด่วน'}
+          <Button size="sm" disabled={loading} onClick={() => onConfirm(note.trim() || undefined)}>
+            <Send className="h-4 w-4" />
+            {loading ? 'กำลังสร้าง Route…' : 'ยืนยันส่งทันที'}
           </Button>
         </div>
       </div>

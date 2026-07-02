@@ -63,6 +63,56 @@ export function getDeliveryTrackingTab(order: Order): DeliveryTrackingTab | null
   return null;
 }
 
+// ── เวลาที่ใช้ส่ง (นับจากตอน rider กดเริ่มงาน → in_transit) ─────────────────
+// admin ใช้ดูว่างานไหนค้างนานผิดปกติ; threshold เป็นค่าประเมินสำหรับส่งในเมือง
+export type InTransitElapsedTone = 'normal' | 'slow' | 'critical';
+
+const IN_TRANSIT_SLOW_MINUTES = 60;
+const IN_TRANSIT_CRITICAL_MINUTES = 120;
+
+/** นาทีที่ผ่านไปตั้งแต่เริ่มส่ง — null ถ้างานไม่ได้กำลังส่งหรือไม่มีเวลาเริ่ม (order เก่า) */
+export function getInTransitElapsedMinutes(
+  order: Order,
+  nowMs: number = Date.now(),
+): number | null {
+  if (order.status !== 'in_transit' || !order.inTransitAt) return null;
+  const startedMs = new Date(order.inTransitAt).getTime();
+  if (Number.isNaN(startedMs)) return null;
+  return Math.max(0, Math.floor((nowMs - startedMs) / 60_000));
+}
+
+export function getInTransitElapsedTone(minutes: number): InTransitElapsedTone {
+  if (minutes >= IN_TRANSIT_CRITICAL_MINUTES) return 'critical';
+  if (minutes >= IN_TRANSIT_SLOW_MINUTES) return 'slow';
+  return 'normal';
+}
+
+/** ระยะเวลาแบบอ่านง่าย: "42 นาที" / "1 ชม. 20 นาที" / "2 วัน 3 ชม." */
+export function formatElapsedDuration(minutes: number): string {
+  if (minutes < 1) return 'ไม่ถึง 1 นาที';
+  if (minutes < 60) return `${minutes} นาที`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours < 24) return `${hours} ชม.${remainingMinutes ? ` ${remainingMinutes} นาที` : ''}`;
+
+  const days = Math.floor(hours / 24);
+  const remainingHours = hours % 24;
+  return `${days} วัน${remainingHours ? ` ${remainingHours} ชม.` : ''}`;
+}
+
+/** เวลาที่ใช้ส่งจริงของงานที่จบแล้ว (เริ่มส่ง → บันทึกหลักฐาน) — null ถ้าข้อมูลไม่ครบ */
+export function getDeliveryDurationMinutes(
+  inTransitAt: string | undefined,
+  deliveredAt: string,
+): number | null {
+  if (!inTransitAt) return null;
+  const startedMs = new Date(inTransitAt).getTime();
+  const deliveredMs = new Date(deliveredAt).getTime();
+  if (Number.isNaN(startedMs) || Number.isNaN(deliveredMs) || deliveredMs < startedMs) return null;
+  return Math.floor((deliveredMs - startedMs) / 60_000);
+}
+
 /**
  * งานที่ต้องให้ CS ตรวจหลักฐานก่อนปิด (ไม่ auto-close)
  * — ของมีค่า/มีประกัน, เก็บเงินปลายทาง, หรือต้องตรวจบัตร
@@ -129,19 +179,7 @@ export function compareOrderPriority(a: Order, b: Order, now: number = Date.now(
   return new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime();
 }
 
-/** คนขับดูแลโซนที่ตรงกับที่อยู่ผู้รับหรือไม่ (heuristic จาก keyword ในโซน) */
-export function driverMatchesZone(order: Order, driver: Driver): boolean {
-  const address = order.customer.address?.toLowerCase() ?? '';
-  if (!address) return false;
-
-  return driver.zone
-    .split(/[^\p{L}\p{N}]+/u)
-    .map((token) => token.trim().toLowerCase())
-    .filter((token) => token.length >= 2)
-    .some((token) => address.includes(token));
-}
-
-/** คนขับรับงานนี้ได้หรือไม่ (hard filter: ว่าง + capacity เหลือ + ใบรับรอง high-value) */
+/** คนขับรับงานนี้ได้หรือไม่ (hard filter: ว่าง + งานยังไม่เต็ม + ใบรับรอง high-value) */
 export function canDriverTakeOrder(order: Order, driver: Driver): boolean {
   if (driver.status === 'off_duty') return false;
   if (driver.activeOrders >= driver.capacity) return false;
@@ -151,9 +189,8 @@ export function canDriverTakeOrder(order: Order, driver: Driver): boolean {
 
 /** คะแนนความเหมาะสมของคนขับต่อออเดอร์ — สูง = เหมาะสุด */
 export function scoreDriverForOrder(order: Order, driver: Driver): number {
-  let score = (driver.capacity - driver.activeOrders) * 2; // เหลือ capacity มากกว่า = กระจายงานสมดุล
-  if (driverMatchesZone(order, driver)) score += 50; // อยู่โซนเดียวกับผู้รับ
-  score += driver.rating;
+  let score = driver.capacity - driver.activeOrders;
+  if (isHighValueOrder(order) && driver.highValueCertified) score += 10;
   return score;
 }
 
@@ -179,16 +216,10 @@ export type AutoAssignProposal = {
 
 function explainDriverChoice(order: Order, driver: Driver): string[] {
   const reasons: string[] = [];
-  if (driverMatchesZone(order, driver)) {
-    reasons.push(`อยู่โซน ${driver.zone} ตรงกับที่อยู่ผู้รับ`);
-  }
-  reasons.push(
-    `ว่างอีก ${driver.capacity - driver.activeOrders} งาน (${driver.activeOrders}/${driver.capacity})`,
-  );
+  reasons.push(`รับงานอยู่ ${driver.activeOrders} งาน`);
   if (isHighValueOrder(order) && driver.highValueCertified) {
     reasons.push('ผ่านอบรมขนส่งของมีค่า (high-value)');
   }
-  reasons.push(`เรตติ้ง ⭐ ${driver.rating}`);
   return reasons;
 }
 

@@ -22,7 +22,6 @@ export function DriverPlanningCard({
   onSelect,
 }: DriverPlanningCardProps) {
   const status = formatDriverStatus(driver);
-  const capacityOverflow = plannedLoad > driver.capacity;
 
   return (
     <button
@@ -47,14 +46,7 @@ export function DriverPlanningCard({
                 Off duty
               </Badge>
             )}
-            {capacityOverflow && (
-              <Badge variant="warning" className="h-5 gap-1 px-1.5 text-[10px]">
-                <AlertTriangle className="h-3 w-3" />
-                เกิน capacity
-              </Badge>
-            )}
           </div>
-          <div className="mt-1 text-[11px] text-muted-foreground">{driver.zone}</div>
         </div>
       </div>
       <div className="mt-3 grid gap-2 text-[11px]">
@@ -62,9 +54,7 @@ export function DriverPlanningCard({
           <span className="text-muted-foreground">
             แผนวันที่ {formatPlanningDate(selectedDate)}
           </span>
-          <span className="font-semibold tabular-nums">
-            {plannedLoad}/{driver.capacity}
-          </span>
+          <span className="font-semibold tabular-nums">{plannedLoad}</span>
         </div>
         <div className="flex items-center justify-between text-muted-foreground">
           <span>งาน active วันนี้</span>
