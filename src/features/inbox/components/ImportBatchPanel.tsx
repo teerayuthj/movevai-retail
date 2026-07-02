@@ -118,8 +118,7 @@ function BatchListItem({
     <div
       className={cn(
         'rounded-lg border p-3 transition-colors',
-        selected ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
-        unread && !selected && 'border-primary/40 bg-primary/[0.03]',
+        selected ? 'border-border bg-muted' : 'border-transparent hover:bg-muted/60',
       )}
     >
       <button type="button" onClick={onClick} className="w-full text-left">
@@ -1646,7 +1645,9 @@ export default function ImportBatchPanel({
               onClick={() => setSelectedId(ALL_SCOPE)}
               className={cn(
                 'flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
-                selectedId === ALL_SCOPE ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
+                selectedId === ALL_SCOPE
+                  ? 'border-border bg-muted'
+                  : 'border-transparent hover:bg-muted/60',
               )}
             >
               <span className="flex items-center gap-1.5 text-xs font-medium">
