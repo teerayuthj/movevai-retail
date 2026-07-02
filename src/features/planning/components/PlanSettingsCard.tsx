@@ -1,6 +1,7 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Select } from '@/components/ui/select';
 import { dispatchReadinessLabel, type DispatchReadiness, type Driver } from '@/data/mock';
 import { cn } from '@/lib/utils';
 import { CalendarClock, Check, XCircle } from 'lucide-react';
@@ -149,15 +150,15 @@ export function PlanSettingsCard({
 
         <div className="grid gap-2">
           <label className="text-[11px] font-medium text-muted-foreground">ความพร้อมสินค้า</label>
-          <select
+          <Select
             value={readiness}
             onChange={(event) => onReadiness(event.target.value as DispatchReadiness)}
-            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+            className="h-10"
           >
             <option value="ready">{dispatchReadinessLabel.ready}</option>
             <option value="awaiting_items">{dispatchReadinessLabel.awaiting_items}</option>
             <option value="on_hold">{dispatchReadinessLabel.on_hold}</option>
-          </select>
+          </Select>
           {readiness !== 'ready' && (
             <p className="text-[11px] text-warning">
               สถานะนี้จะถูกกันไว้ไม่ให้ Publish จนกว่าจะปรับกลับเป็น “{dispatchReadinessLabel.ready}

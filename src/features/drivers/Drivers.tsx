@@ -13,6 +13,7 @@ import { DriverAvatar } from '@/components/DriverAvatar';
 import { DriverCard } from './components/DriverCard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -267,8 +268,7 @@ function DriverFormModal({
             />
           </Field>
           <Field label="ยานพาหนะ">
-            <select
-              className="h-9 rounded-md border bg-background px-3 text-sm"
+            <Select
               value={form.vehicle}
               onChange={(event) =>
                 setForm((current) => ({
@@ -282,7 +282,7 @@ function DriverFormModal({
                   {label}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label="สีของรถ">
             <Input
@@ -497,14 +497,8 @@ function StatsModal({
 }
 
 export function DriversPage() {
-  const {
-    orders,
-    startDelivery,
-    completeDelivery,
-    setDriverStatus,
-    failDelivery,
-    syncFromBackend,
-  } = useRetailStore();
+  const { orders, startDelivery, completeDelivery, failDelivery, syncFromBackend } =
+    useRetailStore();
   const [managedDrivers, setManagedDrivers] = useState<Driver[]>([]);
   const [driversLoading, setDriversLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DriverTab>('approved');
@@ -593,6 +587,15 @@ export function DriversPage() {
     }
   }
 
+  async function setStatus(driverId: string, status: Driver['status']) {
+    try {
+      const updated = await updateDriver(driverId, { status });
+      setManagedDrivers((prev) => prev.map((item) => (item.id === driverId ? updated : item)));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'อัปเดตสถานะไม่สำเร็จ');
+    }
+  }
+
   function openCreate() {
     setEditingDriver(null);
     setFormOpen(true);
@@ -657,7 +660,7 @@ export function DriversPage() {
                       <DriverCard
                         driver={driver}
                         driverOrders={driverOrders}
-                        onSetStatus={setDriverStatus}
+                        onSetStatus={(driverId, status) => void setStatus(driverId, status)}
                         onStartDelivery={startDelivery}
                         onCompleteDelivery={completeDelivery}
                         onFailDelivery={setFailTargetId}

@@ -335,6 +335,32 @@ function normalizeOrder(order: ApiOrder): Order {
   };
 }
 
+// รับได้ทั้งค่าปกติ ('cod'/'prepaid'/'transfer_on_delivery') และข้อความไทยดิบที่หลงเหลือจาก
+// import เก่า (เช่น "โอน") ก่อนถูก normalize ผ่านหน้าตรวจ import — backend รับเฉพาะ enum
+// ปกติเท่านั้น ไม่ normalize ให้ที่ /orders/sync และ /orders/assign
+function normalizePaymentForBackend(value: Order['payment']): Order['payment'] {
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'cod' || normalized.includes('ปลายทาง')) return 'cod';
+  if (
+    normalized === 'transfer_on_delivery' ||
+    normalized.includes('โอนตอนส่ง') ||
+    normalized.includes('โอนเมื่อส่ง')
+  ) {
+    return 'transfer_on_delivery';
+  }
+  if (
+    normalized === 'prepaid' ||
+    normalized === 'transfer' ||
+    normalized === 'paid' ||
+    normalized === 'โอน' ||
+    normalized === 'โอนแล้ว' ||
+    normalized.includes('ชำระแล้ว')
+  ) {
+    return 'prepaid';
+  }
+  return 'prepaid';
+}
+
 function serializeOrderForBackend(order: Order) {
   return {
     id: order.id,
@@ -359,7 +385,7 @@ function serializeOrderForBackend(order: Order) {
     rawText: order.rawText,
     rawPreview: order.rawPreview,
     totalValue: order.totalValue,
-    payment: order.payment,
+    payment: normalizePaymentForBackend(order.payment),
     dispatchReadiness: order.dispatchReadiness,
     requiresIdCheck: order.requiresIdCheck,
     insured: order.insured,
@@ -1176,6 +1202,10 @@ export type ImportBatch = {
   importedRows: number;
   errorRows: number;
   errorSummary: string | null;
+  lineMessageId?: string | null;
+  lineSenderUserId?: string | null;
+  lineSenderDisplayName?: string | null;
+  lineSenderPictureUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 };

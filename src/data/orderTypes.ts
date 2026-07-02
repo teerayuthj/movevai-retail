@@ -267,13 +267,17 @@ export type Order = {
   metadataJson?: OrderMetadata; // ข้อมูลเสริมจาก backend (เช่น ต้นฉบับ CSV ที่นำเข้าจาก LINE)
 };
 
-// ต้นฉบับการนำเข้าจากไฟล์ CSV (LINE Group → webhook → backend) เก็บไว้บน order
+// ต้นฉบับการนำเข้าจากไฟล์ CSV (LINE → webhook → backend) เก็บไว้บน order
 // เพื่อให้ admin เทียบข้อมูลที่ map แล้วกับแถวดิบจากไฟล์ได้ทุกเมื่อ
 export type OrderImportMeta = {
   batchId: string;
   fileName: string;
   source: string; // เช่น "LINE_GROUP"
   sourceRef?: string; // groupId ของ LINE
+  lineMessageId?: string; // LINE message.id ของไฟล์/ข้อความต้นทาง
+  senderUserId?: string; // LINE userId ของคนส่งไฟล์/ข้อความเข้า group
+  senderDisplayName?: string; // displayName จาก LINE group member profile
+  senderPictureUrl?: string; // pictureUrl จาก LINE group member profile
   rowIndex: number;
   importedAt: string;
   columns: Record<string, string>; // คอลัมน์ดิบจาก CSV (header → value)

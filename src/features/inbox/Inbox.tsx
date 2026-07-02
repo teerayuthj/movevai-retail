@@ -35,7 +35,6 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
     updateOrderDetails,
     setShippingMethod,
     cancelOrder,
-    syncFromBackend,
   } = useRetailStore();
 
   const [tab, setTab] = useState<InboxTab>('line_import');
@@ -54,29 +53,6 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
   );
 
   const selected = orders.find((order) => order.id === selectedId);
-
-  // เปิดออเดอร์ที่นำเข้าจาก CSV ในแท็บ "คำสั่งซื้อ" เพื่อให้ admin แก้ไขได้ทันที
-  // ถ้ายังไม่มีใน store (เพิ่งนำเข้า/ยังไม่ sync) ดึงจาก backend ก่อนแล้วค่อยเลือก
-  const openImportedOrder = async (orderId: string) => {
-    let order = orders.find((item) => item.id === orderId);
-    if (!order) {
-      try {
-        await syncFromBackend();
-      } catch {
-        // sync ไม่ได้ — ไปลองหาใน store ที่มีอยู่ต่อด้านล่าง
-      }
-    }
-    setTab('orders');
-    setFilter('all');
-    setQuery('');
-    setSelectedId(orderId);
-    setMobileDetailOpen(true);
-    // หลัง sync อาจยังไม่เจอ (เช่น order ถูกปิด/ลบ) — แจ้งเตือนแทนที่จะเงียบ
-    order = order ?? orders.find((item) => item.id === orderId);
-    if (!order) {
-      toast.error('ไม่พบออเดอร์นี้ในระบบ อาจถูกลบหรือยังนำเข้าไม่สำเร็จ');
-    }
-  };
 
   const openManualOrder = (orderId: string) => {
     setTab('orders');
@@ -123,7 +99,7 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
           )}
         >
           <MessageSquareText className="h-3.5 w-3.5" />
-          ประวัติ LINE
+          ไฟล์จาก LINE
         </button>
         <button
           type="button"
@@ -156,7 +132,6 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
         <ManualImportPanel onOpenOrder={openManualOrder} />
       ) : tab === 'line_import' ? (
         <ImportBatchPanel
-          onOpenOrder={openImportedOrder}
           onFastDispatchOrder={(orderId) =>
             onOpenQueue?.(`?tab=ready&order=${encodeURIComponent(orderId)}&mode=fast`)
           }

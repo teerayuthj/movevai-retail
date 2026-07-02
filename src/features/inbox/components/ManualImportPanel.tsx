@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { formatTHB, paymentLabel, shippingMethodLabel, type Order } from '@/data/mock';
 import { parseCsv } from '@/lib/csvScriptTransform';
@@ -186,7 +187,7 @@ function RowInput({
       value={value}
       inputMode={inputMode}
       onChange={(event) => onChange(event.target.value)}
-      className={cn('h-8 w-full rounded-md border bg-background px-2 text-xs', className)}
+      className={cn('h-8 w-full rounded-md border bg-background px-3 text-xs', className)}
     />
   );
 }
@@ -526,22 +527,22 @@ export default function ManualImportPanel({
                         />
                       </td>
                       <td className="px-2 py-2 align-top">
-                        <select
+                        <Select
                           value={row.payment}
                           onChange={(event) =>
                             updateRow(row.id, { payment: event.target.value as Order['payment'] })
                           }
-                          className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                          className="h-8 text-xs"
                         >
                           {Object.entries(paymentLabel).map(([value, label]) => (
                             <option key={value} value={value}>
                               {label}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </td>
                       <td className="px-2 py-2 align-top">
-                        <select
+                        <Select
                           value={row.shippingMethod}
                           onChange={(event) =>
                             updateRow(row.id, {
@@ -549,14 +550,14 @@ export default function ManualImportPanel({
                                 .value as ManualImportOrderInput['shippingMethod'],
                             })
                           }
-                          className="h-8 w-full rounded-md border bg-background px-2 text-xs"
+                          className="h-8 text-xs"
                         >
                           {Object.entries(shippingMethodLabel).map(([value, label]) => (
                             <option key={value} value={value}>
                               {label}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       </td>
                       <td className="px-2 py-2 text-right align-top">
                         <Button
