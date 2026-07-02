@@ -117,4 +117,5 @@ npm run format       # prettier
 - **State**: ใช้ `useRetail()` จาก `state/retailStore.tsx`; แตก slice ตาม domain ใน `state/retail/`
 - **Page → Feature delegation**: หน้าที่ซับซ้อน (เช่น Inbox) ให้ `src/pages/Foo.tsx` เป็นแค่ shell แล้ว delegate ไปที่ `src/features/foo/Foo.tsx`
 - **Types**: domain types รวมที่ `src/state/retail/types.ts` — อย่าประกาศซ้ำในแต่ละ component
+- **Form controls**: dropdown ต้องใช้ `Select` จาก `@/components/ui/select` (ห้ามเขียน `<select>` ดิบ + class เอง — native chevron จะเบียดขอบขวา), text input ใช้ `Input` จาก `@/components/ui/input`; ถ้าจำเป็นต้องใส่ class เอง padding แนวนอนขั้นต่ำคือ `px-3` (ห้าม `px-2`) — คุม width/flex ของ `Select` ผ่าน prop `containerClassName`
 - **Backend**: ปัจจุบันใช้ mock; ถ้าจะต่อ API จริงต้องสร้าง layer ใหม่ (ยังไม่มี `src/api/` หรือ react-query) — ตอนนี้ทุกอย่าน sync ผ่าน Context

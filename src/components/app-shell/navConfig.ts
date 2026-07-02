@@ -4,6 +4,7 @@ import {
   Inbox,
   Truck,
   Users,
+  BookUser,
   Mailbox,
   CalendarClock,
   Route,
@@ -47,7 +48,7 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'delivery',
     label: 'จัดส่ง',
     items: [
-      { key: 'queue', label: 'คิวงานพร้อมจ่าย', icon: Truck, showBadge: true },
+      { key: 'queue', label: 'ส่งทันที', icon: Truck, showBadge: true },
       { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
       { key: 'delivery_tracking', label: 'ติดตามการจัดส่ง', icon: Route, showBadge: true },
       { key: 'tracking_history', label: 'ประวัติการติดตาม', icon: History },
@@ -60,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'ทีมงาน',
     items: [
       { key: 'drivers', label: 'คนขับ', icon: Users },
+      { key: 'customers', label: 'ลูกค้า', icon: BookUser },
       { key: 'messenger', label: 'เปิดแอป Messenger', icon: Smartphone, showBadge: true },
     ],
   },

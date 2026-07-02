@@ -257,7 +257,7 @@ export default function OrderDetail({
                       date: event.target.value,
                     }))
                   }
-                  className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs"
+                  className="h-8 min-w-0 rounded-md border bg-background px-3 text-xs"
                 />
                 <input
                   type="time"
@@ -268,7 +268,7 @@ export default function OrderDetail({
                       time: event.target.value,
                     }))
                   }
-                  className="h-8 min-w-0 rounded-md border bg-background px-2 text-xs"
+                  className="h-8 min-w-0 rounded-md border bg-background px-3 text-xs"
                 />
               </div>
             ) : (
@@ -295,7 +295,7 @@ export default function OrderDetail({
                 inputMode="numeric"
                 value={draftItemQty}
                 onChange={(event) => setDraftItemQty(event.target.value)}
-                className="mt-1 h-8 w-24 rounded-md border bg-background px-2 text-xs"
+                className="mt-1 h-8 w-24 rounded-md border bg-background px-3 text-xs"
               />
             ) : (
               <div className="mt-0.5 text-sm font-medium">{itemCountSummary}</div>

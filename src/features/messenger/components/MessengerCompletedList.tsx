@@ -5,6 +5,7 @@ import {
   fetchMessengerCompletedDeliveries,
   type MessengerCompletedDelivery,
 } from '@/lib/retailApi';
+import { formatElapsedDuration, getDeliveryDurationMinutes } from '@/lib/deliveryExecution';
 import {
   Banknote,
   Camera,
@@ -24,6 +25,13 @@ function formatDeliveredAt(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+// "ส่งสำเร็จ 30 มิ.ย. 14:32 · ใช้เวลา 38 นาที" — งานเก่าที่ไม่มี inTransitAt จะไม่มีส่วนท้าย
+function formatDeliveredLine(item: MessengerCompletedDelivery): string {
+  const base = `ส่งสำเร็จ ${formatDeliveredAt(item.deliveredAt)}`;
+  const minutes = getDeliveryDurationMinutes(item.inTransitAt, item.deliveredAt);
+  return minutes != null ? `${base} · ใช้เวลา ${formatElapsedDuration(minutes)}` : base;
 }
 
 export function MessengerCompletedList({ messengerCode }: { messengerCode: string }) {
@@ -144,9 +152,7 @@ export function MessengerCompletedList({ messengerCode }: { messengerCode: strin
             </Badge>
           </div>
 
-          <div className="mt-1 text-[12px] text-muted-foreground">
-            ส่งสำเร็จ {formatDeliveredAt(item.deliveredAt)}
-          </div>
+          <div className="mt-1 text-[12px] text-muted-foreground">{formatDeliveredLine(item)}</div>
 
           <div className="mt-2 flex flex-wrap gap-1">
             {item.cod?.collected && (

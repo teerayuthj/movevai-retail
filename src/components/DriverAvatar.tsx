@@ -196,7 +196,11 @@ export function DriverAvatar({ driver, className }: { driver: Driver; className?
       )}
       aria-label={driver.name}
     >
-      <CartoonFace style={style} />
+      {driver.profilePhotoDataUrl ? (
+        <img src={driver.profilePhotoDataUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <CartoonFace style={style} />
+      )}
       <span
         className={cn(
           'absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-background',

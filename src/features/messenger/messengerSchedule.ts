@@ -40,3 +40,30 @@ export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJob
 export function getMessengerJobOverdueMinutes(order: Order, nowMs: number): number | null {
   return getAssignedOrderOverdueMinutes(order, nowMs);
 }
+
+// เวลานัดของงานที่ "กำลังส่งอยู่" — messenger เห็นเป็นเป้าหมาย (เหลือ/เลยเท่าไร)
+// ไม่ใช่นาฬิกาจับเวลา เพื่อไม่กดดันตอนขับรถ
+export type MessengerAppointmentCountdown =
+  | { phase: 'before'; minutes: number }
+  | { phase: 'after'; minutes: number };
+
+export function getMessengerAppointmentCountdown(
+  order: Order,
+  nowMs: number,
+): MessengerAppointmentCountdown | null {
+  if (order.status !== 'in_transit') return null;
+  const scheduledAt = getMessengerJobScheduledAt(order);
+  if (scheduledAt == null) return null;
+
+  const diffMs = scheduledAt - nowMs;
+  if (diffMs >= 0) return { phase: 'before', minutes: Math.max(1, Math.ceil(diffMs / 60_000)) };
+  return { phase: 'after', minutes: Math.floor(-diffMs / 60_000) };
+}
+
+/** เวลาเริ่มส่งแบบ HH:MM สำหรับแสดงนิ่ง ๆ บนงานที่กำลังส่ง — null ถ้าไม่มีข้อมูล */
+export function formatInTransitStartTime(order: Order): string | null {
+  if (order.status !== 'in_transit' || !order.inTransitAt) return null;
+  const startedMs = new Date(order.inTransitAt).getTime();
+  if (Number.isNaN(startedMs)) return null;
+  return new Date(startedMs).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BellRing, X } from 'lucide-react';
+import { BellRing, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { Driver, Order } from '@/data/mock';
@@ -7,7 +7,8 @@ import type { Driver, Order } from '@/data/mock';
 type Props = {
   open: boolean;
   order: Order | null;
-  driver: Driver | null;
+  /** คนขับที่เลือก (co-delivery) — index 0 = คนขับหลัก, ที่เหลือ = คนขับร่วม */
+  drivers: Driver[];
   loading: boolean;
   error?: string;
   onCancel: () => void;
@@ -17,7 +18,7 @@ type Props = {
 export function UrgentDispatchDialog({
   open,
   order,
-  driver,
+  drivers,
   loading,
   error,
   onCancel,
@@ -29,7 +30,15 @@ export function UrgentDispatchDialog({
     if (open) setNote('');
   }, [open]);
 
-  if (!open || !order || !driver) return null;
+  if (!open || !order || drivers.length === 0) return null;
+
+  const messengerLabel =
+    drivers.length === 1
+      ? drivers[0].name
+      : `${drivers[0].name} + ร่วมส่งอีก ${drivers.length - 1} คน (${drivers
+          .slice(1)
+          .map((driver) => driver.name)
+          .join(', ')})`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -37,7 +46,7 @@ export function UrgentDispatchDialog({
         <div className="flex items-start justify-between border-b px-5 py-4">
           <div>
             <h2 className="flex items-center gap-2 text-base font-semibold">
-              <AlertTriangle className="h-4 w-4 text-destructive" /> ส่งด่วนทันที
+              <Send className="h-4 w-4 text-info" /> ส่งทันที
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               สร้าง Route และ Push ไปหา Messenger ทันที
@@ -63,7 +72,7 @@ export function UrgentDispatchDialog({
           <div className="rounded-lg border bg-muted/20 p-3 text-sm">
             <div className="font-mono text-xs font-medium">{order.code}</div>
             <div className="mt-1 font-medium">{order.customer.name}</div>
-            <div className="mt-1 text-xs text-muted-foreground">Messenger: {driver.name}</div>
+            <div className="mt-1 text-xs text-muted-foreground">Messenger: {messengerLabel}</div>
           </div>
           <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
             <div className="flex items-start gap-2">
@@ -91,14 +100,9 @@ export function UrgentDispatchDialog({
           <Button variant="outline" size="sm" onClick={onCancel} disabled={loading}>
             กลับ
           </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            disabled={loading}
-            onClick={() => onConfirm(note.trim() || undefined)}
-          >
-            <BellRing className="h-4 w-4" />
-            {loading ? 'กำลังสร้าง Route…' : 'ยืนยันส่งด่วน'}
+          <Button size="sm" disabled={loading} onClick={() => onConfirm(note.trim() || undefined)}>
+            <Send className="h-4 w-4" />
+            {loading ? 'กำลังสร้าง Route…' : 'ยืนยันส่งทันที'}
           </Button>
         </div>
       </div>

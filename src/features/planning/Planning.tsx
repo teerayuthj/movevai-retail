@@ -696,7 +696,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                       ? 'ไม่พบงานที่ตรงกับคำค้นหา'
                       : otherPlanDates.length > 0
                         ? 'ไม่มีงานในวันที่เลือก — เลือกวันที่มีงานจากแถบด้านบน'
-                        : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจากหน้า “คิวงานพร้อมจ่าย”`}
+                        : `ยังไม่มีงานในแผนวันที่ ${formatPlanningDate(selectedDate)} — นำงานเข้ามาจาก Order Inbox`}
                   </div>
                 )}
               </div>
@@ -706,7 +706,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
 
         <Card className="overflow-hidden xl:h-[calc(100vh-12rem)]">
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">ภาระงานคนขับของวัน</CardTitle>
+            <CardTitle className="text-sm">งานคนขับของวัน</CardTitle>
             <CardDescription>กดเลือกคนขับเพื่อใส่ลงฟอร์มแผนด้านขวา</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3 overflow-auto xl:h-[calc(100%-4.75rem)]">
@@ -870,7 +870,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
           error={routeActionError}
           reasons={drivers
             .filter((driver) => driver.id !== routeAction.route.driver.id)
-            .map((driver) => ({ value: driver.id, label: `${driver.name} · ${driver.zone}` }))}
+            .map((driver) => ({ value: driver.id, label: driver.name }))}
           notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
           confirmLabel="ย้ายงาน"
           onCancel={() => setRouteAction(null)}

@@ -15,7 +15,6 @@ export const drivers: Driver[] = [
     status: 'available',
     activeOrders: 0,
     capacity: 6,
-    rating: 4.9,
     highValueCertified: true,
   },
   {
@@ -28,7 +27,6 @@ export const drivers: Driver[] = [
     status: 'on_delivery',
     activeOrders: 3,
     capacity: 10,
-    rating: 4.7,
     highValueCertified: true,
   },
   {
@@ -41,7 +39,6 @@ export const drivers: Driver[] = [
     status: 'available',
     activeOrders: 1,
     capacity: 5,
-    rating: 4.8,
     highValueCertified: true,
   },
   {
@@ -54,7 +51,6 @@ export const drivers: Driver[] = [
     status: 'available',
     activeOrders: 2,
     capacity: 15,
-    rating: 4.6,
     highValueCertified: false,
   },
   {
@@ -67,7 +63,6 @@ export const drivers: Driver[] = [
     status: 'off_duty',
     activeOrders: 0,
     capacity: 6,
-    rating: 4.9,
     highValueCertified: true,
   },
 ];

@@ -206,7 +206,7 @@ export function RetailProvider({
   const syncFromBackend = useCallback(async () => {
     const [{ orders: remoteOrders }, remoteDrivers] = await Promise.all([
       fetchAppOrders({ take: 200 }),
-      fetchAppDrivers(),
+      fetchAppDrivers({ approvalStatus: 'approved' }),
     ]);
     commit((current) => {
       const remoteIds = new Set(remoteOrders.map((order) => order.id));

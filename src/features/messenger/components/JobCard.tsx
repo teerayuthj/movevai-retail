@@ -1,6 +1,5 @@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { isHighValueOrder } from '@/lib/deliveryExecution';
 import {
   canReviseDeliveryProof,
   deliveryProofRevisionLimits,
@@ -20,13 +19,23 @@ import {
   Navigation,
   Package,
   Phone,
-  ShieldCheck,
   PenLine,
 } from 'lucide-react';
 import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
-import { getMessengerJobOverdueMinutes, getMessengerJobTiming } from '../messengerSchedule';
+import {
+  formatInTransitStartTime,
+  getMessengerAppointmentCountdown,
+  getMessengerJobOverdueMinutes,
+  getMessengerJobTiming,
+} from '../messengerSchedule';
+import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { navigationUrl } from '../geocode';
+
+function formatMessengerDueLabel(minutes: number) {
+  if (minutes < 1) return 'ถึงเวลารับงานแล้ว';
+  return formatOverdueDuration(minutes).replace('เลยเวลานัดส่ง ', 'ถึงเวลารับงานแล้ว · ');
+}
 
 export function JobCard({
   order,
@@ -53,6 +62,9 @@ export function JobCard({
   const isOverdue = overdueMinutes != null;
   const timing = getMessengerJobTiming(order, nowMs);
   const isPendingReview = order.status === 'pending_confirmation';
+  // งานที่กำลังส่ง: โชว์เวลาเริ่ม (นิ่ง) + เหลือ/เลยเวลานัด — ไม่โชว์นาฬิกาจับเวลา
+  const startedAtLabel = formatInTransitStartTime(order);
+  const appointmentCountdown = getMessengerAppointmentCountdown(order, nowMs);
   const canMessengerEditProof = !isPendingReview || canReviseDeliveryProof(order, 'messenger');
   const messengerRevisionCount = getDeliveryProofRevisionCount(order, 'messenger');
   const messengerRevisionLimit = deliveryProofRevisionLimits.messenger;
@@ -61,8 +73,8 @@ export function JobCard({
     <div
       className={cn(
         'rounded-xl border bg-card p-4',
-        timing && !isOverdue && 'border-warning/50 border-l-4 border-l-warning bg-warning/5',
-        isOverdue && 'border-destructive/50 border-l-4 border-l-destructive bg-destructive/5',
+        timing && !isOverdue && 'border-warning/50 border-l-4 border-l-warning',
+        isOverdue && 'border-warning/50 border-l-4 border-l-warning',
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -71,27 +83,29 @@ export function JobCard({
           <Package className="h-3 w-3" /> พัสดุ
         </Badge>
       </div>
-      {isUrgent && order.status === 'assigned' && (
-        <Badge variant="destructive" className="mt-2">
-          งานด่วน · กรุณารับภายใน 5 นาที
-        </Badge>
-      )}
-      {isOverdue && (
-        <Badge
-          variant="outline"
-          className="mt-2 border-destructive/30 bg-destructive/10 text-destructive"
-        >
-          <Clock3 className="h-3 w-3" />
-          {formatOverdueDuration(overdueMinutes)}
-        </Badge>
-      )}
-      {timing && (
-        <Badge variant="outline" className="mt-2 border-warning/30 bg-warning/10 text-warning">
-          <Clock3 className="h-3 w-3" />
-          {timing.phase === 'upcoming'
-            ? `อีก ${timing.minutes} นาทีถึงเวลานัดส่ง`
-            : 'ถึงเวลานัดส่งแล้ว · กรุณารับงานทันที'}
-        </Badge>
+      {(isUrgent || isOverdue || timing) && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {isUrgent && order.status === 'assigned' && (
+            <Badge variant="info">ส่งทันที · กรุณารับภายใน 5 นาที</Badge>
+          )}
+          {isOverdue && (
+            <Badge
+              variant="outline"
+              className="border-destructive/30 bg-destructive/10 text-destructive"
+            >
+              <Clock3 className="h-3 w-3" />
+              {formatMessengerDueLabel(overdueMinutes)}
+            </Badge>
+          )}
+          {timing && (
+            <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
+              <Clock3 className="h-3 w-3" />
+              {timing.phase === 'upcoming'
+                ? `อีก ${timing.minutes} นาทีถึงเวลานัดส่ง`
+                : 'ถึงเวลานัดส่งแล้ว · กรุณารับงานทันที'}
+            </Badge>
+          )}
+        </div>
       )}
       <div className="mt-1 text-sm font-semibold">{order.customer.name}</div>
 
@@ -101,15 +115,35 @@ export function JobCard({
             {order.deliveryRoute.code} · จุดที่ {order.deliveryRoute.sequence}
           </Badge>
           {order.deliveryPlan?.plannedDate && (
-            <Badge
-              variant={isOverdue ? 'destructive' : isFutureJob || timing ? 'warning' : 'success'}
-              className="h-5 px-1.5 text-[10px]"
-            >
+            <span className="inline-flex h-5 items-center px-1 text-[10px] font-medium text-muted-foreground">
               {formatPlanningDate(order.deliveryPlan.plannedDate)} ·{' '}
               {order.deliveryPlan.plannedTime
                 ? `${order.deliveryPlan.plannedTime} น.`
                 : 'ไม่ระบุเวลา'}
-            </Badge>
+            </span>
+          )}
+        </div>
+      )}
+
+      {(startedAtLabel || appointmentCountdown) && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+          {startedAtLabel && (
+            <span className="inline-flex items-center gap-1 text-muted-foreground">
+              <Clock3 className="h-3 w-3" />
+              เริ่มส่ง {startedAtLabel} น.
+            </span>
+          )}
+          {appointmentCountdown && (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 font-medium',
+                appointmentCountdown.phase === 'before' ? 'text-info' : 'text-warning',
+              )}
+            >
+              {appointmentCountdown.phase === 'before'
+                ? `อีก ${formatElapsedDuration(appointmentCountdown.minutes)} ถึงเวลานัด`
+                : `เลยเวลานัด ${formatElapsedDuration(appointmentCountdown.minutes)}`}
+            </span>
           )}
         </div>
       )}
@@ -164,12 +198,6 @@ export function JobCard({
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1">
-        {isHighValueOrder(order) && (
-          <Badge variant="warning" className="h-5 gap-0.5 px-1.5 text-[10px]">
-            <ShieldCheck className="h-2.5 w-2.5" />
-            ของมีค่า
-          </Badge>
-        )}
         {order.requiresIdCheck && (
           <Badge variant="warning" className="h-5 gap-0.5 px-1.5 text-[10px]">
             <IdCard className="h-2.5 w-2.5" />
@@ -247,20 +275,17 @@ export function JobCard({
 
       <div className="mt-3 flex items-center justify-end border-t pt-3">
         {order.status === 'assigned' && (
-          <Button
-            size="sm"
-            variant={isUrgent || isOverdue ? 'destructive' : 'default'}
-            onClick={onStart}
-            disabled={isFutureJob || starting}
-          >
+          <Button size="sm" variant="default" onClick={onStart} disabled={isFutureJob || starting}>
             <Navigation className="h-4 w-4" />
             {isFutureJob
               ? 'ยังไม่ถึงวันส่ง'
               : starting
                 ? 'กำลังเริ่ม...'
-                : isUrgent || isOverdue
-                  ? 'รับงานด่วน'
-                  : 'รับงาน'}
+                : isOverdue
+                  ? 'รับงานตอนนี้'
+                  : isUrgent
+                    ? 'รับทันที'
+                    : 'รับงาน'}
           </Button>
         )}
         {order.status === 'in_transit' && (

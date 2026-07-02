@@ -1,9 +1,8 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import { CheckCircle2, Package, Phone, Play, Star, XCircle } from 'lucide-react';
+import { CheckCircle2, IdCard, Package, Phone, Play, XCircle } from 'lucide-react';
 import { type Driver, type Order, formatTHB, statusLabel } from '@/data/mock';
 import { VehicleIcon } from './VehicleIcon';
 
@@ -24,8 +23,8 @@ export function DriverCard({
   onCompleteDelivery,
   onFailDelivery,
 }: DriverCardProps) {
-  const pct = (d.activeOrders / d.capacity) * 100;
   const canToggleOffDuty = driverOrders.length === 0;
+  const approvalStatus = d.approvalStatus ?? 'approved';
 
   return (
     <Card>
@@ -51,12 +50,26 @@ export function DriverCard({
                     ? 'กำลังส่ง'
                     : 'หยุด'}
               </Badge>
+              {approvalStatus !== 'approved' && (
+                <Badge
+                  variant={approvalStatus === 'pending' ? 'warning' : 'destructive'}
+                  className="h-5 px-1.5 text-[10px]"
+                >
+                  {approvalStatus === 'pending' ? 'รออนุมัติ' : 'ไม่อนุมัติ'}
+                </Badge>
+              )}
             </div>
             <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
               <Phone className="h-3 w-3" />
               {d.phone}
             </div>
           </div>
+          {d.licensePlate && (
+            <div className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+              <IdCard className="h-3 w-3" />
+              {d.licensePlate}
+            </div>
+          )}
         </div>
         <div className="mt-4 grid gap-2 text-xs">
           <div className="flex items-center justify-between">
@@ -68,28 +81,15 @@ export function DriverCard({
                 : d.vehicle === 'van'
                   ? 'รถตู้'
                   : 'รถกระบะ'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">โซน</span>
-            <span className="font-medium">{d.zone}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">คะแนน</span>
-            <span className="flex items-center gap-0.5 font-medium">
-              <Star className="h-3 w-3 fill-warning text-warning" />
-              {d.rating}
+              {d.vehicleColor ? ` · ${d.vehicleColor}` : ''}
             </span>
           </div>
         </div>
-        <div className="mt-4">
-          <div className="mb-1 flex items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">ภาระงาน</span>
-            <span className="tabular-nums font-medium">
-              {d.activeOrders}/{d.capacity}
-            </span>
+        <div className="mt-4 rounded-lg bg-muted/40 px-3 py-2 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">งานที่รับอยู่</span>
+            <span className="tabular-nums font-medium">{d.activeOrders}</span>
           </div>
-          <Progress value={pct} />
         </div>
         <div className="mt-4 flex gap-2">
           <Button

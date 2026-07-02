@@ -211,7 +211,8 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5174,
+    // เคารพ PORT จาก tooling (เช่น preview launcher) ก่อน แล้วค่อย fallback ค่า default
+    port: process.env.PORT ? Number(process.env.PORT) : 5174,
     host: true,
     headers: {
       'Service-Worker-Allowed': '/',

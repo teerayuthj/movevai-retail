@@ -10,7 +10,12 @@ import {
   ResolutionInfo,
 } from '@/components/delivery/DeliveryExecutionShared';
 import { type Driver, type Order, statusLabel } from '@/data/mock';
-import { Loader2 } from 'lucide-react';
+import {
+  formatElapsedDuration,
+  getInTransitElapsedMinutes,
+  getInTransitElapsedTone,
+} from '@/lib/deliveryExecution';
+import { Clock3, Loader2 } from 'lucide-react';
 
 type TrackingDetailDrawerProps = {
   order: Order | null;
@@ -18,6 +23,8 @@ type TrackingDetailDrawerProps = {
   isDetailLoading: boolean;
   onClose: () => void;
   actions?: ReactNode;
+  /** เวลาปัจจุบันจากหน้าแม่ (tick ทุกนาที) — ใช้คำนวณ "ส่งมาแล้ว X นาที" */
+  nowMs?: number;
 };
 
 /** รายละเอียดเชิงลึก — drawer ขวา (เดสก์ท็อป) / เต็มจอ (มือถือ) เปิดเมื่อเลือก order */
@@ -27,7 +34,9 @@ export function TrackingDetailDrawer({
   isDetailLoading,
   onClose,
   actions,
+  nowMs,
 }: TrackingDetailDrawerProps) {
+  const inTransitMinutes = order ? getInTransitElapsedMinutes(order, nowMs) : null;
   return (
     <DetailDrawer
       open={!!order}
@@ -58,14 +67,32 @@ export function TrackingDetailDrawer({
             >
               {statusLabel[order.status]}
             </Badge>
+            {inTransitMinutes != null && (
+              <Badge
+                variant={
+                  getInTransitElapsedTone(inTransitMinutes) === 'critical'
+                    ? 'destructive'
+                    : getInTransitElapsedTone(inTransitMinutes) === 'slow'
+                      ? 'warning'
+                      : 'info'
+                }
+                className="gap-1"
+              >
+                <Clock3 className="h-3 w-3" />
+                ส่งมาแล้ว {formatElapsedDuration(inTransitMinutes)}
+              </Badge>
+            )}
             {order.deliveryPlan?.releaseState === 'released' &&
               order.deliveryRoute?.dispatchMode !== 'urgent' && (
                 <Badge variant="info">จาก Planning</Badge>
               )}
             {order.deliveryRoute?.dispatchMode === 'urgent' && (
-              <Badge variant="destructive">งานด่วน</Badge>
+              <Badge variant="info">ส่งทันที</Badge>
             )}
             {driver && <Badge variant="muted">คนขับ: {driver.name}</Badge>}
+            {order.coDriverIds && order.coDriverIds.length > 0 && (
+              <Badge variant="info">+{order.coDriverIds.length} ร่วมส่ง</Badge>
+            )}
             {isDetailLoading && (
               <Badge variant="muted" className="gap-1">
                 <Loader2 className="h-3 w-3 animate-spin" />

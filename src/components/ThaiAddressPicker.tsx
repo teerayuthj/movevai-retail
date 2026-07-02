@@ -7,7 +7,7 @@ import {
   fetchAddressProvinces,
   fetchAddressSubdistricts,
 } from '@/lib/retailApi';
-import { EMPTY_THAI_ADDRESS, type ThaiAddressValue } from '@/features/inbox/utils/thaiAddress';
+import { EMPTY_THAI_ADDRESS, type ThaiAddressValue } from '@/lib/thaiAddress';
 
 type ThaiAddressPickerProps = {
   value: ThaiAddressValue;

@@ -12,9 +12,13 @@ import type { SubmitDeliveryInput } from '@/state/retail/types';
 
 // running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
 const IS_NATIVE_APP = Capacitor.isNativePlatform();
+const IS_ANDROID_APP = Capacitor.getPlatform() === 'android';
 
 function normalizeApiBase(value: string | undefined, fallback: string) {
-  return (value?.trim() || fallback).replace(/\/+$/, '');
+  const normalized = (value?.trim() || fallback).replace(/\/+$/, '');
+  if (!IS_ANDROID_APP) return normalized;
+  // Android Emulator resolves localhost to the emulator itself. 10.0.2.2 is the host Mac.
+  return normalized.replace(/^http:\/\/(localhost|127\.0\.0\.1)(?=[:/]|$)/, 'http://10.0.2.2');
 }
 
 const MESSENGER_API_BASE = normalizeApiBase(
@@ -45,9 +49,74 @@ if (IS_NATIVE_APP && (MESSENGER_API_BASE.startsWith('/') || APP_API_BASE.startsW
 const MESSENGER_TOKEN_KEY = 'movevai:messenger-token';
 const ROAD_ROUTE_TIMEOUT_MS = 7_000;
 export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
+const DEFAULT_DRIVER_CAPACITY = 99;
 
-export type ApiDriver = Omit<Driver, 'id'> & { id: string; code: string };
-type ApiOrder = Order & { assignedDriver?: ApiDriver };
+export type ApiDriver = Omit<Driver, 'id' | 'zone' | 'capacity'> & {
+  id: string;
+  code: string;
+  zone?: string;
+  capacity?: number;
+};
+type ApiOrder = Order & { assignedDriver?: ApiDriver; coDriverCodes?: string[] };
+
+export type DriverApprovalStatus = NonNullable<Driver['approvalStatus']>;
+
+export type DriverMutationInput = {
+  code?: string;
+  name: string;
+  phone: string;
+  avatarKey?: string;
+  vehicle: Driver['vehicle'];
+  vehicleColor?: string;
+  status?: Driver['status'];
+  approvalStatus?: DriverApprovalStatus;
+  capacity?: number;
+  highValueCertified?: boolean;
+  licensePlate?: string;
+  idCardNumber?: string;
+  idCardPhotoDataUrl?: string;
+  profilePhotoDataUrl?: string;
+  addressLine?: string;
+  addressSubdistrict?: string;
+  addressDistrict?: string;
+  addressProvince?: string;
+  addressPostalCode?: string;
+};
+
+// field ที่ messenger แก้เองได้จากหน้า "บัญชี messenger" — ต้องตรงกับ whitelist
+// ของ backend (riderProfileUpdateSchema): ชื่อ/บัตรประชาชน/ยานพาหนะ แก้ได้เฉพาะ admin
+export type MessengerProfileUpdateInput = {
+  phone?: string;
+  profilePhotoDataUrl?: string;
+  addressLine?: string;
+  addressSubdistrict?: string;
+  addressDistrict?: string;
+  addressProvince?: string;
+  addressPostalCode?: string;
+};
+
+export type DriverStats = {
+  driver: Driver;
+  totals: {
+    trackingSessions: number;
+    distanceMeters: number;
+    offRouteCount: number;
+    completedOrders: number;
+    routes: number;
+  };
+  frequentDestinations: { label: string; count: number }[];
+  recentSessions: {
+    id: string;
+    routeId?: string | null;
+    sessionType?: 'delivery' | 'test';
+    label?: string | null;
+    status: string;
+    startedAt: string;
+    endedAt?: string | null;
+    distanceMeters: number;
+    offRouteCount: number;
+  }[];
+};
 
 function proofPayload(input: SubmitDeliveryInput) {
   const { editorRole: _editorRole, recordedBy: _recordedBy, ...proof } = input;
@@ -76,7 +145,7 @@ function clearLocalMessengerSession(notify = false) {
 function assertNativeRequestUrl(url: string) {
   if (!IS_NATIVE_APP || !url.startsWith('/')) return;
   throw new Error(
-    'ตั้งค่า API สำหรับ iOS native ไม่ถูกต้อง: ต้องใช้ backend URL แบบเต็ม เช่น http://localhost:4000/v1/rider หรือรัน npm run build:cap ก่อน npx cap sync ios',
+    'ตั้งค่า API สำหรับ native ไม่ถูกต้อง: ต้องใช้ backend URL แบบเต็ม เช่น http://localhost:4000/v1/rider บน iOS หรือ http://10.0.2.2:4000/v1/rider บน Android',
   );
 }
 
@@ -87,6 +156,9 @@ function networkErrorMessage(url: string, error: unknown) {
   }
   if (IS_NATIVE_APP && url.startsWith('http://localhost:4000')) {
     return `เชื่อมต่อ backend ที่ http://localhost:4000 ไม่ได้ — ตรวจว่า backend รันอยู่บนเครื่อง Mac แล้วลองใหม่ (${message})`;
+  }
+  if (IS_NATIVE_APP && url.startsWith('http://10.0.2.2:4000')) {
+    return `เชื่อมต่อ backend ที่ http://10.0.2.2:4000 ไม่ได้ — ตรวจว่า backend รันอยู่บน Mac ที่ port 4000 แล้วลองใหม่ (${message})`;
   }
   return message;
 }
@@ -240,13 +312,19 @@ export async function fetchAddressSubdistricts(
 }
 
 function normalizeDriver(driver: ApiDriver): Driver {
-  return { ...driver, id: driver.code };
+  return {
+    ...driver,
+    id: driver.code,
+    zone: driver.zone ?? '',
+    capacity: driver.capacity ?? DEFAULT_DRIVER_CAPACITY,
+  };
 }
 
 function normalizeOrder(order: ApiOrder): Order {
   return {
     ...order,
     assignedDriverId: order.assignedDriver?.code,
+    coDriverIds: order.coDriverCodes,
     proofOfDelivery: order.proofOfDelivery
       ? {
           ...order.proofOfDelivery,
@@ -255,6 +333,32 @@ function normalizeOrder(order: ApiOrder): Order {
         }
       : undefined,
   };
+}
+
+// รับได้ทั้งค่าปกติ ('cod'/'prepaid'/'transfer_on_delivery') และข้อความไทยดิบที่หลงเหลือจาก
+// import เก่า (เช่น "โอน") ก่อนถูก normalize ผ่านหน้าตรวจ import — backend รับเฉพาะ enum
+// ปกติเท่านั้น ไม่ normalize ให้ที่ /orders/sync และ /orders/assign
+function normalizePaymentForBackend(value: Order['payment']): Order['payment'] {
+  const normalized = String(value).trim().toLowerCase();
+  if (normalized === 'cod' || normalized.includes('ปลายทาง')) return 'cod';
+  if (
+    normalized === 'transfer_on_delivery' ||
+    normalized.includes('โอนตอนส่ง') ||
+    normalized.includes('โอนเมื่อส่ง')
+  ) {
+    return 'transfer_on_delivery';
+  }
+  if (
+    normalized === 'prepaid' ||
+    normalized === 'transfer' ||
+    normalized === 'paid' ||
+    normalized === 'โอน' ||
+    normalized === 'โอนแล้ว' ||
+    normalized.includes('ชำระแล้ว')
+  ) {
+    return 'prepaid';
+  }
+  return 'prepaid';
 }
 
 function serializeOrderForBackend(order: Order) {
@@ -281,7 +385,7 @@ function serializeOrderForBackend(order: Order) {
     rawText: order.rawText,
     rawPreview: order.rawPreview,
     totalValue: order.totalValue,
-    payment: order.payment,
+    payment: normalizePaymentForBackend(order.payment),
     dispatchReadiness: order.dispatchReadiness,
     requiresIdCheck: order.requiresIdCheck,
     insured: order.insured,
@@ -332,6 +436,81 @@ export async function fetchAppOrders(params?: { status?: string; take?: number; 
     `${APP_API_BASE}/orders${query ? `?${query}` : ''}`,
   );
   return { orders: result.items.map(normalizeOrder), total: result.total };
+}
+
+// ── โปรไฟล์ลูกค้าสะสม (RetailCustomer) — หน้า "ลูกค้า" ฝั่ง admin ──
+export type CustomerSummary = {
+  id: string;
+  phone: string;
+  name: string;
+  address: string;
+  idCard?: string;
+  /** มีพิกัดยืนยันจากการส่งสำเร็จจริงแล้ว (ใช้แทน geocode ตอนจัดเส้นทาง) */
+  geoVerified: boolean;
+  geoVerifiedAt?: string;
+  ordersCount: number;
+  deliveredCount: number;
+  totalValue: number;
+  firstOrderAt: string;
+  lastOrderAt: string;
+};
+
+export type CustomerListSort = 'recent' | 'name' | 'orders' | 'value';
+export type CustomerGeoFilter = 'all' | 'verified' | 'unverified';
+
+export type CustomerOrderSummary = {
+  id: string;
+  code: string;
+  status: string;
+  source: string;
+  receivedAt: string;
+  totalValue: number;
+  payment: string;
+  shippingMethod?: string;
+  address: string;
+};
+
+export type CustomerDetail = {
+  customer: CustomerSummary & {
+    geo?: { lat: number; lng: number; address?: string; verifiedAt?: string };
+  };
+  stats: { totalOrders: number; deliveredOrders: number; totalValue: number };
+  orders: CustomerOrderSummary[];
+};
+
+export async function fetchCustomers(params?: {
+  q?: string;
+  sort?: CustomerListSort;
+  geo?: CustomerGeoFilter;
+  /** เฉพาะลูกค้าที่สั่งภายใน N วันล่าสุด */
+  days?: number;
+  /** เฉพาะลูกค้าที่มีออเดอร์ตั้งแต่ N ขึ้นไป */
+  minOrders?: number;
+  /** keyset cursor จาก response ก่อนหน้า — ไม่ส่ง = หน้าแรก */
+  cursor?: string;
+  limit?: number;
+}) {
+  const search = new URLSearchParams();
+  if (params?.q?.trim()) search.set('q', params.q.trim());
+  if (params?.sort) search.set('sort', params.sort);
+  if (params?.geo && params.geo !== 'all') search.set('geo', params.geo);
+  if (params?.days != null) search.set('days', String(params.days));
+  if (params?.minOrders != null) search.set('minOrders', String(params.minOrders));
+  if (params?.cursor) search.set('cursor', params.cursor);
+  if (params?.limit != null) search.set('limit', String(params.limit));
+  const query = search.toString();
+  return request<{
+    total: number;
+    limit: number;
+    sort: CustomerListSort;
+    hasMore: boolean;
+    nextCursor?: string;
+    customers: CustomerSummary[];
+  }>(`${APP_API_BASE}/customers${query ? `?${query}` : ''}`);
+}
+
+export function fetchCustomer(customerId: string) {
+  return request<CustomerDetail>(`${APP_API_BASE}/customers/${encodeURIComponent(customerId)}`);
 }
 
 export type DeliveryTrackingCounts = Record<DeliveryTrackingTab, number>;
@@ -525,9 +704,66 @@ export async function fetchCustomerLiveTracking(
   return null;
 }
 
-export async function fetchAppDrivers() {
-  const result = await request<ApiDriver[]>(`${APP_API_BASE}/drivers`);
+export async function fetchAppDrivers(params?: {
+  approvalStatus?: DriverApprovalStatus;
+  includeArchived?: boolean;
+}) {
+  const search = new URLSearchParams();
+  if (params?.approvalStatus) search.set('approvalStatus', params.approvalStatus);
+  if (params?.includeArchived) search.set('includeArchived', 'true');
+  const query = search.toString();
+  const result = await request<ApiDriver[]>(`${APP_API_BASE}/drivers${query ? `?${query}` : ''}`);
   return result.map(normalizeDriver);
+}
+
+export async function createDriver(input: DriverMutationInput) {
+  const result = await request<ApiDriver>(`${APP_API_BASE}/drivers`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return normalizeDriver(result);
+}
+
+export async function updateDriver(driverId: string, input: Partial<DriverMutationInput>) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    },
+  );
+  return normalizeDriver(result);
+}
+
+export async function archiveDriver(driverId: string) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/archive`,
+    { method: 'POST' },
+  );
+  return normalizeDriver(result);
+}
+
+export async function approveDriver(driverId: string, input?: { approvedBy?: string }) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/approve`,
+    { method: 'POST', body: JSON.stringify(input ?? {}) },
+  );
+  return normalizeDriver(result);
+}
+
+export async function rejectDriver(driverId: string, reason: string) {
+  const result = await request<ApiDriver>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/reject`,
+    { method: 'POST', body: JSON.stringify({ reason }) },
+  );
+  return normalizeDriver(result);
+}
+
+export async function fetchDriverStats(driverId: string): Promise<DriverStats> {
+  const result = await request<Omit<DriverStats, 'driver'> & { driver: ApiDriver }>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/stats`,
+  );
+  return { ...result, driver: normalizeDriver(result.driver) };
 }
 
 export function upsertMessengerAccount(
@@ -617,6 +853,7 @@ export async function publishPlanningRoute(input: {
 export async function publishUrgentPlanningRoute(input: {
   orderId: string;
   driverCode: string;
+  coDriverCodes?: string[];
   note?: string;
   origin?: RouteOrigin;
 }) {
@@ -741,6 +978,19 @@ export async function fetchMessengerRoadRoute(points: { lat: number; lng: number
   ]);
 }
 
+export async function fetchMessengerProfile() {
+  const result = await request<ApiDriver>(`${MESSENGER_API_BASE}/me`);
+  return normalizeDriver(result);
+}
+
+export async function updateMessengerProfile(input: MessengerProfileUpdateInput) {
+  const result = await request<ApiDriver>(`${MESSENGER_API_BASE}/me`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+  return normalizeDriver(result);
+}
+
 export async function fetchMessengerOrders(_driverCode: string) {
   const result = await request<{ driver: ApiDriver; items: ApiOrder[] }>(
     `${MESSENGER_API_BASE}/orders`,
@@ -759,6 +1009,8 @@ export type MessengerCompletedDelivery = {
   id: string;
   code: string;
   deliveredAt: string;
+  /** เวลาเริ่มส่ง — ใช้โชว์ "ใช้เวลา X นาที" หลังจบงาน (undefined = งานเก่าก่อนมีข้อมูลนี้) */
+  inTransitAt?: string;
   itemCount: number;
   cod?: { collected: boolean; amount?: number };
   proof?: { photoCount: number; signatureCaptured: boolean; otpVerified: boolean };
@@ -829,6 +1081,28 @@ export type MessengerSession = {
   rider: { id: string; code: string; name: string; phone: string };
 };
 
+export type MessengerRegisterInput = {
+  name: string;
+  phone: string;
+  pin: string;
+  vehicle: Driver['vehicle'];
+  vehicleColor?: string;
+  licensePlate: string;
+  idCardNumber: string;
+  idCardPhotoDataUrl: string;
+  profilePhotoDataUrl: string;
+};
+
+export type MessengerRegisterResult = {
+  driver: {
+    id: string;
+    code: string;
+    name: string;
+    phone: string;
+    approvalStatus: DriverApprovalStatus;
+  };
+};
+
 export async function loginMessenger(phone: string, pin: string, deviceId: string) {
   const session = await request<MessengerSession>(`${MESSENGER_API_BASE}/auth/login`, {
     method: 'POST',
@@ -837,6 +1111,13 @@ export async function loginMessenger(phone: string, pin: string, deviceId: strin
   localStorage.setItem(MESSENGER_TOKEN_KEY, session.token);
   localStorage.setItem('movevai:messenger-code', session.rider.code);
   return session;
+}
+
+export function registerMessengerDriver(input: MessengerRegisterInput) {
+  return request<MessengerRegisterResult>(`${MESSENGER_API_BASE}/register`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function hasMessengerSession() {
@@ -996,6 +1277,10 @@ export type ImportBatch = {
   importedRows: number;
   errorRows: number;
   errorSummary: string | null;
+  lineMessageId?: string | null;
+  lineSenderUserId?: string | null;
+  lineSenderDisplayName?: string | null;
+  lineSenderPictureUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 };

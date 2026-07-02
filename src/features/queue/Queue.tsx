@@ -16,7 +16,7 @@ import {
   QueueOrderCard,
 } from '@/components/delivery/DeliveryExecutionShared';
 import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/mock';
-import { getTomorrowDateKey, isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
+import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
   canDriverTakeOrder,
   getDriverQueueTab,
@@ -35,7 +35,6 @@ import { useRetailStore } from '@/state/retailStore';
 import {
   Ban,
   BellRing,
-  CalendarClock,
   CheckCircle2,
   Clock,
   List,
@@ -43,6 +42,7 @@ import {
   PlayCircle,
   Route,
   Search,
+  Send,
   Sparkles,
 } from 'lucide-react';
 import { AssignmentPanel } from './components/AssignmentPanel';
@@ -57,30 +57,27 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
 type QueuePageProps = {
   locationSearch: string;
   onOpenTracking: (search?: string) => void;
-  onOpenPlanning: (search?: string) => void;
 };
 
-export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: QueuePageProps) {
+export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
   const {
     orders,
     drivers,
     autoAssignAndDispatchReadyOrders,
     startDelivery,
     cancelOrder,
-    planOrders,
     publishUrgentRoute,
   } = useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [paneView, setPaneView] = useState<'list' | 'map'>('list');
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
-  const [planningTargetId, setPlanningTargetId] = useState<string | null>(null);
   const [operationError, setOperationError] = useState('');
   const [routePreview, setRoutePreview] = useState<RoutePreview | null>(null);
   const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
   const [urgentTarget, setUrgentTarget] = useState<{
     orderId: string;
-    driverId: string;
+    driverIds: string[];
   } | null>(null);
   const [urgentLoading, setUrgentLoading] = useState(false);
   const [urgentError, setUrgentError] = useState('');
@@ -97,15 +94,23 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(
     parsedSearch.orderId ?? readyOrders[0]?.id ?? assignedOrders[0]?.id ?? null,
   );
-  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  // เลือกคนขับได้หลายคน (co-delivery) — index 0 = คนขับหลัก, ที่เหลือ = คนขับร่วม
+  const [selectedDriverIds, setSelectedDriverIds] = useState<string[]>([]);
   // มือถือ: เปิด overlay เฉพาะตอนผู้ใช้แตะรายการ (กัน auto-select ไม่ให้เด้งทับ list ตอนโหลด)
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
 
+  const toggleDriver = (driverId: string) =>
+    setSelectedDriverIds((current) =>
+      current.includes(driverId) ? current.filter((id) => id !== driverId) : [...current, driverId],
+    );
+
   const selectedOrder = orders.find((order) => order.id === selectedOrderId) ?? null;
-  const selectedDriver = drivers.find((driver) => driver.id === selectedDriverId) ?? null;
+  const selectedDrivers = selectedDriverIds
+    .map((id) => drivers.find((driver) => driver.id === id))
+    .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver));
   const fastSelectedSla = selectedOrder ? getFastDispatchSla(selectedOrder) : null;
 
-  // คนขับที่ระบบแนะนำสำหรับออเดอร์ที่เลือก (โซน + capacity + ใบรับรอง)
+  // คนขับที่ระบบแนะนำสำหรับออเดอร์ที่เลือก (ความพร้อม + โหลดงาน + ใบรับรอง)
   const recommendedDriverId =
     selectedOrder?.status === 'ready'
       ? (recommendDriverForOrder(selectedOrder, drivers)?.id ?? null)
@@ -162,22 +167,22 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
 
   useEffect(() => {
     if (!selectedOrder) {
-      setSelectedDriverId(null);
+      setSelectedDriverIds([]);
       return;
     }
     if (selectedOrder.assignedDriverId) {
-      setSelectedDriverId(selectedOrder.assignedDriverId);
+      setSelectedDriverIds([selectedOrder.assignedDriverId, ...(selectedOrder.coDriverIds ?? [])]);
       return;
     }
-    setSelectedDriverId(selectedOrder.status === 'ready' ? recommendedDriverId : null);
+    setSelectedDriverIds(
+      selectedOrder.status === 'ready' && recommendedDriverId ? [recommendedDriverId] : [],
+    );
   }, [recommendedDriverId, selectedOrder]);
 
   const canAssign =
     selectedOrder?.status === 'ready' &&
-    selectedDriver &&
-    canDriverTakeOrder(selectedOrder, selectedDriver);
-
-  const assignedReadyToStart = assignedOrders.length > 0;
+    selectedDrivers.length > 0 &&
+    selectedDrivers.every((driver) => canDriverTakeOrder(selectedOrder, driver));
 
   const handleStartRoute = (orderIds: string[], selectedOrderForFocus?: string) => {
     orderIds.forEach((orderId) => startDelivery(orderId));
@@ -189,43 +194,25 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     onOpenTracking(buildTrackingSearch(selectedOrderForFocus));
   };
 
-  const moveToPlanning = async (orderId: string) => {
-    setPlanningTargetId(orderId);
-    setOperationError('');
-    try {
-      await planOrders([orderId], {
-        plannedDate: getTomorrowDateKey(),
-        dispatchReadiness: 'ready',
-      });
-      toast.success('ย้ายงานเข้า Planning แล้ว');
-      onOpenPlanning(`?order=${encodeURIComponent(orderId)}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setOperationError(message);
-      toast.error(`ย้ายเข้า Planning ไม่สำเร็จ — ${message}`);
-    } finally {
-      setPlanningTargetId(null);
-    }
-  };
-
   const confirmUrgentDispatch = async (note?: string) => {
     if (!urgentTarget) return;
     setUrgentLoading(true);
     setUrgentError('');
     try {
       await publishUrgentRoute(urgentTarget.orderId, {
-        driverCode: urgentTarget.driverId,
+        driverCode: urgentTarget.driverIds[0],
+        coDriverCodes: urgentTarget.driverIds.slice(1),
         note,
       });
       const orderId = urgentTarget.orderId;
       const orderCode = orders.find((order) => order.id === orderId)?.code ?? '';
       setUrgentTarget(null);
-      toast.success(`ส่งงานด่วน ${orderCode} ให้คนขับแล้ว — รอคนขับรับงาน`);
+      toast.success(`ส่งงานทันที ${orderCode} ให้คนขับแล้ว — รอคนขับรับงาน`);
       onOpenTracking(`?tab=awaiting_acceptance&order=${encodeURIComponent(orderId)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setUrgentError(message);
-      toast.error(`ส่งงานด่วนไม่สำเร็จ — ${message}`);
+      toast.error(`ส่งงานทันทีไม่สำเร็จ — ${message}`);
     } finally {
       setUrgentLoading(false);
     }
@@ -250,8 +237,6 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     toast.message('เปิดมุมมองงานเลยกำหนดใน Tracking');
     onOpenTracking(`?tab=overdue&order=${encodeURIComponent(selectedOrder.id)}`);
   };
-
-  const routeTargetOrders = selectedOrder?.status === 'assigned' ? [selectedOrder] : assignedOrders;
 
   const selectedOrderSet = useMemo(
     () => new Set(selectedOrderId ? [selectedOrderId] : []),
@@ -291,27 +276,18 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     <>
       {selectedOrder.status === 'ready' && (
         <div className="space-y-2">
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              disabled={!canAssign}
-              onClick={() => {
-                if (!selectedOrder || !selectedDriverId) return;
-                setUrgentError('');
-                setUrgentTarget({ orderId: selectedOrder.id, driverId: selectedDriverId });
-              }}
-            >
-              <BellRing className="h-4 w-4" />
-              ส่งด่วนทันที
-            </Button>
-            <Button
-              variant="outline"
-              disabled={planningTargetId === selectedOrder.id}
-              onClick={() => void moveToPlanning(selectedOrder.id)}
-            >
-              <CalendarClock className="h-4 w-4" />
-              วางแผนล่วงหน้า
-            </Button>
-          </div>
+          <Button
+            className="w-full"
+            disabled={!canAssign}
+            onClick={() => {
+              if (!selectedOrder || selectedDriverIds.length === 0) return;
+              setUrgentError('');
+              setUrgentTarget({ orderId: selectedOrder.id, driverIds: selectedDriverIds });
+            }}
+          >
+            <Send className="h-4 w-4" />
+            ส่งทันที
+          </Button>
           <Button
             variant="ghost"
             className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -349,25 +325,12 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
     <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">คิวงานพร้อมจ่าย</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">ส่งทันที</h1>
           <p className="text-sm text-muted-foreground">
-            ส่งทันทีให้เลือกคนขับที่นี่ หรือนำงานไปวางแผนล่วงหน้าโดยไม่แสดงซ้ำสองหน้า
+            เลือกคนขับเพื่อส่งงานให้ Messenger ทันที หรือใช้ Auto-assign สำหรับงานวันนี้
           </p>
         </div>
         <div className="flex shrink-0 gap-2">
-          <Button
-            variant="outline"
-            disabled={!assignedReadyToStart}
-            onClick={() =>
-              handleStartRoute(
-                routeTargetOrders.map((order) => order.id),
-                routeTargetOrders.length === 1 ? routeTargetOrders[0]?.id : undefined,
-              )
-            }
-          >
-            <Route className="h-4 w-4" />
-            สร้าง Route
-          </Button>
           <Button onClick={() => setAutoPreviewOpen(true)} disabled={readyOrders.length === 0}>
             <Sparkles className="h-4 w-4" /> Auto-assign งานวันนี้
           </Button>
@@ -394,7 +357,13 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
       <UrgentDispatchDialog
         open={!!urgentTarget}
         order={orders.find((order) => order.id === urgentTarget?.orderId) ?? null}
-        driver={drivers.find((driver) => driver.id === urgentTarget?.driverId) ?? null}
+        drivers={
+          urgentTarget
+            ? urgentTarget.driverIds
+                .map((id) => drivers.find((driver) => driver.id === id))
+                .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver))
+            : []
+        }
         loading={urgentLoading}
         error={urgentError}
         onCancel={() => {
@@ -440,7 +409,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               งานจาก import ถูกเปิดเข้าคิวพร้อม focus order แล้ว ขั้นต่อไปคือเลือก Messenger,
-              พรีวิวแผนที่ แล้วกดยืนยัน Route ด่วน
+              พรีวิวแผนที่ แล้วกดยืนยันส่งทันที
             </div>
           </div>
           <div className="rounded-lg border bg-background/70 px-3 py-2">
@@ -591,7 +560,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                     emptyLabel="เลือก order จากรายการเพื่อดูปลายทาง"
                     selectedLabel="กำลังพรีวิวเส้นทางของ order นี้"
                     unselectedLabel="แตะเพื่อพรีวิวเส้นทางของ order นี้"
-                    routePreviewTitle="พรีวิวเส้นทางก่อนส่งด่วน"
+                    routePreviewTitle="พรีวิวเส้นทางก่อนส่งทันที"
                   />
                 </div>
               </section>
@@ -638,21 +607,27 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
             <CardDescription>
               {selectedOrder
                 ? selectedOrder.status === 'ready'
-                  ? `สำหรับ ${selectedOrder.code}`
+                  ? selectedDriverIds.length > 1
+                    ? `สำหรับ ${selectedOrder.code} · ส่งร่วม ${selectedDriverIds.length} คน`
+                    : `สำหรับ ${selectedOrder.code} · เลือกหลายคนเพื่อส่งร่วมกัน`
                   : `${selectedOrder.code} · ${statusLabel[selectedOrder.status]}`
                 : 'เลือก order ก่อน'}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex-1 space-y-2 overflow-auto">
-            {drivers.map((driver) => (
-              <DriverCard
-                key={driver.id}
-                driver={driver}
-                selected={selectedDriverId === driver.id}
-                onSelect={() => setSelectedDriverId(driver.id)}
-                orders={orders}
-              />
-            ))}
+            {drivers.map((driver) => {
+              const rank = selectedDriverIds.indexOf(driver.id);
+              return (
+                <DriverCard
+                  key={driver.id}
+                  driver={driver}
+                  selected={rank !== -1}
+                  coRole={rank === -1 ? undefined : rank === 0 ? 'primary' : 'secondary'}
+                  onSelect={() => toggleDriver(driver.id)}
+                  orders={orders}
+                />
+              );
+            })}
           </CardContent>
         </Card>
 
@@ -689,7 +664,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                   </div>
                   <div>
                     <div className="font-medium">Create urgent route</div>
-                    <div className="text-muted-foreground">เลือก Messenger แล้วกดส่งด่วนทันที</div>
+                    <div className="text-muted-foreground">เลือก Messenger แล้วกดส่งทันที</div>
                   </div>
                   <div
                     className={cn(
@@ -713,13 +688,13 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
                     className="w-full"
                     disabled={!canAssign}
                     onClick={() => {
-                      if (!selectedOrder || !selectedDriverId) return;
+                      if (!selectedOrder || selectedDriverIds.length === 0) return;
                       setUrgentError('');
-                      setUrgentTarget({ orderId: selectedOrder.id, driverId: selectedDriverId });
+                      setUrgentTarget({ orderId: selectedOrder.id, driverIds: selectedDriverIds });
                     }}
                   >
-                    <BellRing className="h-4 w-4" />
-                    สร้าง Route ด่วนจาก simulator
+                    <Send className="h-4 w-4" />
+                    สร้าง Route ส่งทันทีจาก simulator
                   </Button>
                 )}
 
@@ -746,7 +721,7 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
           )}
           <AssignmentPanel
             order={selectedOrder}
-            driver={selectedDriver}
+            drivers={selectedDrivers}
             actions={assignmentActions}
           />
           <OrderTimeline
@@ -770,24 +745,41 @@ export function QueuePage({ locationSearch, onOpenTracking, onOpenPlanning }: Qu
             <OrderSummary order={selectedOrder} />
             {selectedOrder.status === 'ready' && (
               <div>
-                <div className="mb-2 text-[11px] font-medium text-muted-foreground">เลือกคนขับ</div>
+                <div className="mb-2 text-[11px] font-medium text-muted-foreground">
+                  เลือกคนขับ · เลือกหลายคนเพื่อส่งร่วมกัน
+                </div>
                 <div className="space-y-2">
-                  {drivers.map((driver) => (
-                    <DriverCard
+                  {drivers.map((driver) => {
+                    const rank = selectedDriverIds.indexOf(driver.id);
+                    return (
+                      <DriverCard
+                        key={driver.id}
+                        driver={driver}
+                        selected={rank !== -1}
+                        coRole={rank === -1 ? undefined : rank === 0 ? 'primary' : 'secondary'}
+                        onSelect={() => toggleDriver(driver.id)}
+                        orders={orders}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {selectedOrder.status === 'assigned' && selectedDrivers.length > 0 && (
+              <div>
+                <div className="mb-1 text-[11px] font-medium text-muted-foreground">
+                  คนขับ{selectedDrivers.length > 1 ? ` · ส่งร่วม ${selectedDrivers.length} คน` : ''}
+                </div>
+                <div className="space-y-2">
+                  {selectedDrivers.map((driver) => (
+                    <DriverSummary
                       key={driver.id}
                       driver={driver}
-                      selected={selectedDriverId === driver.id}
-                      onSelect={() => setSelectedDriverId(driver.id)}
+                      order={selectedOrder}
                       orders={orders}
                     />
                   ))}
                 </div>
-              </div>
-            )}
-            {selectedOrder.status === 'assigned' && selectedDriver && (
-              <div>
-                <div className="mb-1 text-[11px] font-medium text-muted-foreground">คนขับ</div>
-                <DriverSummary driver={selectedDriver} order={selectedOrder} orders={orders} />
               </div>
             )}
             <OrderTimeline

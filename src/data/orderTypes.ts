@@ -232,6 +232,7 @@ export type Order = {
   source: OrderSource;
   status: OrderStatus;
   receivedAt: string;
+  inTransitAt?: string; // เวลาเริ่มส่งจริง (rider กดเริ่มงาน → in_transit) — ใช้คำนวณเวลาที่ใช้ส่ง
   lineContact?: LineContact; // ลูกค้าฝั่ง LINE OA (undefined เฉพาะ source=manual)
   handledBy: Handler; // พนักงาน Ausiris ที่รับเรื่อง
   confidence: number; // 0-100 — AI parse confidence
@@ -252,6 +253,9 @@ export type Order = {
   requiresIdCheck: boolean;
   insured: boolean;
   assignedDriverId?: string;
+  // คนขับร่วม (co-delivery) — งานที่ต้องใช้ messenger หลายคนขนพร้อมกัน; เก็บ driver code
+  // ของคนช่วย (ไม่รวม primary ที่อยู่ใน assignedDriverId)
+  coDriverIds?: string[];
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
   deliveryPlan?: DeliveryPlan;
   deliveryRoute?: DeliveryRoute;
@@ -263,13 +267,17 @@ export type Order = {
   metadataJson?: OrderMetadata; // ข้อมูลเสริมจาก backend (เช่น ต้นฉบับ CSV ที่นำเข้าจาก LINE)
 };
 
-// ต้นฉบับการนำเข้าจากไฟล์ CSV (LINE Group → webhook → backend) เก็บไว้บน order
+// ต้นฉบับการนำเข้าจากไฟล์ CSV (LINE → webhook → backend) เก็บไว้บน order
 // เพื่อให้ admin เทียบข้อมูลที่ map แล้วกับแถวดิบจากไฟล์ได้ทุกเมื่อ
 export type OrderImportMeta = {
   batchId: string;
   fileName: string;
   source: string; // เช่น "LINE_GROUP"
   sourceRef?: string; // groupId ของ LINE
+  lineMessageId?: string; // LINE message.id ของไฟล์/ข้อความต้นทาง
+  senderUserId?: string; // LINE userId ของคนส่งไฟล์/ข้อความเข้า group
+  senderDisplayName?: string; // displayName จาก LINE group member profile
+  senderPictureUrl?: string; // pictureUrl จาก LINE group member profile
   rowIndex: number;
   importedAt: string;
   columns: Record<string, string>; // คอลัมน์ดิบจาก CSV (header → value)
@@ -286,12 +294,30 @@ export type Driver = {
   phone: string;
   avatarKey: string;
   vehicle: 'motorcycle' | 'van' | 'pickup';
+  vehicleColor?: string;
   zone: string;
   status: 'available' | 'on_delivery' | 'off_duty';
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  archivedAt?: string;
   activeOrders: number;
   capacity: number;
-  rating: number;
   highValueCertified: boolean; // อบรมขนส่งของมีค่าแล้ว
+  licensePlate?: string;
+  idCardNumber?: string;
+  idCardPhotoDataUrl?: string;
+  profilePhotoDataUrl?: string;
+  // ที่อยู่ messenger — โครงเดียวกับ ThaiAddressPicker (บ้านเลขที่/ถนน + ตำบล/อำเภอ/จังหวัด/รหัสไปรษณีย์)
+  addressLine?: string;
+  addressSubdistrict?: string;
+  addressDistrict?: string;
+  addressProvince?: string;
+  addressPostalCode?: string;
+  submittedAt?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  rejectedReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export const statusLabel: Record<OrderStatus, string> = {

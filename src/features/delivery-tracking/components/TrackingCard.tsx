@@ -10,6 +10,7 @@ import {
 } from '@/data/mock';
 import { cn } from '@/lib/utils';
 import { formatOverdueDuration, formatPlanningDateTime } from '@/lib/deliveryPlanning';
+import { formatElapsedDuration, getInTransitElapsedTone } from '@/lib/deliveryExecution';
 import { formatRouteDistance } from '@/lib/routeDistance';
 import {
   ArrowUpRight,
@@ -29,6 +30,8 @@ type TrackingCardProps = {
   /** ปุ่ม action ตามสถานะ — render เฉพาะงานที่ยัง actionable */
   actions?: ReactNode;
   overdueMinutes?: number | null;
+  /** นาทีที่กำลังส่งอยู่ (นับจาก rider เริ่มงาน) — null/undefined = ไม่แสดง */
+  inTransitMinutes?: number | null;
   /** เพิ่งกด action — โชว์การ์ดสีเทาค้างไว้ก่อนหายไป */
   settling?: boolean;
   /** ข้อความสรุป action ที่เพิ่งทำ เช่น "ปิดงานแล้ว" */
@@ -42,6 +45,7 @@ export function TrackingCard({
   onSelect,
   actions,
   overdueMinutes,
+  inTransitMinutes,
   settling = false,
   settledLabel,
 }: TrackingCardProps) {
@@ -110,13 +114,28 @@ export function TrackingCard({
               </Badge>
             )}
             {isUrgent && (
-              <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
-                งานด่วน
+              <Badge variant="info" className="h-5 px-1.5 text-[10px]">
+                ส่งทันที
               </Badge>
             )}
             {overdueMinutes != null && (
               <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
                 <Clock3 className="h-3 w-3" /> {formatOverdueDuration(overdueMinutes)}
+              </Badge>
+            )}
+            {inTransitMinutes != null && (
+              <Badge
+                variant={
+                  getInTransitElapsedTone(inTransitMinutes) === 'critical'
+                    ? 'destructive'
+                    : getInTransitElapsedTone(inTransitMinutes) === 'slow'
+                      ? 'warning'
+                      : 'info'
+                }
+                className="h-5 gap-0.5 px-1.5 text-[10px]"
+              >
+                <Clock3 className="h-3 w-3" />
+                ส่งมาแล้ว {formatElapsedDuration(inTransitMinutes)}
               </Badge>
             )}
           </div>

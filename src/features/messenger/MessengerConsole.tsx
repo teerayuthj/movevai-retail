@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   ClipboardList,
+  Clock3,
   List,
   Loader2,
   Map as MapIcon,
@@ -35,7 +36,13 @@ import {
 import { isNativePushSupported, registerNativePush } from './nativePush';
 import { MessengerHeader } from './components/MessengerHeader';
 import { JobCard } from './components/JobCard';
-import { getMessengerJobOverdueMinutes, getMessengerJobScheduledAt } from './messengerSchedule';
+import {
+  formatInTransitStartTime,
+  getMessengerAppointmentCountdown,
+  getMessengerJobOverdueMinutes,
+  getMessengerJobScheduledAt,
+} from './messengerSchedule';
+import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { MessengerTabBar } from './components/MessengerTabBar';
 import { MessengerCompletedList } from './components/MessengerCompletedList';
 import { MessengerProfileSheet } from './components/MessengerProfileSheet';
@@ -75,6 +82,9 @@ function InTransitJobSheet({
   onClose: () => void;
 }) {
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
+  // เวลาเริ่มส่ง = ตัวเลขนิ่ง, เวลานัด = นับถอยหลัง — จงใจไม่โชว์นาฬิกาจับเวลาให้คนขับ
+  const startedAtLabel = formatInTransitStartTime(order);
+  const countdown = getMessengerAppointmentCountdown(order, nowMs);
 
   return (
     <div className="absolute inset-x-0 bottom-0 z-[1100] px-3 pb-3">
@@ -128,6 +138,28 @@ function InTransitJobSheet({
                         ? ` · ${order.deliveryPlan.plannedTime} น.`
                         : ''}
                     </Badge>
+                  )}
+                </div>
+              )}
+              {(startedAtLabel || countdown) && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
+                  {startedAtLabel && (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <Clock3 className="h-3 w-3" />
+                      เริ่มส่ง {startedAtLabel} น.
+                    </span>
+                  )}
+                  {countdown && (
+                    <span
+                      className={cn(
+                        'inline-flex items-center gap-1 font-medium',
+                        countdown.phase === 'before' ? 'text-info' : 'text-warning',
+                      )}
+                    >
+                      {countdown.phase === 'before'
+                        ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
+                        : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`}
+                    </span>
                   )}
                 </div>
               )}
@@ -232,6 +264,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   );
   const autoOpenedSessionId = useRef<string | null>(null);
   const endingStaleSessionId = useRef<string | null>(null);
+  const autoStartingTrackingRouteId = useRef<string | null>(null);
 
   const messenger = drivers.find((driver) => driver.id === messengerCode) ?? null;
 
@@ -509,6 +542,51 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const activeDeliveryJob = myJobs
     .filter((order) => order.status === 'in_transit')
     .sort((a, b) => (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0))[0];
+
+  // กรณีเปิดแอปกลับมาตอนมีงานกำลังส่งอยู่แล้ว: แผนที่มือถืออ่าน GPS local ได้
+  // แต่ถ้าไม่มี tracking session จะไม่ส่งตำแหน่งให้ admin. เริ่ม session ให้เองหนึ่งครั้งต่อ route.
+  useEffect(() => {
+    const routeId = activeDeliveryJob?.deliveryRoute?.id;
+    const session = tracking.session;
+    // session ของ delivery ที่ยัง active แต่ผูกกับ route อื่น (เช่น รอบเมื่อวานที่ยังไม่กดจบ)
+    // ถือเป็น session ค้าง — ต้องเริ่ม/ยึด session ของ route ที่กำลังส่งจริง ไม่งั้น GPS ไม่ไปถึงแอดมิน
+    const sessionForCurrentRoute = session?.type === 'delivery' && session.routeId === routeId;
+    const sessionForStaleRoute = session?.type === 'delivery' && session.routeId !== routeId;
+    const shouldStartOrClaimTracking =
+      !session ||
+      sessionForStaleRoute ||
+      (sessionForCurrentRoute && !tracking.isOwner && !tracking.location);
+    if (
+      !authenticated ||
+      !tracking.activeSessionChecked ||
+      !routeId ||
+      !shouldStartOrClaimTracking ||
+      jobsLoading ||
+      jobsError ||
+      autoStartingTrackingRouteId.current === routeId
+    ) {
+      return;
+    }
+
+    autoStartingTrackingRouteId.current = routeId;
+    void tracking.start(routeId, fallbackLocation.location).catch((error) => {
+      autoStartingTrackingRouteId.current = null;
+      if (isMessengerAuthError(error)) return;
+      toast.error(
+        `เริ่มส่ง GPS ให้แอดมินไม่สำเร็จ — ${
+          error instanceof Error ? error.message : 'กรุณาลองเปิดแอปใหม่'
+        }`,
+      );
+    });
+  }, [
+    activeDeliveryJob?.deliveryRoute?.id,
+    authenticated,
+    fallbackLocation.location,
+    jobsError,
+    jobsLoading,
+    tracking,
+  ]);
+
   const routeMapJobs = showAssignedMap
     ? focusOrder
       ? [focusOrder]
@@ -712,7 +790,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 />
               )}
             </div>
-            {showTrackingMap && activeDeliveryJob && !closingJobOpen && (
+            {showTrackingMap && activeDeliveryJob && !closingJobOpen && !profileOpen && (
               <InTransitJobSheet
                 order={activeDeliveryJob}
                 nowMs={nowMs}
@@ -750,10 +828,10 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               </div>
             )}
             {activeTab === 'assigned' && overdueCount > 0 && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm font-medium text-destructive">
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm font-medium text-warning">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
-                  มี {overdueCount} งานเลยเวลานัดส่ง กรุณารับงานทันที
+                  มี {overdueCount} งานถึงเวลารับแล้ว
                 </div>
               </div>
             )}
@@ -839,6 +917,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             activeOrders={openCustomerJobCount}
             install={install}
             onClose={() => setProfileOpen(false)}
+            onUpdated={() => refreshMessengerJobs(messengerCode)}
             onExit={() => {
               void logoutMessenger().finally(() => {
                 setAuthenticated(false);

@@ -17,6 +17,7 @@ import {
   Package,
   CalendarDays,
   X,
+  UserRound,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -26,6 +27,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
@@ -46,7 +48,7 @@ import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from 
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';
-import ThaiAddressPicker from '@/features/inbox/components/ThaiAddressPicker';
+import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import {
   buildNoteWithRequestedDelivery,
   getRequestedDeliveryDraft,
@@ -57,7 +59,7 @@ import {
   composeThaiAddress,
   extractStreet,
   type ThaiAddressValue,
-} from '@/features/inbox/utils/thaiAddress';
+} from '@/lib/thaiAddress';
 
 // order ที่ยังอยู่ขั้นตรวจใน Inbox (ยังไม่ปล่อยเข้าคิว)
 const REVIEW_STATUSES: Order['status'][] = ['new', 'needs_review', 'parsing'];
@@ -102,22 +104,21 @@ function BatchListItem({
   selected,
   unread,
   onClick,
-  onDownload,
-  downloading,
 }: {
   batch: ImportBatch;
   selected: boolean;
   unread: boolean;
   onClick: () => void;
-  onDownload: () => void;
-  downloading: boolean;
 }) {
+  const senderName = batch.lineSenderDisplayName?.trim();
+  const senderId = batch.lineSenderUserId?.trim();
+  const senderLabel = senderName || (senderId ? `LINE ${senderId.slice(0, 8)}...` : null);
+
   return (
     <div
       className={cn(
         'rounded-lg border p-3 transition-colors',
-        selected ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
-        unread && !selected && 'border-primary/40 bg-primary/[0.03]',
+        selected ? 'border-border bg-muted' : 'border-transparent hover:bg-muted/60',
       )}
     >
       <button type="button" onClick={onClick} className="w-full text-left">
@@ -142,12 +143,28 @@ function BatchListItem({
         </div>
 
         <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-          <span>LINE Group</span>
-          <span>·</span>
+          {senderLabel && (
+            <>
+              <span className="inline-flex min-w-0 items-center gap-1">
+                {batch.lineSenderPictureUrl ? (
+                  <img
+                    src={batch.lineSenderPictureUrl}
+                    alt=""
+                    className="h-4 w-4 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <UserRound className="h-3 w-3 shrink-0" />
+                )}
+                <span className="truncate">{senderLabel}</span>
+              </span>
+              <span>·</span>
+            </>
+          )}
           <span>
             {new Date(batch.createdAt).toLocaleString('th', {
               day: '2-digit',
               month: 'short',
+              year: 'numeric',
               hour: '2-digit',
               minute: '2-digit',
             })}
@@ -166,23 +183,6 @@ function BatchListItem({
           </div>
         )}
       </button>
-      <div className="mt-2 flex justify-end">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-7 px-2 text-[11px]"
-          disabled={downloading}
-          onClick={onDownload}
-        >
-          {downloading ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Download className="h-3 w-3" />
-          )}
-          Export CSV
-        </Button>
-      </div>
     </div>
   );
 }
@@ -501,14 +501,12 @@ const REJECT_REASONS: ImportRejectReason[] = [
 function BatchWorkspace({
   scope,
   batches,
-  onOpenOrder,
   onFastDispatchOrder,
   onDownloadBatch,
   downloadingBatchId,
 }: {
   scope: string; // batchId | 'all'
   batches: ImportBatch[];
-  onOpenOrder?: (orderId: string) => void;
   onFastDispatchOrder?: (orderId: string) => void;
   onDownloadBatch: (batch: Pick<ImportBatch, 'id' | 'fileName'>) => void;
   downloadingBatchId: string | null;
@@ -611,6 +609,15 @@ function BatchWorkspace({
     [visibleRows, ordersById],
   );
 
+  // รอตรวจทั้งหมดในสโคปนี้ (ไม่ผูกกับแท็บที่เปิดอยู่) — ใช้กับปุ่ม "อนุมัติทั้งหมด"
+  const reviewIds = useMemo(
+    () =>
+      rows
+        .filter((r) => r.kind === 'review' && r.orderId && ordersById.has(r.orderId))
+        .map((r) => r.orderId!),
+    [rows, ordersById],
+  );
+
   const toggle = (orderId: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -641,6 +648,14 @@ function BatchWorkspace({
     if (ids.length === 0) return;
     void runAction(`อนุมัติเข้าคิว ${ids.length} รายการ · ${shippingMethodLabel[method]}`, () =>
       approveImportOrders(ids, method),
+    );
+  };
+
+  const approveAllInScope = () => {
+    if (reviewIds.length === 0) return;
+    void runAction(
+      `อนุมัติทั้งไฟล์ ${reviewIds.length} รายการ · ${shippingMethodLabel[method]}`,
+      () => approveImportOrders(reviewIds, method),
     );
   };
 
@@ -821,6 +836,11 @@ function BatchWorkspace({
   const title = scope === ALL_SCOPE ? `รวมทุกไฟล์ (${details.length})` : details[0].fileName;
   const showFile = scope === ALL_SCOPE;
   const errorSummary = scope === ALL_SCOPE ? null : details[0].errorSummary;
+  const senderName =
+    scope === ALL_SCOPE
+      ? null
+      : details[0].lineSenderDisplayName?.trim() ||
+        (details[0].lineSenderUserId ? `LINE ${details[0].lineSenderUserId.slice(0, 8)}...` : null);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -834,31 +854,61 @@ function BatchWorkspace({
               <FileSpreadsheet className="h-4 w-4 text-success" />
             )}
             <span className="text-sm font-medium">{title}</span>
-            <Badge variant="muted" className="text-[10px]">
-              LINE Group
-            </Badge>
           </div>
-          <div className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-            <Coins className="h-3 w-3 text-muted-foreground" />
-            {stats.total} แถว · มูลค่ารวม {formatTHB(stats.value)}
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+            {senderName && (
+              <span className="inline-flex items-center gap-1">
+                {details[0].lineSenderPictureUrl ? (
+                  <img
+                    src={details[0].lineSenderPictureUrl}
+                    alt=""
+                    className="h-4 w-4 shrink-0 rounded-full object-cover"
+                  />
+                ) : (
+                  <UserRound className="h-3 w-3 shrink-0" />
+                )}
+                ส่งโดย {senderName}
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1">
+              <Coins className="h-3 w-3 text-muted-foreground" />
+              {stats.total} แถว · มูลค่ารวม {formatTHB(stats.value)}
+            </span>
           </div>
         </div>
-        {scope !== ALL_SCOPE && details[0] && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={downloadingBatchId === details[0].id}
-            onClick={() => onDownloadBatch(details[0])}
-          >
-            {downloadingBatchId === details[0].id ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
-            )}
-            Export CSV
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {reviewIds.length > 0 && (
+            <>
+              <Select
+                value={method}
+                onChange={(e) => setMethod(e.target.value as ShippingMethod)}
+                className="h-8 text-xs"
+              >
+                <option value="internal_driver">คนขับภายใน</option>
+                <option value="thai_post">ไปรษณีย์ไทย</option>
+              </Select>
+              <Button type="button" size="sm" disabled={busy} onClick={approveAllInScope}>
+                <CheckCircle2 className="h-3.5 w-3.5" /> อนุมัติทั้งหมด ({reviewIds.length})
+              </Button>
+            </>
+          )}
+          {scope !== ALL_SCOPE && details[0] && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={downloadingBatchId === details[0].id}
+              onClick={() => onDownloadBatch(details[0])}
+            >
+              {downloadingBatchId === details[0].id ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              Export CSV
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* status tabs */}
@@ -1055,16 +1105,6 @@ function BatchWorkspace({
                           <RotateCcw className="h-3 w-3" /> ดึงกลับ
                         </button>
                       )}
-                      {r.orderId && onOpenOrder && (
-                        <button
-                          type="button"
-                          aria-label="เปิดออเดอร์"
-                          onClick={() => onOpenOrder(r.orderId!)}
-                          className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted hover:text-primary"
-                        >
-                          เปิด
-                        </button>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -1113,7 +1153,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.customerName}
                 onChange={(e) => setEditDraft({ ...editDraft, customerName: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1121,7 +1161,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.customerPhone}
                 onChange={(e) => setEditDraft({ ...editDraft, customerPhone: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1129,7 +1169,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.customerIdCard}
                 onChange={(e) => setEditDraft({ ...editDraft, customerIdCard: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <div className="space-y-2 text-xs md:col-span-4">
@@ -1155,7 +1195,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.customerAddress}
                 onChange={(e) => setEditDraft({ ...editDraft, customerAddress: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
               <ThaiAddressPicker
                 value={editDraft.addr}
@@ -1171,7 +1211,7 @@ function BatchWorkspace({
                 inputMode="decimal"
                 value={editDraft.totalValue}
                 onChange={(e) => setEditDraft({ ...editDraft, totalValue: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1180,7 +1220,7 @@ function BatchWorkspace({
                 type="date"
                 value={editDraft.deliveryDate}
                 onChange={(e) => setEditDraft({ ...editDraft, deliveryDate: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1189,29 +1229,29 @@ function BatchWorkspace({
                 type="time"
                 value={editDraft.deliveryTime}
                 onChange={(e) => setEditDraft({ ...editDraft, deliveryTime: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
               <span className="text-muted-foreground">การชำระเงิน</span>
-              <select
+              <Select
                 value={editDraft.payment}
                 onChange={(e) =>
                   setEditDraft({ ...editDraft, payment: e.target.value as Order['payment'] })
                 }
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8"
               >
                 <option value="prepaid">โอนแล้ว</option>
                 <option value="cod">เก็บเงินปลายทาง</option>
                 <option value="transfer_on_delivery">โอนตอนส่ง</option>
-              </select>
+              </Select>
             </label>
             <label className="space-y-1 text-xs md:col-span-4">
               <span className="text-muted-foreground">หมายเหตุ</span>
               <input
                 value={editDraft.note}
                 onChange={(e) => setEditDraft({ ...editDraft, note: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
           </div>
@@ -1222,7 +1262,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.itemName}
                 onChange={(e) => setEditDraft({ ...editDraft, itemName: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1230,7 +1270,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.itemSku}
                 onChange={(e) => setEditDraft({ ...editDraft, itemSku: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1238,7 +1278,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.itemPurity}
                 onChange={(e) => setEditDraft({ ...editDraft, itemPurity: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1246,7 +1286,7 @@ function BatchWorkspace({
               <input
                 value={editDraft.itemWeight}
                 onChange={(e) => setEditDraft({ ...editDraft, itemWeight: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1255,7 +1295,7 @@ function BatchWorkspace({
                 inputMode="numeric"
                 value={editDraft.itemQty}
                 onChange={(e) => setEditDraft({ ...editDraft, itemQty: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -1264,7 +1304,7 @@ function BatchWorkspace({
                 inputMode="decimal"
                 value={editDraft.itemUnitPrice}
                 onChange={(e) => setEditDraft({ ...editDraft, itemUnitPrice: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-2"
+                className="h-8 w-full rounded-md border bg-background px-3"
               />
             </label>
           </div>
@@ -1291,7 +1331,7 @@ function BatchWorkspace({
                         rawData: { ...editDraft.rawData, [key]: e.target.value },
                       })
                     }
-                    className="min-h-8 w-full min-w-0 resize-y rounded-md border bg-background px-2 py-1.5 font-mono text-xs leading-5"
+                    className="min-h-8 w-full min-w-0 resize-y rounded-md border bg-background px-3 py-1.5 font-mono text-xs leading-5"
                   />
                 </div>
               ))}
@@ -1312,22 +1352,22 @@ function BatchWorkspace({
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-primary/10 px-3 py-2">
           <span className="text-xs font-medium text-primary">เลือก {selected.size} รายการ</span>
           <div className="flex flex-wrap items-center gap-2">
-            <select
+            <Select
               value={method}
               onChange={(e) => setMethod(e.target.value as ShippingMethod)}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+              className="h-8 text-xs"
             >
               <option value="internal_driver">คนขับภายใน</option>
               <option value="thai_post">ไปรษณีย์ไทย</option>
-            </select>
+            </Select>
             <Button size="sm" disabled={busy} onClick={bulkApprove}>
               <CheckCircle2 className="h-3.5 w-3.5" /> อนุมัติ ({selected.size})
             </Button>
             <Separator orientation="vertical" className="h-6" />
-            <select
+            <Select
               value={reason}
               onChange={(e) => setReason(e.target.value as ImportRejectReason | '')}
-              className="h-8 rounded-md border bg-background px-2 text-xs"
+              className="h-8 text-xs"
             >
               <option value="">เหตุผล (ไม่บังคับ)</option>
               {REJECT_REASONS.map((value) => (
@@ -1335,7 +1375,7 @@ function BatchWorkspace({
                   {importRejectReasonLabel[value]}
                 </option>
               ))}
-            </select>
+            </Select>
             <Button size="sm" variant="outline" disabled={busy} onClick={bulkReject}>
               <XCircle className="h-3.5 w-3.5" /> ปฏิเสธ
             </Button>
@@ -1347,10 +1387,8 @@ function BatchWorkspace({
 }
 
 export default function ImportBatchPanel({
-  onOpenOrder,
   onFastDispatchOrder,
 }: {
-  onOpenOrder?: (orderId: string) => void;
   onFastDispatchOrder?: (orderId: string) => void;
 }) {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
@@ -1492,7 +1530,7 @@ export default function ImportBatchPanel({
       <Card className="flex h-[calc(100vh-16rem)] flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">ประวัติการนำเข้า LINE</span>
+            <span className="text-sm font-medium">ไฟล์นำเข้าจาก LINE</span>
             <Button
               variant="ghost"
               size="icon"
@@ -1504,7 +1542,7 @@ export default function ImportBatchPanel({
             </Button>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <select
+            <Select
               value={days}
               onChange={(e) => {
                 const next = Number(e.target.value);
@@ -1512,7 +1550,8 @@ export default function ImportBatchPanel({
                 if (next === CUSTOM_DAYS && !rangeReady) setRangeOpen(true);
               }}
               disabled={loading}
-              className="h-8 flex-1 rounded-md border bg-background px-2 text-sm"
+              containerClassName="flex-1"
+              className="h-8"
               aria-label="ช่วงเวลาย้อนหลัง"
             >
               {DAY_WINDOW_OPTIONS.map((opt) => (
@@ -1520,7 +1559,7 @@ export default function ImportBatchPanel({
                   {opt.label}
                 </option>
               ))}
-            </select>
+            </Select>
             {total > 0 && (
               <span className="shrink-0 text-xs text-muted-foreground">
                 {batches.length}/{total}
@@ -1596,7 +1635,7 @@ export default function ImportBatchPanel({
             <div className="py-12 text-center text-sm text-muted-foreground">
               {customMode ? 'ไม่พบไฟล์ในช่วงวันที่ที่เลือก' : 'ยังไม่มีการนำเข้าไฟล์'}
               <div className="mt-1 text-[11px]">
-                {customMode ? 'ลองขยายช่วงวันที่' : 'ส่งไฟล์ .csv ใน LINE Group เพื่อเริ่มต้น'}
+                {customMode ? 'ลองขยายช่วงวันที่' : 'ส่งไฟล์ .csv ใน LINE เพื่อเริ่มต้น'}
               </div>
             </div>
           )}
@@ -1606,7 +1645,9 @@ export default function ImportBatchPanel({
               onClick={() => setSelectedId(ALL_SCOPE)}
               className={cn(
                 'flex w-full items-center justify-between rounded-lg border p-3 text-left transition-colors',
-                selectedId === ALL_SCOPE ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
+                selectedId === ALL_SCOPE
+                  ? 'border-border bg-muted'
+                  : 'border-transparent hover:bg-muted/60',
               )}
             >
               <span className="flex items-center gap-1.5 text-xs font-medium">
@@ -1634,8 +1675,6 @@ export default function ImportBatchPanel({
                 markBatchRead(batch.id);
                 setSelectedId(batch.id);
               }}
-              onDownload={() => void exportBatchCsv(batch)}
-              downloading={downloadingBatchId === batch.id}
             />
           ))}
           {loadingMore && (
@@ -1657,7 +1696,6 @@ export default function ImportBatchPanel({
             key={workspaceKey}
             scope={selectedId}
             batches={batches}
-            onOpenOrder={onOpenOrder}
             onFastDispatchOrder={onFastDispatchOrder}
             onDownloadBatch={(batch) => void exportBatchCsv(batch)}
             downloadingBatchId={downloadingBatchId}

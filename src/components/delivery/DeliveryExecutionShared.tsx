@@ -1,6 +1,5 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import {
   Ban,
@@ -48,15 +47,16 @@ export function DriverCard({
   selected,
   onSelect,
   orders,
+  coRole,
 }: {
   driver: Driver;
   selected: boolean;
   onSelect: () => void;
   /** ถ้าส่งมา จะ derive สถานะ "ว่าง/กำลังส่ง" จากงานจริงให้ตรงกับ messenger */
   orders?: Order[];
+  /** co-delivery: บทบาทเมื่อเลือกหลายคน — 'primary' = คนขับหลัก, 'secondary' = คนขับร่วม */
+  coRole?: 'primary' | 'secondary';
 }) {
-  const pct = (driver.activeOrders / driver.capacity) * 100;
-  const remainingCapacity = Math.max(0, driver.capacity - driver.activeOrders);
   const displayStatus = orders ? deriveDriverDisplayStatus(driver, orders) : driver.status;
 
   return (
@@ -75,19 +75,18 @@ export function DriverCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{driver.name}</span>
+            {coRole && (
+              <Badge
+                variant={coRole === 'primary' ? 'info' : 'muted'}
+                className="h-4 shrink-0 px-1.5 text-[9px]"
+              >
+                {coRole === 'primary' ? 'คนขับหลัก' : 'ร่วมส่ง'}
+              </Badge>
+            )}
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <VehicleIcon v={driver.vehicle} />
-            <span>{driver.zone}</span>
-          </div>
-          <div className="mt-2 space-y-1">
-            <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-              <span>
-                งาน {driver.activeOrders}/{driver.capacity}
-              </span>
-              <span>ว่างอีก {remainingCapacity}</span>
-            </div>
-            <Progress value={pct} className="h-1" />
+            <span>งานที่รับอยู่ {driver.activeOrders}</span>
           </div>
         </div>
         <Badge
@@ -316,7 +315,6 @@ export function DriverSummary({
     );
   }
 
-  const pct = (driver.activeOrders / driver.capacity) * 100;
   const displayStatus = orders ? deriveDriverDisplayStatus(driver, orders) : driver.status;
 
   return (
@@ -339,7 +337,13 @@ export function DriverSummary({
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <VehicleIcon v={driver.vehicle} />
-            <span>{driver.zone}</span>
+            <span>
+              {driver.vehicle === 'motorcycle'
+                ? 'จักรยานยนต์'
+                : driver.vehicle === 'van'
+                  ? 'รถตู้'
+                  : 'รถกระบะ'}
+            </span>
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <Phone className="h-3 w-3" />
@@ -348,37 +352,17 @@ export function DriverSummary({
         </div>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-        <div className="rounded-lg bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">คะแนน</div>
-          <div className="mt-1 font-medium">⭐ {driver.rating}</div>
-        </div>
+      <div className="mt-4 text-sm">
         <div className="rounded-lg bg-muted/40 p-3">
           <div className="text-[11px] text-muted-foreground">งานปัจจุบัน</div>
-          <div className="mt-1 font-medium">
-            {driver.activeOrders}/{driver.capacity}
-          </div>
+          <div className="mt-1 font-medium">{driver.activeOrders}</div>
         </div>
-      </div>
-
-      <div className="mt-4 space-y-2">
-        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-          <span>Capacity</span>
-          <span>
-            {driver.activeOrders}/{driver.capacity}
-          </span>
-        </div>
-        <Progress value={pct} className="h-1.5" />
       </div>
 
       <div className="mt-4 space-y-2 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5">
           <Route className="h-3 w-3" />
           {order?.status === 'in_transit' ? 'กำลังวิ่งงานนี้อยู่' : 'ติดตามงานตามสถานะปัจจุบัน'}
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Clock className="h-3 w-3" />
-          รองรับงานในโซน {driver.zone}
         </div>
         <div className="flex items-center gap-1.5">
           <ShieldCheck className="h-3 w-3" />

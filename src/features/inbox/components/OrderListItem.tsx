@@ -55,7 +55,7 @@ export default function OrderListItem({
       onClick={onClick}
       className={cn(
         'w-full rounded-lg border p-3 text-left transition-colors',
-        selected ? 'border-primary bg-primary/5' : 'hover:bg-muted/60',
+        selected ? 'border-border bg-muted' : 'border-transparent hover:bg-muted/60',
       )}
     >
       <div className="flex items-center justify-between gap-2">

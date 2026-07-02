@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { useRetailStore } from '@/state/retailStore';
 import {
   fetchMessengerTrackingHistory,
@@ -110,7 +111,7 @@ function sessionTitle(session: { route: { code: string } | null; label: string |
 }
 
 function messengerOptionLabel(driver: { id: string; name: string; zone?: string }) {
-  return `${driver.name} (${driver.id})${driver.zone ? ` · ${driver.zone}` : ''}`;
+  return `${driver.name} (${driver.id})`;
 }
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>) {
@@ -253,7 +254,7 @@ export function TrackingHistoryPage() {
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           ช่วงเวลา
-          <select
+          <Select
             value={rangeDays}
             onChange={(event) => {
               const nextRangeDays = Number(event.target.value);
@@ -263,24 +264,24 @@ export function TrackingHistoryPage() {
               }));
               setSelectedId(null);
             }}
-            className="h-9 w-44 rounded-md border border-input bg-background px-3 text-sm"
+            containerClassName="w-44"
           >
             {RANGE_OPTIONS.map((option) => (
               <option key={option.days} value={option.days}>
                 {option.label}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           Messenger
-          <select
+          <Select
             value={driverCode}
             onChange={(event) => {
               setFilters((current) => ({ ...current, driverCode: event.target.value }));
               setSelectedId(null);
             }}
-            className="h-9 w-64 rounded-md border border-input bg-background px-3 text-sm"
+            containerClassName="w-64"
           >
             <option value="">ทั้งหมด (ทุก Messenger)</option>
             {drivers.map((driver) => (
@@ -288,7 +289,7 @@ export function TrackingHistoryPage() {
                 {messengerOptionLabel(driver)}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
         <Button
           variant="outline"
