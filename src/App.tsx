@@ -29,6 +29,9 @@ const PostalQueuePage = lazy(() =>
   import('@/pages/PostalQueue').then((m) => ({ default: m.PostalQueuePage })),
 );
 const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default: m.DriversPage })));
+const CustomersPage = lazy(() =>
+  import('@/pages/Customers').then((m) => ({ default: m.CustomersPage })),
+);
 const MessengerConsolePage = lazy(() =>
   import('@/pages/MessengerConsole').then((m) => ({ default: m.MessengerConsolePage })),
 );
@@ -150,6 +153,7 @@ export default function App() {
           {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}
+          {page === 'customers' && <CustomersPage locationSearch={locationSearch} />}
         </Suspense>
       </AppShell>
     </RetailProvider>

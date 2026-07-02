@@ -4,6 +4,7 @@ import {
   Inbox,
   Truck,
   Users,
+  BookUser,
   Mailbox,
   CalendarClock,
   Route,
@@ -60,6 +61,7 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'ทีมงาน',
     items: [
       { key: 'drivers', label: 'คนขับ', icon: Users },
+      { key: 'customers', label: 'ลูกค้า', icon: BookUser },
       { key: 'messenger', label: 'เปิดแอป Messenger', icon: Smartphone, showBadge: true },
     ],
   },

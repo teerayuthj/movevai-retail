@@ -14,7 +14,7 @@ import { Topbar } from '@/components/app-shell/Topbar';
 
 type Props = {
   page: PageKey;
-  onChangePage: (p: PageKey) => void;
+  onChangePage: (p: PageKey, options?: { search?: string }) => void;
   children: React.ReactNode;
 };
 
@@ -213,7 +213,12 @@ export function AppShell({ page, onChangePage, children }: Props) {
             collapsed ? 'lg:pl-16' : 'lg:pl-60',
           )}
         >
-          <Topbar onOpenMobileNav={() => setIsMobileNavOpen(true)} />
+          <Topbar
+            onOpenMobileNav={() => setIsMobileNavOpen(true)}
+            onSearch={(query) =>
+              onChangePage('customers', { search: `?q=${encodeURIComponent(query)}` })
+            }
+          />
           <main className="p-4 sm:p-6">{children}</main>
         </div>
       </div>
