@@ -3,7 +3,7 @@ import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Info, Loader2, MapPin, Route } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { formatRouteDistance, formatRouteDuration } from '@/lib/routeDistance';

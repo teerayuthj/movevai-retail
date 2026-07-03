@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { formatTHB, paymentLabel, shippingMethodLabel, type Order } from '@/data/mock';
+import { formatTHB, paymentLabel, shippingMethodLabel, type Order } from '@/data/orderTypes';
 import { parseCsv } from '@/lib/csvScriptTransform';
 import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';

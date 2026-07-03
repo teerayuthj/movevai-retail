@@ -1,4 +1,4 @@
-import { failNextActionLabel, failReasonLabel } from '@/data/mock';
+import { failNextActionLabel, failReasonLabel } from '@/data/orderTypes';
 import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { describeProof, planAutoAssignments } from '@/lib/deliveryExecution';
 import type {
@@ -8,7 +8,7 @@ import type {
   Order,
   ProofOfDelivery,
   ProofOfDeliveryHistoryEntry,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import {
   appendEvent,
   DEFAULT_HANDLER,

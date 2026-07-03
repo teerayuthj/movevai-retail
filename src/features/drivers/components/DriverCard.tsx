@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { CheckCircle2, IdCard, Package, Phone, Play, XCircle } from 'lucide-react';
-import { type Driver, type Order, formatTHB, statusLabel } from '@/data/mock';
+import { type Driver, type Order, formatTHB, statusLabel } from '@/data/orderTypes';
 import { VehicleIcon } from './VehicleIcon';
 
 type DriverCardProps = {

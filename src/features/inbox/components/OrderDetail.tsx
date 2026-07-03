@@ -29,7 +29,7 @@ import {
   formatTHB,
   shippingMethodLabel,
   sourceLabel,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import CustomerInfoForm from '@/features/inbox/components/CustomerInfoForm';
 import ShippingMethodSelector from '@/features/inbox/components/ShippingMethodSelector';
 import { SourceIcon } from '@/features/inbox/components/OrderListItem';

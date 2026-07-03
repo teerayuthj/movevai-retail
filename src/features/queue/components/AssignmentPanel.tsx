@@ -3,7 +3,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { DriverSummary, OrderSummary } from '@/components/delivery/DeliveryExecutionShared';
-import type { Driver, Order } from '@/data/mock';
+import type { Driver, Order } from '@/data/orderTypes';
 
 type AssignmentPanelProps = {
   order: Order | null;

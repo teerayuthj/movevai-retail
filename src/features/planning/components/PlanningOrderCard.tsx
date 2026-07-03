@@ -1,5 +1,5 @@
 import { Badge } from '@/components/ui/badge';
-import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/mock';
+import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/orderTypes';
 import { formatPlanningDateTime, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { MapPin, Minus, Package, Plus } from 'lucide-react';

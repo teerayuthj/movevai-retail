@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { type Driver, type Order, statusLabel } from '@/data/mock';
+import { type Driver, type Order, statusLabel } from '@/data/orderTypes';
 
 export function InTransitCard({ orders, drivers }: { orders: Order[]; drivers: Driver[] }) {
   return (

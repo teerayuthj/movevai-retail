@@ -44,7 +44,7 @@ import {
   type ImportRejectReason,
 } from '@/lib/retailApi';
 import { downloadCsv } from '@/lib/export';
-import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from '@/data/mock';
+import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from '@/data/orderTypes';
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';

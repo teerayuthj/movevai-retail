@@ -5,8 +5,8 @@ import {
   type FailReason,
   failNextActionLabel,
   failReasonLabel,
-} from '@/data/mock';
-import type { Driver } from '@/data/mock';
+} from '@/data/orderTypes';
+import type { Driver } from '@/data/orderTypes';
 import { useRetailStore } from '@/state/retailStore';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { DriverAvatar } from '@/components/DriverAvatar';

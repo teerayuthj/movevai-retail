@@ -8,7 +8,7 @@ import {
   failReasonLabel,
   formatTHB,
   paymentLabel,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { Coins, IdCard, ShieldCheck } from 'lucide-react';
 
 export function OrderSummary({ order }: { order: Order }) {

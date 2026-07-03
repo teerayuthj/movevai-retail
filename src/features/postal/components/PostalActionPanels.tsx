@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { type Order, formatTHB, postalServiceLabel, statusLabel } from '@/data/mock';
+import { type Order, formatTHB, postalServiceLabel, statusLabel } from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import {
   Ban,

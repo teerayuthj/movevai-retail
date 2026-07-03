@@ -1,4 +1,4 @@
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { formatPlanningDateTime } from '@/lib/deliveryPlanning';
 
 export type RequestedDeliveryDraft = {

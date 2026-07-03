@@ -1,4 +1,4 @@
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import {
   getAssignedOrderOverdueMinutes,
   SCHEDULED_DELIVERY_GRACE_MINUTES,

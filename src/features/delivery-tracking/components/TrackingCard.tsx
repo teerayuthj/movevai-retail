@@ -7,7 +7,7 @@ import {
   formatTHB,
   paymentLabel,
   statusLabel,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import { formatOverdueDuration, formatPlanningDateTime } from '@/lib/deliveryPlanning';
 import { formatElapsedDuration, getInTransitElapsedTone } from '@/lib/deliveryExecution';

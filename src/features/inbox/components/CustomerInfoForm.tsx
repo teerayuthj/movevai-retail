@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { IdCard, MapPin, Phone } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Order } from '@/data/mock';
+import { Order } from '@/data/orderTypes';
 import { AddressMapPreview } from '@/components/AddressMapPreview';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import { EMPTY_THAI_ADDRESS, composeThaiAddress, type ThaiAddressValue } from '@/lib/thaiAddress';

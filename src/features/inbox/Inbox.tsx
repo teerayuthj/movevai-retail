@@ -5,7 +5,7 @@ import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { MobileDetailSheet } from '@/components/MobileDetailSheet';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { cancelReasonLabel, formatTHB, statusLabel, type CancelReason } from '@/data/mock';
+import { cancelReasonLabel, formatTHB, statusLabel, type CancelReason } from '@/data/orderTypes';
 import OrderDetail from '@/features/inbox/components/OrderDetail';
 import OrderListPanel from '@/features/inbox/components/OrderListPanel';
 import ImportBatchPanel from '@/features/inbox/components/ImportBatchPanel';

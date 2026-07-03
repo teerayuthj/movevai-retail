@@ -5,7 +5,7 @@ import {
   deliveryProofRevisionLimits,
   getDeliveryProofRevisionCount,
 } from '@/state/retail/delivery';
-import { paymentLabel, type Order } from '@/data/mock';
+import { paymentLabel, type Order } from '@/data/orderTypes';
 import {
   Banknote,
   CalendarClock,

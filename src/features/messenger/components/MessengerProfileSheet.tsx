@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
-import type { Driver } from '@/data/mock';
+import type { Driver } from '@/data/orderTypes';
 import {
   ArrowLeft,
   Camera,

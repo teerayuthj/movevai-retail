@@ -1,4 +1,3 @@
-import { drivers as initialDrivers } from '@/data/mock';
 import { migrateOrders } from '@/state/retail/timeline';
 import type { RetailState } from '@/state/retail/types';
 
@@ -9,9 +8,11 @@ export const STORAGE_KEY = 'movevai-retail:v3';
 
 const LOCAL_DRAFT_STATUSES = new Set(['new', 'parsing', 'needs_review', 'ready']);
 
+// orders/drivers ว่างไว้ก่อน แล้ว syncFromBackend() เติมของจริงจาก backend ทันทีที่เปิด dashboard
+// (เลิกใช้ mock drivers เพื่อไม่ให้ admin เห็นคนขับปลอม flash ตอนโหลด หรือค้างเมื่อ fetch ล้มเหลว)
 export const defaultState: RetailState = {
   orders: [],
-  drivers: initialDrivers,
+  drivers: [],
   notifications: [],
 };
 

@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import { Button } from '@/components/ui/button';
 import { useRetailStore } from '@/state/retailStore';
-import { paymentLabel, statusLabel } from '@/data/mock';
+import { paymentLabel, statusLabel } from '@/data/orderTypes';
 import {
   AlertCircle,
   Banknote,
@@ -51,7 +51,7 @@ import { MessengerRouteMap } from './components/MessengerRouteMap';
 import { MessengerOrderMapPage } from './components/MessengerOrderMapPage';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import {
   hasMessengerSession,
   isMessengerAuthError,
@@ -404,6 +404,11 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
   const refreshJobs = useCallback(
     async (background = false) => {
+      // ยังไม่ได้ login (ไม่มี code จริง) — ไม่ต้องยิง fetch
+      if (!messengerCode) {
+        setJobsLoading(false);
+        return;
+      }
       if (!background) setJobsLoading(true);
       try {
         await refreshMessengerJobs(messengerCode);
@@ -660,8 +665,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             )}
           </div>
         )}
-        {/* Test Route: ทดสอบ GPS/เส้นทางโดยไม่ต้องมีงานลูกค้า (เช่น ไปกินข้าว) */}
-        {!tracking.session && !activeRouteId && (
+        {/* Test Route: เครื่องมือ dev/QA ทดสอบ GPS โดยไม่ต้องมีงานลูกค้า — ซ่อนบน production build */}
+        {import.meta.env.DEV && !tracking.session && !activeRouteId && (
           <div className="border-b bg-background px-3 py-2">
             <Button
               size="sm"
@@ -899,14 +904,16 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
         <MessengerTabBar activeTab={activeTab} counts={counts} onSelect={(tab) => setTab(tab)} />
 
-        <TestRouteDialog
-          open={testDialogOpen}
-          onCancel={() => setTestDialogOpen(false)}
-          onConfirm={(label) => {
-            setTestDialogOpen(false);
-            void tracking.startTest(label).then(() => setTab('in_transit'));
-          }}
-        />
+        {import.meta.env.DEV && (
+          <TestRouteDialog
+            open={testDialogOpen}
+            onCancel={() => setTestDialogOpen(false)}
+            onConfirm={(label) => {
+              setTestDialogOpen(false);
+              void tracking.startTest(label).then(() => setTab('in_transit'));
+            }}
+          />
+        )}
 
         {messenger && profileOpen && (
           <MessengerProfileSheet
@@ -915,7 +922,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             activeOrders={openCustomerJobCount}
             install={install}
             onClose={() => setProfileOpen(false)}
-            onUpdated={() => refreshMessengerJobs(messengerCode)}
+            onUpdated={() => {
+              if (messengerCode) void refreshMessengerJobs(messengerCode);
+            }}
             onExit={() => {
               void logoutMessenger().finally(() => {
                 setAuthenticated(false);

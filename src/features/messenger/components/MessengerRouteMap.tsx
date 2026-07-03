@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Circle, MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { AlertCircle, Loader2, LocateFixed, Navigation } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Loader2, LocateFixed, Navigation } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { getMessengerJobOverdueMinutes } from '../messengerSchedule';
 import { BANGKOK_CENTER, isPlausibleThaiCoord, navigationUrl } from '../geocode';
 import type { RouteStop } from '../hooks/useRouteStops';
@@ -144,7 +144,8 @@ export function MessengerRouteMap({
     () => (messengerPoint ? [messengerPoint, ...points] : points),
     [points, messengerPoint],
   );
-  const pendingCount = stops.filter((stop) => stop.pending).length;
+  // จุดที่ backend ไม่มีพิกัด — วาดหมุดไม่ได้ (ไม่มีการเดาพิกัดฝั่ง client แล้ว)
+  const missingCoordCount = stops.filter((stop) => !stop.coords).length;
   const destination = located[0] ?? null;
 
   // เส้นทางตามถนน (OSRM) จากตำแหน่ง messenger → จุดส่งที่เหลือ — แทนเส้นตรงเดิม
@@ -358,11 +359,11 @@ export function MessengerRouteMap({
           </div>
         )}
 
-      {pendingCount > 0 && (
+      {missingCoordCount > 0 && (
         <div className="pointer-events-none absolute bottom-2 left-1/2 z-[1000] -translate-x-1/2 rounded-full border bg-background/95 px-3 py-1 text-xs text-muted-foreground shadow-xs">
           <span className="inline-flex items-center gap-1.5">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            กำลังหาพิกัดอีก {pendingCount} จุด…
+            <AlertTriangle className="h-3 w-3 text-warning" />
+            {missingCoordCount} จุดไม่มีพิกัดบนแผนที่
           </span>
         </div>
       )}

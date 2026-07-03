@@ -1,6 +1,6 @@
 // Source of truth ของ messenger tab — ผูก tab กับ order status และ URL segment
 // แต่ละ tab = filter ของ order.status ตัวเดียว (UI/logic เหมือนกัน ต่างแค่ status)
-import type { OrderStatus } from '@/data/mock';
+import type { OrderStatus } from '@/data/orderTypes';
 
 export type MessengerTab = 'assigned' | 'in_transit' | 'pending_confirmation' | 'delivered';
 

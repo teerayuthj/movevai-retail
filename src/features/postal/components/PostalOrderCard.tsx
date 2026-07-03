@@ -1,5 +1,11 @@
 import { Badge } from '@/components/ui/badge';
-import { type Order, formatTHB, paymentLabel, postalServiceLabel, statusLabel } from '@/data/mock';
+import {
+  type Order,
+  formatTHB,
+  paymentLabel,
+  postalServiceLabel,
+  statusLabel,
+} from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import { CheckCircle2, ClipboardCheck, Coins, Mailbox, MapPin, Package, Phone } from 'lucide-react';
 

@@ -1,4 +1,4 @@
-import type { Handler, Order, ShippingMethod } from '@/data/mock';
+import type { Handler, Order, ShippingMethod } from '@/data/orderTypes';
 import { newEventId, operatorActor } from '@/state/retail/timeline';
 import type { RetailState } from '@/state/retail/types';
 

@@ -1,4 +1,4 @@
-import { type Order, type PostalService } from '@/data/mock';
+import { type Order, type PostalService } from '@/data/orderTypes';
 
 export type PostalTab = 'ready' | 'assigned' | 'in_transit' | 'returning' | 'closed';
 

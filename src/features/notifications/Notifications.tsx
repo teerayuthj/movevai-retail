@@ -18,7 +18,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { statusLabel, type Order } from '@/data/mock';
+import { statusLabel, type Order } from '@/data/orderTypes';
 import { maskPhone } from '@/lib/customerTracking';
 import {
   NOTIFICATION_TEMPLATES,

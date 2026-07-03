@@ -1,4 +1,4 @@
-import { Driver } from '@/data/mock';
+import { Driver } from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 
 type AvatarStyle = {

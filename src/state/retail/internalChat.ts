@@ -1,4 +1,4 @@
-import type { Handler, Order } from '@/data/mock';
+import type { Handler, Order } from '@/data/orderTypes';
 import { newEventId, operatorActor } from '@/state/retail/timeline';
 import type { InternalChatOrderInput, RetailState } from '@/state/retail/types';
 

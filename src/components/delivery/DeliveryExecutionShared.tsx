@@ -30,7 +30,7 @@ import {
   failReasonLabel,
   formatTHB,
   paymentLabel,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import { deriveDriverDisplayStatus, describeProof } from '@/lib/deliveryExecution';
 import { formatFastDispatchDueAt, getFastDispatchSla } from '@/lib/fastDispatch';

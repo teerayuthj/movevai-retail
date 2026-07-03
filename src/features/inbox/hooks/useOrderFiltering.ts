@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Order } from '@/data/mock';
+import { Order } from '@/data/orderTypes';
 import { buildOrderSearchText } from '@/features/inbox/utils/orderFormatting';
 
 export const INBOX_FILTERS = ['all', 'needs_review', 'new', 'ready'] as const;

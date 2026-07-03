@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { formatTHB, type DeliveryProofEditorRole, type Order } from '@/data/mock';
+import { formatTHB, type DeliveryProofEditorRole, type Order } from '@/data/orderTypes';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 import {
   canReviseDeliveryProof,

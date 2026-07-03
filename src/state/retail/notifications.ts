@@ -1,4 +1,4 @@
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import {
   defaultChannelForOrder,
   recipientForChannel,

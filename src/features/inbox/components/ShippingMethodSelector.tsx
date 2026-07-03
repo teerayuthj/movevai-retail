@@ -1,6 +1,6 @@
 import { CheckCircle2, Mailbox, Truck } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ShippingMethod } from '@/data/mock';
+import { ShippingMethod } from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 
 type ShippingMethodSelectorProps = {

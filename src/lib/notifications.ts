@@ -1,4 +1,4 @@
-import type { Handler, Order, OrderStatus } from '@/data/mock';
+import type { Handler, Order, OrderStatus } from '@/data/orderTypes';
 import { buildCustomerTrackingUrl, getPlannedDelivery } from '@/lib/customerTracking';
 import { formatPlanningDateTime } from '@/lib/deliveryPlanning';
 

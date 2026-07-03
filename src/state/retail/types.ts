@@ -11,7 +11,7 @@ import type {
   PostalService,
   ProofOfDelivery,
   ShippingMethod,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import type { ImportRejectReason, PlanningRoute } from '@/lib/retailApi';
 import type { CustomerNotification } from '@/lib/notifications';
 import type { ManualImportOrderInput } from '@/state/retail/manualImport';
