@@ -705,7 +705,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
           </div>
           {SHOW_TEST_LOGIN && (
             <div className="space-y-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-              <p className="font-medium text-warning-foreground">โหมดทดสอบ — เลือกบัญชีตัวอย่าง</p>
+              <p className="font-medium text-warning">โหมดทดสอบ — เลือกบัญชีตัวอย่าง</p>
               <div className="space-y-2">
                 {TEST_ACCOUNTS.map((account) => (
                   <div key={account.driverCode} className="rounded-md border bg-background/80 p-2">
