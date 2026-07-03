@@ -1618,7 +1618,7 @@ export default function ImportBatchPanel({
         <CardContent
           ref={listRef}
           onScroll={handleScroll}
-          className="flex-1 space-y-2 overflow-auto p-3"
+          className="app-scroll flex-1 space-y-2 overflow-auto p-3"
         >
           {loading && batches.length === 0 && (
             <div className="flex h-20 items-center justify-center">
@@ -1690,7 +1690,7 @@ export default function ImportBatchPanel({
         </CardContent>
       </Card>
 
-      <Card className="h-[calc(100vh-16rem)] overflow-auto p-4">
+      <Card className="app-scroll h-[calc(100vh-16rem)] overflow-auto p-4">
         {hasBatches ? (
           <BatchWorkspace
             key={workspaceKey}
