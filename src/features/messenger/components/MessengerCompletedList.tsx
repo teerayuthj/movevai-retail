@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { formatTHB } from '@/data/mock';
+import { formatTHB } from '@/data/orderTypes';
 import {
   fetchMessengerCompletedDeliveries,
   type MessengerCompletedDelivery,

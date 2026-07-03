@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import { Button } from '@/components/ui/button';
 import { useRetailStore } from '@/state/retailStore';
-import { paymentLabel, statusLabel } from '@/data/mock';
+import { paymentLabel, statusLabel } from '@/data/orderTypes';
 import {
   AlertCircle,
   Banknote,
@@ -51,7 +51,7 @@ import { MessengerRouteMap } from './components/MessengerRouteMap';
 import { MessengerOrderMapPage } from './components/MessengerOrderMapPage';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import {
   hasMessengerSession,
   isMessengerAuthError,

@@ -15,7 +15,7 @@ import {
   OrderSummary,
   QueueOrderCard,
 } from '@/components/delivery/DeliveryExecutionShared';
-import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/mock';
+import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/orderTypes';
 import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
   canDriverTakeOrder,

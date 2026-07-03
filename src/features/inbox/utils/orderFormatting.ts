@@ -1,4 +1,4 @@
-import { Order, formatTHB, paymentLabel } from '@/data/mock';
+import { Order, formatTHB, paymentLabel } from '@/data/orderTypes';
 
 export function buildRawText(order: Order): string {
   const lines: string[] = [];

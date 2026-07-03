@@ -13,7 +13,7 @@ import {
   type PlanningCancelReason,
   failNextActionLabel,
   failReasonLabel,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import { getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
 import {

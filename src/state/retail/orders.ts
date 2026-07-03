@@ -1,5 +1,5 @@
-import { cancelReasonLabel } from '@/data/mock';
-import type { Order, OrderResolution, ShippingMethod } from '@/data/mock';
+import { cancelReasonLabel } from '@/data/orderTypes';
+import type { Order, OrderResolution, ShippingMethod } from '@/data/orderTypes';
 import {
   appendEvent,
   DEFAULT_HANDLER,

@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import type { Driver } from '@/data/mock';
+import type { Driver } from '@/data/orderTypes';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';

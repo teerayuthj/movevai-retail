@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { localGeocode } from '@/features/messenger/geocode';
 import { geocodeAddress, type GeoCoordinate } from '@/lib/retailApi';
 

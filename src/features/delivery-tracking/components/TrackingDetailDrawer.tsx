@@ -9,7 +9,7 @@ import {
   ProofOfDeliveryInfo,
   ResolutionInfo,
 } from '@/components/delivery/DeliveryExecutionShared';
-import { type Driver, type Order, statusLabel } from '@/data/mock';
+import { type Driver, type Order, statusLabel } from '@/data/orderTypes';
 import {
   formatElapsedDuration,
   getInTransitElapsedMinutes,

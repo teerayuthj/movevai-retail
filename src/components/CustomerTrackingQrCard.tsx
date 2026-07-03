@@ -11,7 +11,7 @@ import {
   isOrderScheduled,
 } from '@/lib/customerTracking';
 import { formatPlanningDateTime } from '@/lib/deliveryPlanning';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 
 type CustomerTrackingQrCardProps = {
   order: Order;

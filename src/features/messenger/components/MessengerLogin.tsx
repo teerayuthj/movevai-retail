@@ -8,7 +8,7 @@ import {
   type MessengerRegisterResult,
   type MessengerSession,
 } from '@/lib/retailApi';
-import type { Driver } from '@/data/mock';
+import type { Driver } from '@/data/orderTypes';
 import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
 import { cn } from '@/lib/utils';
 import {

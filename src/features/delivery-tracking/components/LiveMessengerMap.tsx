@@ -13,7 +13,7 @@ import {
 } from '@/lib/retailApi';
 import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 import { useRouteStops } from '@/features/messenger/hooks/useRouteStops';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import {
   AlertCircle,

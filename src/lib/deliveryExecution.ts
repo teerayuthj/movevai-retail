@@ -1,5 +1,5 @@
-import type { Driver, Order, ProofOfDelivery } from '@/data/mock';
-import { formatTHB } from '@/data/mock';
+import type { Driver, Order, ProofOfDelivery } from '@/data/orderTypes';
+import { formatTHB } from '@/data/orderTypes';
 import { getAssignedOrderOverdueMinutes, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 
 export type DriverQueueTab = 'ready' | 'assigned';

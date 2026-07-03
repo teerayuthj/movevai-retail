@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Separator } from '@/components/ui/separator';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import OrderListItem from '@/features/inbox/components/OrderListItem';
 import {
   FILTER_LABEL,

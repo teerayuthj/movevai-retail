@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { VehicleIcon } from '@/components/delivery/DeliveryExecutionShared';
 import { cn } from '@/lib/utils';
-import { formatTHB, type Driver } from '@/data/mock';
+import { formatTHB, type Driver } from '@/data/orderTypes';
 import type { AutoAssignProposal } from '@/lib/deliveryExecution';
 import { ArrowRight, Check, MapPin, Pause, Sparkles, Users, X } from 'lucide-react';
 

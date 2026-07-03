@@ -6,7 +6,7 @@ import type {
   OrderActivityEvent,
   PlanningCancelReason,
   ShippingMethod,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 

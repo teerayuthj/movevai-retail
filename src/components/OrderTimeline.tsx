@@ -29,7 +29,7 @@ import {
   OrderActivityChange,
   OrderActivityEvent,
   OrderActivityEventType,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import { compactActivityLog } from '@/state/retail/timeline';
 

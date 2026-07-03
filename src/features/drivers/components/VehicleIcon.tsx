@@ -1,5 +1,5 @@
 import { Bike, Car, Truck as TruckIcon } from 'lucide-react';
-import type { Driver } from '@/data/mock';
+import type { Driver } from '@/data/orderTypes';
 
 export function VehicleIcon({ v }: { v: Driver['vehicle'] }) {
   if (v === 'motorcycle') return <Bike className="h-4 w-4" />;

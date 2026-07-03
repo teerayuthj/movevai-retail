@@ -1,5 +1,5 @@
-import { dispatchReadinessLabel, type DispatchReadiness, type Order } from '@/data/mock';
-import type { OrderActivityChange } from '@/data/mock';
+import { dispatchReadinessLabel, type DispatchReadiness, type Order } from '@/data/orderTypes';
+import type { OrderActivityChange } from '@/data/orderTypes';
 import {
   canPlanOrder,
   canReleasePlannedOrder,

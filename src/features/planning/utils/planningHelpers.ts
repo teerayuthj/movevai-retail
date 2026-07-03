@@ -1,4 +1,4 @@
-import { type Driver, type Order } from '@/data/mock';
+import { type Driver, type Order } from '@/data/orderTypes';
 import {
   getTodayDateKey,
   getTomorrowDateKey,

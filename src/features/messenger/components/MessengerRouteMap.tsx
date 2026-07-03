@@ -3,7 +3,7 @@ import { Circle, MapContainer, Marker, Polyline, Popup, useMap } from 'react-lea
 import L from 'leaflet';
 import { AlertCircle, Loader2, LocateFixed, Navigation } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { getMessengerJobOverdueMinutes } from '../messengerSchedule';
 import { BANGKOK_CENTER, isPlausibleThaiCoord, navigationUrl } from '../geocode';
 import type { RouteStop } from '../hooks/useRouteStops';

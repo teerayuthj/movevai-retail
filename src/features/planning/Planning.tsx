@@ -11,7 +11,7 @@ import {
   type DispatchReadiness,
   type Order,
   type PlanningCancelReason,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import {
   canPlanOrder,

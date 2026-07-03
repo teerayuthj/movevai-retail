@@ -13,7 +13,7 @@ import {
   cancelReasonLabel,
   failNextActionLabel,
   failReasonLabel,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';
 import { buildPostalCsv, downloadCsv } from '@/lib/export';

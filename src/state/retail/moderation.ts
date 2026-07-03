@@ -1,4 +1,4 @@
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import type { ImportRejectReason } from '@/lib/retailApi';
 import { appendEvent, DEFAULT_HANDLER, nowIso, operatorActor } from '@/state/retail/timeline';
 import type { RetailState } from '@/state/retail/types';

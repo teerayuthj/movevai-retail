@@ -8,7 +8,13 @@ import {
   Pencil,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { Order, dispatchReadinessLabel, formatTHB, sourceLabel, statusLabel } from '@/data/mock';
+import {
+  Order,
+  dispatchReadinessLabel,
+  formatTHB,
+  sourceLabel,
+  statusLabel,
+} from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import { formatPlanningDate, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 

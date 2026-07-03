@@ -1,5 +1,5 @@
-import { postalServiceLabel } from '@/data/mock';
-import type { Order, PostalService } from '@/data/mock';
+import { postalServiceLabel } from '@/data/orderTypes';
+import type { Order, PostalService } from '@/data/orderTypes';
 import { nextBatchId } from '@/lib/export';
 import { appendEvent, nowIso, operatorActor } from '@/state/retail/timeline';
 import type { RetailState } from '@/state/retail/types';

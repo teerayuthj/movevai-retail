@@ -1,7 +1,7 @@
 import { Clock, Coins, Package, Truck } from 'lucide-react';
 import { format, isSameDay } from 'date-fns';
 import { th } from 'date-fns/locale';
-import { formatTHB } from '@/data/mock';
+import { formatTHB } from '@/data/orderTypes';
 import { useRetailStore } from '@/state/retailStore';
 import { StatCard } from './components/StatCard';
 import { ActiveDriversCard } from './components/ActiveDriversCard';

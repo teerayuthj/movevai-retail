@@ -2,7 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { ArrowUpRight } from 'lucide-react';
-import type { Driver } from '@/data/mock';
+import type { Driver } from '@/data/orderTypes';
 
 export function ActiveDriversCard({ drivers }: { drivers: Driver[] }) {
   return (

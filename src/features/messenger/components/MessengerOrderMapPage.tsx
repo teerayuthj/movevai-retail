@@ -5,7 +5,7 @@ import { ArrowLeft, AlertCircle, Loader2, MapPin, PackageCheck } from 'lucide-re
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { fetchMessengerOrderRouteHistory, type MessengerOrderRouteHistory } from '@/lib/retailApi';
 import { BANGKOK_CENTER } from '../geocode';
 import { useRouteStops } from '../hooks/useRouteStops';

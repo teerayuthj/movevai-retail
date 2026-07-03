@@ -4,7 +4,7 @@ import {
   failReasonLabel,
   postalServiceLabel,
   shippingMethodLabel,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import type {
   CancelReason,
   FailReason,
@@ -15,7 +15,7 @@ import type {
   OrderActivityEvent,
   OrderActivityEventType,
   ShippingMethod,
-} from '@/data/mock';
+} from '@/data/orderTypes';
 import { normalizeOrderPlanning } from '@/lib/deliveryPlanning';
 
 export const DEFAULT_HANDLER: Handler = {

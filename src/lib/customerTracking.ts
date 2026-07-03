@@ -1,4 +1,9 @@
-import type { Order, OrderActivityEventType, OrderStatus, ProofOfDelivery } from '@/data/mock';
+import type {
+  Order,
+  OrderActivityEventType,
+  OrderStatus,
+  ProofOfDelivery,
+} from '@/data/orderTypes';
 
 const CUSTOMER_TRACKING_BASE_PATH = '/track';
 // path เดิม — เก็บไว้รองรับลิงก์เก่าที่เคยส่งให้ลูกค้าไปแล้ว (อย่าใช้สร้างลิงก์ใหม่)

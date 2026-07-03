@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import type { Driver } from '@/data/mock';
+import type { Driver } from '@/data/orderTypes';
 import { ChevronRight } from 'lucide-react';
 
 const statusLabel: Record<Driver['status'], string> = {

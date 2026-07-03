@@ -2,7 +2,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Select } from '@/components/ui/select';
-import { dispatchReadinessLabel, type DispatchReadiness, type Driver } from '@/data/mock';
+import { dispatchReadinessLabel, type DispatchReadiness, type Driver } from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
 import { CalendarClock, Check, XCircle } from 'lucide-react';
 

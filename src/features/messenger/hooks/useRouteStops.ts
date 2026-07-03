@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { Order } from '@/data/mock';
+import type { Order } from '@/data/orderTypes';
 import { geocodeViaNominatim, isPlausibleThaiCoord, localGeocode, type LatLng } from '../geocode';
 
 export type RouteStop = {
