@@ -5,7 +5,11 @@ import { getPathForPage, type PageKey } from '@/lib/routes';
 import { Badge } from '@/components/ui/badge';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useRetailStore } from '@/state/retailStore';
-import { canPlanOrder, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import {
+  canPlanOrder,
+  isUnreleasedPlannedOrder,
+  isVisibleInExecutionQueue,
+} from '@/lib/deliveryPlanning';
 import { getDeliveryTrackingTab, getDriverQueueTab } from '@/lib/deliveryExecution';
 import { NAV_SECTIONS } from '@/components/app-shell/navConfig';
 import { CollapsedSidebarTooltip } from '@/components/app-shell/CollapsedSidebarTooltip';
@@ -44,7 +48,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
       (o) =>
         getDriverQueueTab(o) &&
         (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-        !isUnreleasedPlannedOrder(o),
+        isVisibleInExecutionQueue(o),
     ).length,
     delivery_tracking: orders.filter(
       (o) =>

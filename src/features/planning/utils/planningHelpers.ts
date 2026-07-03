@@ -1,5 +1,9 @@
 import { type Driver, type Order } from '@/data/mock';
-import { getTomorrowDateKey, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import {
+  getTodayDateKey,
+  getTomorrowDateKey,
+  isUnreleasedPlannedOrder,
+} from '@/lib/deliveryPlanning';
 
 export function getDefaultPlanningDate(orders: Order[]) {
   const activePlanDates = orders
@@ -9,6 +13,18 @@ export function getDefaultPlanningDate(orders: Order[]) {
     .sort();
 
   return activePlanDates[0] ?? getTomorrowDateKey();
+}
+
+export function getInitialPlanningSelectedDate(orders: Order[]) {
+  const today = getTodayDateKey();
+  const activePlanDates = orders
+    .filter((order) => isUnreleasedPlannedOrder(order))
+    .map((order) => order.deliveryPlan?.plannedDate)
+    .filter((value): value is string => Boolean(value))
+    .sort();
+  const oldestOverdueDate = activePlanDates.find((date) => date < today);
+
+  return oldestOverdueDate ?? today;
 }
 
 export function formatDriverStatus(driver: Driver) {

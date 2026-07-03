@@ -29,7 +29,11 @@ import { DriverPlanningCard } from './components/DriverPlanningCard';
 import { PlanSettingsCard } from './components/PlanSettingsCard';
 import { DaySummaryCard } from './components/DaySummaryCard';
 import { PlanningMap } from './components/PlanningMap';
-import { getDefaultPlanningDate, matchesPlanningQuery } from './utils/planningHelpers';
+import {
+  getDefaultPlanningDate,
+  getInitialPlanningSelectedDate,
+  matchesPlanningQuery,
+} from './utils/planningHelpers';
 import {
   fetchPlanningRoutes,
   previewPlanningRoute,
@@ -66,8 +70,8 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     cancelRoute,
     reassignRoute,
   } = useRetailStore();
-  // เปิดหน้าที่งานวันนี้ก่อนเสมอ เพื่อให้งาน active/เลยเวลาหาเจอและจัดการได้ทันที
-  const [selectedDate, setSelectedDate] = useState(() => getTodayDateKey());
+  // ถ้ามีงาน Planning ค้างวันเก่า ให้เปิดวันนั้นทันทีเพื่อให้รายการตรงกับสรุปงานค้าง
+  const [selectedDate, setSelectedDate] = useState(() => getInitialPlanningSelectedDate(orders));
   const [query, setQuery] = useState('');
   const [paneView, setPaneView] = useState<'list' | 'map'>('list');
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
