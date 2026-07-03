@@ -142,8 +142,8 @@ export function PublishedRoutesCard({
                 {route.driver.name}
                 {!cancelled && ` · ${route.stops.length} จุดส่ง`}
               </div>
-              <div className="mt-1 flex items-center gap-1 text-muted-foreground">
-                <Clock className="h-3 w-3 shrink-0" />
+              <div className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
+                <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 นัดส่ง {formatPlanningDate(route.plannedDate)} ·{' '}
                 {route.plannedTime ? `${route.plannedTime} น.` : 'ไม่ระบุเวลา'}
               </div>
