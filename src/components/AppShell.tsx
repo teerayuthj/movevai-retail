@@ -95,6 +95,13 @@ export function AppShell({ page, onChangePage, children }: Props) {
       return;
     }
 
+    // messenger เป็น entry แยก (messenger.html) — ปล่อยให้ browser ทำ full page load
+    // เพื่อให้ dev middleware / hosting rewrite เสิร์ฟ entry ที่ถูกต้อง (admin bundle ไม่มี messenger code)
+    if (nextPage === 'messenger') {
+      setIsMobileNavOpen(false);
+      return;
+    }
+
     event.preventDefault();
     setIsMobileNavOpen(false);
     onChangePage(nextPage);

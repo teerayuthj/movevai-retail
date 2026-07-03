@@ -32,9 +32,6 @@ const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default:
 const CustomersPage = lazy(() =>
   import('@/pages/Customers').then((m) => ({ default: m.CustomersPage })),
 );
-const MessengerConsolePage = lazy(() =>
-  import('@/pages/MessengerConsole').then((m) => ({ default: m.MessengerConsolePage })),
-);
 const CustomerTrackingPage = lazy(() =>
   import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
 );
@@ -48,6 +45,15 @@ const NotFoundPage = lazy(() =>
 function SplashGate() {
   useEffect(() => {
     document.getElementById('app-splash')?.remove();
+  }, []);
+  return null;
+}
+
+// fallback เมื่อ /messenger* มาโหลด index.html (rewrite ที่ hosting ยังไม่ตั้ง)
+// เปิด messenger.html ตรงๆ — entry นั้น normalize path กลับเป็น /messenger เอง
+function MessengerEntryRedirect() {
+  useEffect(() => {
+    window.location.replace('/messenger.html');
   }, []);
   return null;
 }
@@ -90,17 +96,11 @@ export default function App() {
     setLocationSearch(options?.search ?? '');
   };
 
-  // Messenger เป็น "surface แยก" (mobile-first) — render นอก AppShell ของ admin
-  // ไม่มี sidebar/topbar ของ admin มาครอบ เพื่อจำลองประสบการณ์เปิดบนมือถือจริง
+  // Messenger ย้ายไป entry แยกแล้ว (messenger.html → src/main-messenger.tsx)
+  // ปกติ dev middleware / hosting rewrite เสิร์ฟ messenger.html ให้ /messenger* โดยตรง
+  // ถ้า rewrite หลุดมาโหลด index.html (admin) ให้ส่งต่อแบบ full load — admin bundle ไม่มี messenger code แล้ว
   if (page === 'messenger') {
-    return (
-      <RetailProvider mode="messenger">
-        <Suspense fallback={null}>
-          <SplashGate />
-          <MessengerConsolePage onExit={() => navigateToPage('overview')} />
-        </Suspense>
-      </RetailProvider>
-    );
+    return <MessengerEntryRedirect />;
   }
 
   // หมายเหตุ: surface "ลูกค้า" (/track) ย้ายไป entry แยกแล้ว (customer.html → src/main-customer.tsx)
