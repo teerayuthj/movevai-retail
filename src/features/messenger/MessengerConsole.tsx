@@ -665,8 +665,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             )}
           </div>
         )}
-        {/* Test Route: ทดสอบ GPS/เส้นทางโดยไม่ต้องมีงานลูกค้า (เช่น ไปกินข้าว) */}
-        {!tracking.session && !activeRouteId && (
+        {/* Test Route: เครื่องมือ dev/QA ทดสอบ GPS โดยไม่ต้องมีงานลูกค้า — ซ่อนบน production build */}
+        {import.meta.env.DEV && !tracking.session && !activeRouteId && (
           <div className="border-b bg-background px-3 py-2">
             <Button
               size="sm"
@@ -904,14 +904,16 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
         <MessengerTabBar activeTab={activeTab} counts={counts} onSelect={(tab) => setTab(tab)} />
 
-        <TestRouteDialog
-          open={testDialogOpen}
-          onCancel={() => setTestDialogOpen(false)}
-          onConfirm={(label) => {
-            setTestDialogOpen(false);
-            void tracking.startTest(label).then(() => setTab('in_transit'));
-          }}
-        />
+        {import.meta.env.DEV && (
+          <TestRouteDialog
+            open={testDialogOpen}
+            onCancel={() => setTestDialogOpen(false)}
+            onConfirm={(label) => {
+              setTestDialogOpen(false);
+              void tracking.startTest(label).then(() => setTab('in_transit'));
+            }}
+          />
+        )}
 
         {messenger && profileOpen && (
           <MessengerProfileSheet

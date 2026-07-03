@@ -698,49 +698,53 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
             <h1 className="text-xl font-semibold">Messenger Login</h1>
             <p className="text-sm text-muted-foreground">ใช้เบอร์โทรและ PIN หรือสมัครบัญชีใหม่</p>
           </div>
-          <div className="space-y-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-            <p className="font-medium text-warning-foreground">โหมดทดสอบ — เลือกบัญชีตัวอย่าง</p>
-            <div className="space-y-2">
-              {TEST_ACCOUNTS.map((account) => (
-                <div key={account.driverCode} className="rounded-md border bg-background/80 p-2">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="font-medium text-foreground">
-                        {account.label} · {account.name}
+          {import.meta.env.DEV && (
+            <div className="space-y-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
+              <p className="font-medium text-warning-foreground">โหมดทดสอบ — เลือกบัญชีตัวอย่าง</p>
+              <div className="space-y-2">
+                {TEST_ACCOUNTS.map((account) => (
+                  <div key={account.driverCode} className="rounded-md border bg-background/80 p-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="font-medium text-foreground">
+                          {account.label} · {account.name}
+                        </p>
+                        <p className="font-mono text-xs text-muted-foreground">
+                          {account.driverCode}
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => {
+                          setPhone(account.phone);
+                          setPin(account.pin);
+                        }}
+                      >
+                        กรอกอัตโนมัติ
+                      </Button>
+                    </div>
+                    <div className="mt-2 grid gap-1 text-muted-foreground">
+                      <p>
+                        เบอร์โทร:{' '}
+                        <span className="font-mono font-semibold text-foreground">
+                          {account.phone}
+                        </span>
                       </p>
-                      <p className="font-mono text-xs text-muted-foreground">
-                        {account.driverCode}
+                      <p>
+                        PIN:{' '}
+                        <span className="font-mono font-semibold text-foreground">
+                          {account.pin}
+                        </span>
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={() => {
-                        setPhone(account.phone);
-                        setPin(account.pin);
-                      }}
-                    >
-                      กรอกอัตโนมัติ
-                    </Button>
                   </div>
-                  <div className="mt-2 grid gap-1 text-muted-foreground">
-                    <p>
-                      เบอร์โทร:{' '}
-                      <span className="font-mono font-semibold text-foreground">
-                        {account.phone}
-                      </span>
-                    </p>
-                    <p>
-                      PIN:{' '}
-                      <span className="font-mono font-semibold text-foreground">{account.pin}</span>
-                    </p>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <Input
             inputMode="tel"
             autoComplete="tel"
