@@ -8,6 +8,7 @@ import {
 import { paymentLabel, type Order } from '@/data/mock';
 import {
   Banknote,
+  CalendarClock,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
@@ -72,9 +73,8 @@ export function JobCard({
   return (
     <div
       className={cn(
-        'rounded-xl border bg-card p-4',
-        timing && !isOverdue && 'border-warning/50 border-l-4 border-l-warning',
-        isOverdue && 'border-warning/50 border-l-4 border-l-warning',
+        'rounded-2xl border border-border/60 bg-card p-4 shadow-sm',
+        (timing || isOverdue) && 'border-warning/25',
       )}
     >
       <div className="flex items-center justify-between gap-2">
@@ -83,22 +83,22 @@ export function JobCard({
           <Package className="h-3 w-3" /> พัสดุ
         </Badge>
       </div>
-      {(isUrgent || isOverdue || timing) && (
+      {(isOverdue || timing) && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {isUrgent && order.status === 'assigned' && (
-            <Badge variant="info">ส่งทันที · กรุณารับภายใน 5 นาที</Badge>
-          )}
           {isOverdue && (
             <Badge
               variant="outline"
-              className="border-destructive/30 bg-destructive/10 text-destructive"
+              className="gap-1 border-transparent bg-destructive/10 text-destructive"
             >
               <Clock3 className="h-3 w-3" />
               {formatMessengerDueLabel(overdueMinutes)}
             </Badge>
           )}
           {timing && (
-            <Badge variant="outline" className="border-warning/30 bg-warning/10 text-warning">
+            <Badge
+              variant="outline"
+              className="gap-1 border-transparent bg-warning/10 text-warning"
+            >
               <Clock3 className="h-3 w-3" />
               {timing.phase === 'upcoming'
                 ? `อีก ${timing.minutes} นาทีถึงเวลานัดส่ง`
@@ -109,19 +109,15 @@ export function JobCard({
       )}
       <div className="mt-1 text-sm font-semibold">{order.customer.name}</div>
 
-      {order.deliveryRoute && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-            {order.deliveryRoute.code} · จุดที่ {order.deliveryRoute.sequence}
-          </Badge>
-          {order.deliveryPlan?.plannedDate && (
-            <span className="inline-flex h-5 items-center px-1 text-[10px] font-medium text-muted-foreground">
-              {formatPlanningDate(order.deliveryPlan.plannedDate)} ·{' '}
-              {order.deliveryPlan.plannedTime
-                ? `${order.deliveryPlan.plannedTime} น.`
-                : 'ไม่ระบุเวลา'}
-            </span>
-          )}
+      {order.deliveryPlan?.plannedDate && (
+        <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <CalendarClock className="h-3.5 w-3.5" />
+          <span>
+            นัดส่ง {formatPlanningDate(order.deliveryPlan.plannedDate)} ·{' '}
+            {order.deliveryPlan.plannedTime
+              ? `${order.deliveryPlan.plannedTime} น.`
+              : 'ไม่ระบุเวลา'}
+          </span>
         </div>
       )}
 
@@ -154,14 +150,14 @@ export function JobCard({
           <span>{order.customer.address}</span>
         </div>
         {order.note && (
-          <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-warning">
+          <div className="rounded-xl border border-warning/15 bg-warning/5 px-3 py-2">
             <div className="flex items-start gap-1.5">
-              <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
               <div>
-                <div className="text-[10px] font-medium uppercase tracking-normal opacity-80">
+                <div className="text-[10px] font-medium uppercase tracking-normal text-warning/90">
                   หมายเหตุ
                 </div>
-                <div className="mt-0.5 whitespace-pre-wrap text-[12px] leading-relaxed">
+                <div className="mt-0.5 whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/80">
                   {order.note}
                 </div>
               </div>
@@ -213,7 +209,7 @@ export function JobCard({
       </div>
 
       {order.status === 'pending_confirmation' && order.proofOfDelivery && (
-        <div className="mt-3 rounded-lg border border-warning/25 bg-warning/5 p-3">
+        <div className="mt-3 rounded-xl border border-border/60 bg-muted/30 p-3">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold">หลักฐานที่ส่งล่าสุด</div>
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -262,10 +258,8 @@ export function JobCard({
           </div>
           <div
             className={cn(
-              'mt-2 rounded-md border px-2 py-1.5 text-[10px] font-medium',
-              canMessengerEditProof
-                ? 'border-info/30 bg-info/10 text-info'
-                : 'border-destructive/30 bg-destructive/10 text-destructive',
+              'mt-2 rounded-md px-2 py-1.5 text-[10px] font-medium',
+              canMessengerEditProof ? 'bg-info/10 text-info' : 'bg-destructive/10 text-destructive',
             )}
           >
             แก้ไข: {messengerRevisionCount}/{messengerRevisionLimit}
@@ -273,9 +267,15 @@ export function JobCard({
         </div>
       )}
 
-      <div className="mt-3 flex items-center justify-end border-t pt-3">
+      <div className="mt-3 flex items-center justify-end border-t border-border/50 pt-3">
         {order.status === 'assigned' && (
-          <Button size="sm" variant="default" onClick={onStart} disabled={isFutureJob || starting}>
+          <Button
+            size="sm"
+            variant="default"
+            className="rounded-full px-4"
+            onClick={onStart}
+            disabled={isFutureJob || starting}
+          >
             <Navigation className="h-4 w-4" />
             {isFutureJob
               ? 'ยังไม่ถึงวันส่ง'
@@ -289,7 +289,7 @@ export function JobCard({
           </Button>
         )}
         {order.status === 'in_transit' && (
-          <Button size="sm" onClick={onClose}>
+          <Button size="sm" className="rounded-full px-4" onClick={onClose}>
             <CheckCircle2 className="h-4 w-4" />
             ปิดงาน
           </Button>
@@ -302,7 +302,7 @@ export function JobCard({
             </Badge>
             <div className="flex items-center gap-1.5">
               {onViewMap && (
-                <Button size="sm" variant="outline" onClick={onViewMap}>
+                <Button size="sm" variant="outline" className="rounded-full" onClick={onViewMap}>
                   <MapIcon className="h-3.5 w-3.5" />
                   แผนที่
                 </Button>
@@ -310,6 +310,7 @@ export function JobCard({
               <Button
                 size="sm"
                 variant="outline"
+                className="rounded-full"
                 disabled={!canMessengerEditProof}
                 title={
                   canMessengerEditProof ? undefined : 'messenger แก้ไขหลักฐานได้ครบ 1 ครั้งแล้ว'

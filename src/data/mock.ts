@@ -23,6 +23,8 @@ export const drivers: Driver[] = [
     phone: '089-111-2233',
     avatarKey: 'sky',
     vehicle: 'van',
+    vehicleColor: 'ส้ม',
+    licensePlate: 'กข-123124',
     zone: 'สีลม - สาทร',
     status: 'on_delivery',
     activeOrders: 3,

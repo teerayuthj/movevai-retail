@@ -56,26 +56,47 @@ function readLocalEnv() {
   ) as Record<string, string>;
 }
 
-// dev-only: surface "ลูกค้า" มี entry แยก (customer.html) แต่ใช้ path เดิม /track, /customer-track
-// rewrite request เหล่านี้ให้ vite เสิร์ฟ customer.html แทน index.html (admin)
-// production: ต้องตั้ง rewrite เดียวกันที่ hosting layer (ดู README/ความเห็นใน final response)
-function customerEntryRouting() {
-  const customerPathPrefixes = ['/track', '/customer-track'];
+// dev-only: surface "ลูกค้า" (customer.html) และ "messenger" (messenger.html) มี entry แยก
+// แต่ใช้ path เดิม (/track*, /messenger*) — rewrite ให้ vite เสิร์ฟ entry ที่ถูกต้องแทน index.html (admin)
+// production: ต้องตั้ง rewrite เดียวกันที่ hosting layer:
+//   /track* + /customer-track* → /customer.html, /messenger* → /messenger.html, ที่เหลือ → /index.html
+function surfaceEntryRouting() {
+  const entryByPrefix: Array<{ prefixes: string[]; entry: string }> = [
+    { prefixes: ['/track', '/customer-track'], entry: '/customer.html' },
+    { prefixes: ['/messenger'], entry: '/messenger.html' },
+  ];
 
-  const isCustomerPath = (pathname: string) =>
-    customerPathPrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  const matchEntry = (pathname: string) =>
+    entryByPrefix.find(({ prefixes }) =>
+      prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)),
+    )?.entry;
 
   return {
-    name: 'customer-entry-routing',
+    name: 'surface-entry-routing',
     apply: 'serve' as const,
     configureServer(server: import('vite').ViteDevServer) {
       server.middlewares.use((req, _res, next) => {
         const pathname = (req.url ?? '').split('?')[0];
-        if (isCustomerPath(pathname)) {
-          req.url = '/customer.html';
+        const entry = matchEntry(pathname);
+        if (entry) {
+          req.url = entry;
         }
         next();
       });
+    },
+  };
+}
+
+// capacitor-only: native app ต้อง boot เข้า messenger surface (ไม่ใช่ admin)
+// Capacitor WebView เปิด index.html เสมอ → หลัง build เสร็จ copy messenger.html ทับ index.html
+// (asset path เป็น absolute /assets/... จึง copy ได้ตรงๆ)
+function nativeEntryAlias() {
+  return {
+    name: 'native-entry-alias',
+    apply: 'build' as const,
+    closeBundle() {
+      const distDir = path.resolve(__dirname, 'dist');
+      fs.copyFileSync(path.resolve(distDir, 'messenger.html'), path.resolve(distDir, 'index.html'));
     },
   };
 }
@@ -168,20 +189,30 @@ function devPushSubscriptionSink() {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
-      input: {
-        // admin + messenger ยังแชร์ entry เดียว (index.html) — แยก messenger ภายหลัง
-        main: path.resolve(__dirname, 'index.html'),
-        // surface "ลูกค้า" เป็น entry/bundle แยก → ลูกค้าไม่ต้องโหลด JS ของ admin
-        customer: path.resolve(__dirname, 'customer.html'),
-      },
+      input:
+        mode === 'capacitor'
+          ? {
+              // native bundle มีเฉพาะ messenger surface — ไม่แบก admin code
+              // (customer tracking เข้าถึงได้ผ่าน lazy chunk ใน messenger entry)
+              messenger: path.resolve(__dirname, 'messenger.html'),
+            }
+          : {
+              // admin (web-only)
+              main: path.resolve(__dirname, 'index.html'),
+              // surface "ลูกค้า" เป็น entry/bundle แยก → ลูกค้าไม่ต้องโหลด JS ของ admin
+              customer: path.resolve(__dirname, 'customer.html'),
+              // surface "messenger" — mobile app จริง; บน web ใช้ทดสอบผ่าน /messenger*
+              messenger: path.resolve(__dirname, 'messenger.html'),
+            },
     },
   },
   plugins: [
     react(),
-    customerEntryRouting(),
+    surfaceEntryRouting(),
+    ...(mode === 'capacitor' ? [nativeEntryAlias()] : []),
     devPushSubscriptionSink(),
     // PWA: ทำให้ "เปิดแอป Messenger" ติดตั้งลงหน้าจอมือถือได้ + offline app-shell
     // (ระยะ 2 ส่วนที่ไม่ต้องมี backend — ดู CLAUDE.md / messenger architecture)
@@ -241,4 +272,4 @@ export default defineConfig({
       },
     },
   },
-});
+}));

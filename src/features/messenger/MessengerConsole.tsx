@@ -87,8 +87,9 @@ function InTransitJobSheet({
   const countdown = getMessengerAppointmentCountdown(order, nowMs);
 
   return (
-    <div className="absolute inset-x-0 bottom-0 z-[1100] px-3 pb-3">
-      <div className="overflow-hidden rounded-t-xl border bg-background/98 shadow-[0_-10px_28px_rgba(15,23,42,0.16)] backdrop-blur">
+    // ยก sheet ให้พ้น floating tab bar (ความสูง dock + pb-safe ของ dock + ช่องว่าง)
+    <div className="absolute inset-x-0 bottom-0 z-[1100] px-3 pb-[calc(max(env(safe-area-inset-bottom),0.75rem)+4.5rem)]">
+      <div className="overflow-hidden rounded-2xl border bg-background/98 shadow-[0_-10px_28px_rgba(15,23,42,0.16)] backdrop-blur">
         <button
           type="button"
           className="w-full border-b px-4 pb-3 pt-2 text-left"
@@ -126,19 +127,14 @@ function InTransitJobSheet({
                   </Badge>
                 )}
               </div>
-              {order.deliveryRoute && (
+              {order.deliveryPlan?.plannedDate && (
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                    {order.deliveryRoute.code} · จุดที่ {order.deliveryRoute.sequence}
+                  <Badge variant="success" className="h-6 px-2 text-xs">
+                    นัดส่ง {formatPlanningDate(order.deliveryPlan.plannedDate)}
+                    {order.deliveryPlan.plannedTime
+                      ? ` · ${order.deliveryPlan.plannedTime} น.`
+                      : ''}
                   </Badge>
-                  {order.deliveryPlan?.plannedDate && (
-                    <Badge variant="success" className="h-5 px-1.5 text-[10px]">
-                      {formatPlanningDate(order.deliveryPlan.plannedDate)}
-                      {order.deliveryPlan.plannedTime
-                        ? ` · ${order.deliveryPlan.plannedTime} น.`
-                        : ''}
-                    </Badge>
-                  )}
                 </div>
               )}
               {(startedAtLabel || countdown) && (
@@ -684,32 +680,34 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
         {/* toggle รายการ/แผนที่ — เฉพาะ tab งานใหม่ ที่ messenger ดูเส้นทางก่อนออกงาน */}
         {activeTab === 'assigned' && tabJobs.length > 0 && (
-          <div className="flex gap-1.5 border-b bg-background p-2">
-            {(
-              [
-                { key: 'list', label: 'รายการ', icon: List },
-                { key: 'map', label: 'แผนที่', icon: MapIcon },
-              ] as const
-            ).map(({ key, label, icon: Icon }) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setAssignedView(key);
-                  // กดดู "แผนที่" จากแท็บ = เริ่มจากภาพรวมทั้ง Route เสมอ (ล้างโฟกัสจุดเดียว)
-                  if (key === 'map') setMapFocusOrderId(null);
-                }}
-                className={cn(
-                  'flex flex-1 items-center justify-center gap-1.5 rounded-md py-1.5 text-xs font-medium transition-colors',
-                  assignedView === key
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/50',
-                )}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </button>
-            ))}
+          <div className="border-b border-border/50 bg-background p-2">
+            <div className="flex gap-1 rounded-full bg-muted/60 p-1">
+              {(
+                [
+                  { key: 'list', label: 'รายการ', icon: List },
+                  { key: 'map', label: 'แผนที่', icon: MapIcon },
+                ] as const
+              ).map(({ key, label, icon: Icon }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setAssignedView(key);
+                    // กดดู "แผนที่" จากแท็บ = เริ่มจากภาพรวมทั้ง Route เสมอ (ล้างโฟกัสจุดเดียว)
+                    if (key === 'map') setMapFocusOrderId(null);
+                  }}
+                  className={cn(
+                    'flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-xs font-medium transition-all',
+                    assignedView === key
+                      ? 'bg-background text-foreground shadow-sm'
+                      : 'text-muted-foreground',
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -801,8 +799,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             )}
           </div>
         ) : (
-          /* job list */
-          <div className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3">
+          /* job list — padding ล่างเผื่อ floating tab bar ให้การ์ดสุดท้ายเลื่อนพ้น dock */
+          <div className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3 pb-[calc(max(env(safe-area-inset-bottom),0.75rem)+5.5rem)]">
             {jobsLoading && myJobs.length === 0 && (
               <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -810,7 +808,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               </div>
             )}
             {jobsError && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+              <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
                 <div className="flex items-start gap-2">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>โหลดข้อมูลงานไม่ได้ — {jobsError}</span>
@@ -828,7 +826,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               </div>
             )}
             {activeTab === 'assigned' && overdueCount > 0 && (
-              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm font-medium text-warning">
+              <div className="rounded-xl border border-warning/20 bg-warning/5 p-3 text-sm font-medium text-warning">
                 <div className="flex items-center gap-2">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   มี {overdueCount} งานถึงเวลารับแล้ว
@@ -836,7 +834,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               </div>
             )}
             {activeTab === 'in_transit' && counts.assigned > 0 && (
-              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3">
+              <div className="rounded-xl border border-warning/20 bg-warning/5 p-3">
                 <div className="flex items-center gap-2 text-sm font-medium text-warning">
                   <ClipboardList className="h-4 w-4" />
                   มีงานใหม่รอรับ {counts.assigned} งาน
@@ -844,7 +842,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="mt-2 w-full border-warning/30 bg-white text-warning hover:bg-warning/15"
+                  className="mt-2 w-full rounded-full border-warning/25 bg-background text-warning hover:bg-warning/10"
                   onClick={() => setTab('assigned')}
                 >
                   ไปกดรับงาน

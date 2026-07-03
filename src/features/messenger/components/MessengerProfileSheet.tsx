@@ -15,7 +15,6 @@ import {
   LogOut,
   Pencil,
   Phone,
-  ShieldCheck,
   Truck,
 } from 'lucide-react';
 import { isNativeApp } from '@/lib/platform';
@@ -213,7 +212,6 @@ function ProfileEditForm({
 export function MessengerProfileSheet({
   messenger,
   effectiveStatus,
-  activeOrders,
   install,
   onClose,
   onUpdated,
@@ -230,7 +228,6 @@ export function MessengerProfileSheet({
 }) {
   const [editing, setEditing] = useState(false);
   const status = effectiveStatus ?? messenger.status;
-  const displayedActiveOrders = activeOrders ?? messenger.activeOrders;
   const fullAddress = composeThaiAddress(
     messenger.addressLine ?? '',
     driverAddressValue(messenger),
@@ -296,14 +293,6 @@ export function MessengerProfileSheet({
                   <span className="font-mono tabular-nums">
                     {maskIdCard(messenger.idCardNumber)}
                   </span>
-                </InfoRow>
-              )}
-              <InfoRow icon={<Truck className="h-3.5 w-3.5" />} label="งานวันนี้">
-                <span className="tabular-nums">{displayedActiveOrders}</span>
-              </InfoRow>
-              {messenger.highValueCertified && (
-                <InfoRow icon={<ShieldCheck className="h-3.5 w-3.5" />} label="อบรมขนส่งของมีค่า">
-                  <span className="text-success">ผ่านแล้ว</span>
                 </InfoRow>
               )}
             </div>

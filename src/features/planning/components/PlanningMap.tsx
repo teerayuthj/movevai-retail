@@ -85,7 +85,6 @@ export function PlanningMap({
   emptyLabel = 'เลือก order เพื่อดูปลายทางบนแผนที่',
   selectedLabel = '✓ เลือกอยู่ — แตะเพื่อนำออก',
   unselectedLabel = 'แตะเพื่อเลือกเข้ากลุ่ม',
-  lockedLabel,
   routePreviewTitle = 'พรีวิวเส้นทาง (ก่อน Publish)',
 }: {
   orders: Order[];
@@ -95,7 +94,6 @@ export function PlanningMap({
   emptyLabel?: string;
   selectedLabel?: string;
   unselectedLabel?: string;
-  lockedLabel?: string;
   routePreviewTitle?: string;
 }) {
   const geo = useOrdersGeo(orders);
@@ -195,13 +193,13 @@ export function PlanningMap({
                         : ''}
                     </div>
                   )}
-                  <div className={selected ? 'font-medium text-primary' : 'font-medium text-info'}>
-                    {lockedRoute
-                      ? (lockedLabel ?? `จุดที่ ${stop.label} ใน Route`)
-                      : selected
-                        ? selectedLabel
-                        : unselectedLabel}
-                  </div>
+                  {!lockedRoute && (
+                    <div
+                      className={selected ? 'font-medium text-primary' : 'font-medium text-info'}
+                    >
+                      {selected ? selectedLabel : unselectedLabel}
+                    </div>
+                  )}
                 </div>
               </Popup>
             </Marker>

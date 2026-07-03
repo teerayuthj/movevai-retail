@@ -11,6 +11,20 @@ Retail delivery dashboard (React 18 + Vite + TS + Tailwind + shadcn-style UI). B
 - **Date**: date-fns, react-day-picker
 - **Lint/Format**: ESLint flat config + Prettier + Husky + lint-staged
 
+## Surfaces — ใครใช้ entry ไหน (สำคัญต่อ handoff policy)
+
+Repo เดียว แต่แยกเป็น 3 surface ผ่าน multi-entry (`vite.config.ts` → `build.rollupOptions.input`):
+
+| Surface       | Entry                                       | ใช้ที่ไหน                                                                                                                                                         |
+| ------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **admin**     | `index.html` → `src/main.tsx` → `App.tsx`   | **web-only** — ทุกหน้าใน sidebar (overview, order-inbox, driver-queue, planning, tracking, drivers, …)                                                            |
+| **messenger** | `messenger.html` → `src/main-messenger.tsx` | **mobile app จริง** — Capacitor native bundle boot entry นี้ (mode capacitor build เฉพาะ entry นี้แล้ว copy ทับ `dist/index.html`); บน web เข้าผ่าน `/messenger*` |
+| **customer**  | `customer.html` → `src/main-customer.tsx`   | web ผ่าน `/track*`, `/customer-track*`; ใน native เข้าถึงได้ผ่าน lazy chunk ใน messenger entry (deep link `/track/...`)                                           |
+
+- dev: middleware `surfaceEntryRouting()` ใน `vite.config.ts` rewrite `/track*`→customer.html, `/messenger*`→messenger.html ให้อัตโนมัติ
+- **prod hosting ต้องตั้ง rewrite เอง**: `/track*` + `/customer-track*` → `/customer.html`, `/messenger*` → `/messenger.html`, ที่เหลือ → `/index.html`
+- service worker / PWA manifest / native shell / push ผูกกับ messenger entry เท่านั้น — ห้ามลากกลับเข้า `src/main.tsx` (admin)
+
 ## Layout — เวลา implement หาที่นี่
 
 ```
@@ -102,12 +116,12 @@ npm run format       # prettier
 
 ให้ทำตามนี้ทุกครั้งก่อนส่งงานให้ผู้ใช้ test:
 
-1. ถ้าแก้โค้ดที่กระทบ native app, Capacitor, messenger mobile flow, camera/photo upload, GPS, push, API base, หรือไฟล์ใน `ios/`/`android/` ให้รัน native ready command ให้ครบ
-2. สำหรับ iOS/Xcode: รัน `npm run agent:ready:ios`
-3. สำหรับ Android: รัน `npm run agent:ready:android`
-4. ถ้ากระทบทั้งสอง platform หรือไม่แน่ใจ: รัน `npm run agent:ready:native`
-5. ถ้าเป็น web-only ที่ไม่ต้อง sync native อย่างน้อยต้องรัน `npm run typecheck` และ `npm run build`
-6. Final response ต้องบอกชัดว่า command ไหนผ่านแล้ว และบอกผู้ใช้ว่าเปิด simulator แล้วกด rebuild/run ได้เลย
+1. **แก้เฉพาะหน้า admin (surface web-only) = ไม่ต้อง sync native** — รันแค่ `npm run typecheck` + `npm run build` (ดูตาราง Surfaces ข้างบน; admin ไม่อยู่ใน native bundle แล้ว)
+2. รัน native ready command เฉพาะเมื่อแก้: messenger surface (`src/main-messenger.tsx`, `src/features/messenger/`, `messenger.html`), customer tracking ที่ต้อง test ใน native, Capacitor config, camera/photo upload, GPS, push, API base, service worker, หรือไฟล์ใน `ios/`/`android/`
+3. สำหรับ iOS/Xcode: รัน `npm run agent:ready:ios`
+4. สำหรับ Android: รัน `npm run agent:ready:android`
+5. ถ้ากระทบทั้งสอง platform หรือไม่แน่ใจว่า platform ไหน: รัน `npm run agent:ready:native`
+6. Final response ต้องบอกชัดว่า command ไหนผ่านแล้ว และบอกผู้ใช้ว่าเปิด simulator แล้วกด rebuild/run ได้เลย (กรณี native) หรือบอกว่าเป็น web-only handoff
 7. ห้ามจบงานด้วยการบอกให้ผู้ใช้ไปรัน `npm run build` / `npx cap sync ...` เอง ยกเว้น command ล้มเหลวจาก external blocker ที่ agent แก้ไม่ได้
 
 ## Conventions
