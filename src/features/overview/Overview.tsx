@@ -1,14 +1,17 @@
 import { Clock, Coins, Package, Truck } from 'lucide-react';
+import { format, isSameDay } from 'date-fns';
+import { th } from 'date-fns/locale';
 import { formatTHB } from '@/data/mock';
 import { useRetailStore } from '@/state/retailStore';
 import { StatCard } from './components/StatCard';
-import { OverviewCharts } from './components/OverviewCharts';
 import { ActiveDriversCard } from './components/ActiveDriversCard';
 import { InTransitCard } from './components/InTransitCard';
 
 export function OverviewPage() {
   const { orders, drivers } = useRetailStore();
+  const today = new Date();
   const activeDrivers = drivers.filter((d) => d.status !== 'off_duty').length;
+  const ordersToday = orders.filter((o) => isSameDay(new Date(o.receivedAt), today)).length;
   const inTransit = orders.filter((o) => o.status === 'in_transit').length;
   const deliveredToday = orders.filter((o) => o.status === 'delivered').length;
   const pending = orders.filter((o) =>
@@ -22,7 +25,8 @@ export function OverviewPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">ภาพรวมการจัดส่ง — Ausiris</h1>
           <p className="text-sm text-muted-foreground">
-            ทองคำแท่ง · ทองรูปพรรณ · เงินแท่ง · อัพเดต 2 นาทีที่แล้ว · ศุกร์ที่ 24 เมษายน 2026
+            ทองคำแท่ง · ทองรูปพรรณ · เงินแท่ง ·{' '}
+            {format(today, 'EEEEที่ d MMMM yyyy', { locale: th })}
           </p>
         </div>
       </div>
@@ -30,39 +34,24 @@ export function OverviewPage() {
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Orders วันนี้"
-          value="72"
-          delta="+18%"
-          trend="up"
-          hint="เทียบเมื่อวาน"
+          value={String(ordersToday)}
+          hint="รับเข้าวันนี้"
           icon={Package}
         />
-        <StatCard
-          title="รอจัดคิว"
-          value={String(pending)}
-          delta="-3"
-          trend="down"
-          hint="ลดจากเช้านี้"
-          icon={Clock}
-        />
+        <StatCard title="รอจัดคิว" value={String(pending)} hint="ยังไม่ได้จ่ายงาน" icon={Clock} />
         <StatCard
           title="กำลังจัดส่ง"
           value={String(inTransit)}
-          delta={`${activeDrivers} คนขับ`}
-          trend="up"
-          hint="ออนไลน์"
+          hint={`${activeDrivers} คนขับออนไลน์`}
           icon={Truck}
         />
         <StatCard
-          title="มูลค่าวันนี้"
+          title="มูลค่ารวม"
           value={formatTHB(totalValueToday)}
-          delta={`${deliveredToday} ส่งแล้ว`}
-          trend="up"
-          hint={`อัตราสำเร็จ 96%`}
+          hint={`${deliveredToday} ส่งแล้ว`}
           icon={Coins}
         />
       </div>
-
-      <OverviewCharts />
 
       <div className="grid gap-4 lg:grid-cols-3">
         <ActiveDriversCard drivers={drivers} />

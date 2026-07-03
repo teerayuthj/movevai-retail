@@ -1,17 +1,16 @@
 import type { ComponentType } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingDown, TrendingUp } from 'lucide-react';
 
 type StatCardProps = {
   title: string;
   value: string;
-  delta: string;
-  trend: 'up' | 'down';
   icon: ComponentType<{ className?: string }>;
-  hint: string;
+  // คำอธิบายสั้น ๆ ที่คำนวณจากข้อมูลจริงเท่านั้น (เช่น "3 ส่งแล้ว")
+  // ไม่มี trend %/ลูกศร เพราะยังไม่มี baseline ย้อนหลังจาก backend
+  hint?: string;
 };
 
-export function StatCard({ title, value, delta, trend, icon: Icon, hint }: StatCardProps) {
+export function StatCard({ title, value, icon: Icon, hint }: StatCardProps) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -22,23 +21,7 @@ export function StatCard({ title, value, delta, trend, icon: Icon, hint }: StatC
       </CardHeader>
       <CardContent>
         <div className="text-3xl font-semibold tracking-tight">{value}</div>
-        <div className="mt-1 flex items-center gap-1 text-xs">
-          <span
-            className={
-              trend === 'up'
-                ? 'inline-flex items-center gap-0.5 text-success'
-                : 'inline-flex items-center gap-0.5 text-destructive'
-            }
-          >
-            {trend === 'up' ? (
-              <TrendingUp className="h-3 w-3" />
-            ) : (
-              <TrendingDown className="h-3 w-3" />
-            )}
-            {delta}
-          </span>
-          <span className="text-muted-foreground">{hint}</span>
-        </div>
+        {hint ? <div className="mt-1 text-xs text-muted-foreground">{hint}</div> : null}
       </CardContent>
     </Card>
   );
