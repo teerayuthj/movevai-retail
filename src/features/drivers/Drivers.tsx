@@ -35,6 +35,7 @@ import {
 import {
   BarChart3,
   Check,
+  Eye,
   FileImage,
   Loader2,
   Pencil,
@@ -137,6 +138,22 @@ function trimOptional(value: string) {
   return trimmed || undefined;
 }
 
+function normalizeIdCardNumber(value: string) {
+  return value.replace(/\D/g, '').slice(0, 13);
+}
+
+function formatIdCardNumber(value: string) {
+  const digits = normalizeIdCardNumber(value);
+  const parts = [
+    digits.slice(0, 1),
+    digits.slice(1, 5),
+    digits.slice(5, 10),
+    digits.slice(10, 12),
+    digits.slice(12, 13),
+  ].filter(Boolean);
+  return parts.join('-');
+}
+
 function formPayload(form: DriverFormState, status: DriverTab): DriverMutationInput {
   return {
     name: form.name.trim(),
@@ -145,7 +162,7 @@ function formPayload(form: DriverFormState, status: DriverTab): DriverMutationIn
     vehicleColor: trimOptional(form.vehicleColor),
     approvalStatus: status,
     licensePlate: trimOptional(form.licensePlate),
-    idCardNumber: trimOptional(form.idCardNumber),
+    idCardNumber: trimOptional(normalizeIdCardNumber(form.idCardNumber)),
     idCardPhotoDataUrl: trimOptional(form.idCardPhotoDataUrl),
     profilePhotoDataUrl: trimOptional(form.profilePhotoDataUrl),
     // ค่าว่าง = ตั้งใจล้างค่าใน backend
@@ -163,7 +180,7 @@ function formatKm(meters: number) {
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <label className="grid gap-1.5 text-sm">
+    <label className="grid content-start gap-1.5 text-sm">
       <span className="font-medium">{label}</span>
       {children}
     </label>
@@ -194,6 +211,11 @@ function DriverFormModal({
   async function save() {
     if (!form.name.trim() || !form.phone.trim()) {
       toast.error('กรอกชื่อและเบอร์โทรก่อนบันทึก');
+      return;
+    }
+    const idCardDigits = normalizeIdCardNumber(form.idCardNumber);
+    if (idCardDigits && idCardDigits.length !== 13) {
+      toast.error('เลขบัตรประชาชนต้องเป็นตัวเลข 13 หลัก');
       return;
     }
     setSaving(true);
@@ -313,11 +335,17 @@ function DriverFormModal({
             <Input
               inputMode="numeric"
               autoComplete="off"
-              value={form.idCardNumber}
+              maxLength={17}
+              placeholder="1-2345-67890-12-3"
+              value={formatIdCardNumber(form.idCardNumber)}
               onChange={(event) =>
-                setForm((current) => ({ ...current, idCardNumber: event.target.value }))
+                setForm((current) => ({
+                  ...current,
+                  idCardNumber: normalizeIdCardNumber(event.target.value),
+                }))
               }
             />
+            <span className="text-xs text-muted-foreground">กรอกได้เฉพาะตัวเลข 13 หลัก</span>
           </Field>
 
           <div className="space-y-3 md:col-span-2">
@@ -376,25 +404,86 @@ function ImageField({
   onFile: (file?: File) => void;
   onClear: () => void;
 }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   return (
-    <div className="space-y-2 rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{label}</span>
-        {value && (
-          <Button type="button" variant="ghost" size="sm" onClick={onClear}>
-            ล้างรูป
-          </Button>
-        )}
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border bg-muted">
-          {value ? (
-            <img src={value} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <FileImage className="h-6 w-6 text-muted-foreground" />
+    <>
+      <div className="space-y-2 rounded-lg border p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium">{label}</span>
+          {value && (
+            <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+              ล้างรูป
+            </Button>
           )}
         </div>
-        <Input type="file" accept="image/*" onChange={(event) => onFile(event.target.files?.[0])} />
+        <div className="flex items-center gap-3">
+          {value ? (
+            <button
+              type="button"
+              className="group relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setPreviewOpen(true)}
+              aria-label={`ดู${label}ขนาดใหญ่`}
+            >
+              <img src={value} alt="" className="h-full w-full object-cover" />
+              <span className="absolute inset-0 flex items-center justify-center bg-foreground/0 text-background transition group-hover:bg-foreground/45 group-focus-visible:bg-foreground/45">
+                <Eye className="h-5 w-5 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" />
+              </span>
+            </button>
+          ) : (
+            <div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted">
+              <FileImage className="h-6 w-6 text-muted-foreground" />
+            </div>
+          )}
+          <Input
+            type="file"
+            accept="image/*"
+            onChange={(event) => onFile(event.target.files?.[0])}
+          />
+        </div>
+      </div>
+      {value && previewOpen && (
+        <ImagePreviewModal title={label} src={value} onClose={() => setPreviewOpen(false)} />
+      )}
+    </>
+  );
+}
+
+function ImagePreviewModal({
+  title,
+  src,
+  onClose,
+}: {
+  title: string;
+  src: string;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground/70 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`ดู${title}ขนาดใหญ่`}
+      onPointerDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl">
+        <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{title}</div>
+          </div>
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="ปิด">
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/30 p-4">
+          <img
+            src={src}
+            alt={title}
+            className="max-h-[78vh] max-w-full rounded-md object-contain"
+          />
+        </div>
       </div>
     </div>
   );
@@ -795,7 +884,9 @@ function DriverActions({
             <div className="grid gap-1 text-muted-foreground">
               <div>
                 เลขบัตร:{' '}
-                <span className="font-mono text-foreground">{driver.idCardNumber || '—'}</span>
+                <span className="font-mono text-foreground">
+                  {driver.idCardNumber ? formatIdCardNumber(driver.idCardNumber) : '—'}
+                </span>
               </div>
               {driver.rejectedReason && (
                 <div className="text-destructive">เหตุผล: {driver.rejectedReason}</div>
@@ -853,16 +944,33 @@ function DriverActions({
 }
 
 function ReviewImage({ label, src }: { label: string; src?: string }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+
   return (
-    <div className="space-y-1">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md border bg-background">
+    <>
+      <div className="space-y-1">
+        <div className="text-[11px] text-muted-foreground">{label}</div>
         {src ? (
-          <img src={src} alt="" className="h-full w-full object-cover" />
+          <button
+            type="button"
+            className="group relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-md border bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={() => setPreviewOpen(true)}
+            aria-label={`ดู${label}ขนาดใหญ่`}
+          >
+            <img src={src} alt="" className="h-full w-full object-cover" />
+            <span className="absolute inset-0 flex items-center justify-center bg-foreground/0 text-background transition group-hover:bg-foreground/45 group-focus-visible:bg-foreground/45">
+              <Eye className="h-5 w-5 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" />
+            </span>
+          </button>
         ) : (
-          <FileImage className="h-5 w-5 text-muted-foreground" />
+          <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md border bg-background">
+            <FileImage className="h-5 w-5 text-muted-foreground" />
+          </div>
         )}
       </div>
-    </div>
+      {src && previewOpen && (
+        <ImagePreviewModal title={label} src={src} onClose={() => setPreviewOpen(false)} />
+      )}
+    </>
   );
 }
