@@ -404,6 +404,11 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
   const refreshJobs = useCallback(
     async (background = false) => {
+      // ยังไม่ได้ login (ไม่มี code จริง) — ไม่ต้องยิง fetch
+      if (!messengerCode) {
+        setJobsLoading(false);
+        return;
+      }
       if (!background) setJobsLoading(true);
       try {
         await refreshMessengerJobs(messengerCode);
@@ -915,7 +920,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             activeOrders={openCustomerJobCount}
             install={install}
             onClose={() => setProfileOpen(false)}
-            onUpdated={() => refreshMessengerJobs(messengerCode)}
+            onUpdated={() => {
+              if (messengerCode) void refreshMessengerJobs(messengerCode);
+            }}
             onExit={() => {
               void logoutMessenger().finally(() => {
                 setAuthenticated(false);

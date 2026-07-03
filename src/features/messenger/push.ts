@@ -15,8 +15,9 @@ export const MESSENGER_API_BASE_URL = normalizeMessengerApiBase(
   import.meta.env.VITE_MESSENGER_API_BASE_URL as string | undefined,
 );
 export const MESSENGER_TOKEN_STORAGE_KEY = 'movevai:messenger-token';
-export const DEFAULT_MESSENGER_CODE =
-  (import.meta.env.VITE_MESSENGER_CODE as string | undefined) ?? 'D-02';
+// ไม่มี default identity แล้ว — code จริงมาจากการ login (persist ที่ storeMessengerSession)
+// VITE_MESSENGER_CODE ใช้เฉพาะ dev/legacy query override เท่านั้น
+export const DEFAULT_MESSENGER_CODE = import.meta.env.VITE_MESSENGER_CODE as string | undefined;
 
 type BadgeNavigator = Navigator & {
   clearAppBadge?: () => Promise<void>;
