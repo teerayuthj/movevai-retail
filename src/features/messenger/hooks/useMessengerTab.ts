@@ -7,10 +7,16 @@ import {
   type MessengerTab,
 } from '../messengerTabs';
 
+const MESSENGER_NAVIGATION_EVENT = 'movevai:messenger-navigation';
+
 type NavigateOptions = {
   /** ใช้ replaceState แทน pushState — สำหรับ auto-select/redirect ที่ไม่ควรค้างใน history */
   replace?: boolean;
 };
+
+function emitMessengerNavigation() {
+  window.dispatchEvent(new CustomEvent(MESSENGER_NAVIGATION_EVENT));
+}
 
 /**
  * ผูก active tab กับ URL pathname (/messenger/<segment>).
@@ -25,9 +31,13 @@ export function useMessengerTab() {
   const [pathname, setPathname] = useState(() => window.location.pathname);
 
   useEffect(() => {
-    const onPopState = () => setPathname(window.location.pathname);
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
+    const syncPathname = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', syncPathname);
+    window.addEventListener(MESSENGER_NAVIGATION_EVENT, syncPathname);
+    return () => {
+      window.removeEventListener('popstate', syncPathname);
+      window.removeEventListener(MESSENGER_NAVIGATION_EVENT, syncPathname);
+    };
   }, []);
 
   const activeTab = getMessengerTabFromPath(pathname);
@@ -35,7 +45,10 @@ export function useMessengerTab() {
 
   const setTab = useCallback((tab: MessengerTab, options?: NavigateOptions) => {
     const nextPath = getMessengerTabPath(tab);
-    if (window.location.pathname === nextPath) return;
+    if (window.location.pathname === nextPath) {
+      setPathname(nextPath);
+      return;
+    }
 
     if (options?.replace) {
       window.history.replaceState(window.history.state, '', nextPath);
@@ -43,19 +56,25 @@ export function useMessengerTab() {
       window.history.pushState({ page: 'messenger' }, '', nextPath);
     }
     setPathname(nextPath);
+    emitMessengerNavigation();
   }, []);
 
   const openOrderMap = useCallback((orderId: string) => {
     const nextPath = getMessengerOrderMapPath(orderId);
-    if (window.location.pathname === nextPath) return;
+    if (window.location.pathname === nextPath) {
+      setPathname(nextPath);
+      return;
+    }
     window.history.pushState({ page: 'messenger' }, '', nextPath);
     setPathname(nextPath);
+    emitMessengerNavigation();
   }, []);
 
   const backToPending = useCallback(() => {
     const nextPath = getMessengerTabPath('pending_confirmation');
     window.history.replaceState({ page: 'messenger' }, '', nextPath);
     setPathname(nextPath);
+    emitMessengerNavigation();
   }, []);
 
   return { activeTab, mapOrderId, setTab, openOrderMap, backToPending };

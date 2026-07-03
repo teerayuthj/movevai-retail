@@ -45,6 +45,11 @@ const TEST_ACCOUNTS = [
 ] as const;
 const PENDING_REGISTRATION_KEY = 'movevai:messenger-pending-registration';
 
+// โชว์บัญชีตัวอย่าง (ปุ่มกรอกอัตโนมัติ) — เปิดใน web dev เสมอ และเปิดบน native build ได้ผ่าน
+// VITE_SHOW_TEST_LOGIN=true (.env.capacitor) เพื่อความสะดวกตอนเทสต์ โดยไม่หลุดไป release
+// จริงที่ไม่ได้ตั้ง flag นี้ (จะถูก tree-shake ออกเหมือนเดิม)
+const SHOW_TEST_LOGIN = import.meta.env.DEV || import.meta.env.VITE_SHOW_TEST_LOGIN === 'true';
+
 type LoginMode = 'login' | 'register' | 'pending';
 type RegisterStepId = 'personal' | 'vehicle' | 'photos' | 'security';
 
@@ -698,7 +703,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
             <h1 className="text-xl font-semibold">Messenger Login</h1>
             <p className="text-sm text-muted-foreground">ใช้เบอร์โทรและ PIN หรือสมัครบัญชีใหม่</p>
           </div>
-          {import.meta.env.DEV && (
+          {SHOW_TEST_LOGIN && (
             <div className="space-y-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
               <p className="font-medium text-warning-foreground">โหมดทดสอบ — เลือกบัญชีตัวอย่าง</p>
               <div className="space-y-2">

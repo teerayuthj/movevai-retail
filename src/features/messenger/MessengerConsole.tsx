@@ -262,6 +262,28 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const endingStaleSessionId = useRef<string | null>(null);
   const autoStartingTrackingRouteId = useRef<string | null>(null);
 
+  const resetSessionUi = useCallback(() => {
+    setCloseTargetId(null);
+    setTestDialogOpen(false);
+    setProfileOpen(false);
+    setAssignedView('list');
+    setDeliverySheetExpanded(false);
+    setMapFocusOrderId(null);
+    setMapGroupKey(null);
+    setJobsError(null);
+    setStartingJobId(null);
+  }, []);
+
+  const handleSelectTab = useCallback(
+    (tab: MessengerTab) => {
+      setProfileOpen(false);
+      setCloseTargetId(null);
+      setTestDialogOpen(false);
+      setTab(tab);
+    },
+    [setTab],
+  );
+
   const messenger = drivers.find((driver) => driver.id === messengerCode) ?? null;
 
   const myJobs = useMemo(
@@ -429,15 +451,14 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
   useEffect(() => {
     const onAuthExpired = () => {
+      resetSessionUi();
       setAuthenticated(false);
-      setJobsError(null);
       setJobsLoading(false);
-      setCloseTargetId(null);
-      setProfileOpen(false);
+      setTab('assigned', { replace: true });
     };
     window.addEventListener(MESSENGER_AUTH_EXPIRED_EVENT, onAuthExpired);
     return () => window.removeEventListener(MESSENGER_AUTH_EXPIRED_EVENT, onAuthExpired);
-  }, []);
+  }, [resetSessionUi, setTab]);
 
   useEffect(() => {
     // อย่ายิง fetch ก่อน login — ตอนยังไม่มี bearer token backend จะตอบ
@@ -626,7 +647,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     return (
       <MessengerLogin
         onLogin={(session: MessengerSession) => {
+          resetSessionUi();
           setMessengerCode(session.rider.code);
+          setTab('assigned', { replace: true });
           setAuthenticated(true);
         }}
       />
@@ -902,7 +925,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           </div>
         )}
 
-        <MessengerTabBar activeTab={activeTab} counts={counts} onSelect={(tab) => setTab(tab)} />
+        <MessengerTabBar activeTab={activeTab} counts={counts} onSelect={handleSelectTab} />
 
         {import.meta.env.DEV && (
           <TestRouteDialog
@@ -927,7 +950,10 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             }}
             onExit={() => {
               void logoutMessenger().finally(() => {
+                resetSessionUi();
                 setAuthenticated(false);
+                setJobsLoading(false);
+                setTab('assigned', { replace: true });
                 onExit?.();
               });
             }}
