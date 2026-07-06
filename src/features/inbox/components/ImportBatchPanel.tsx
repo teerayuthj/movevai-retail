@@ -18,6 +18,10 @@ import {
   CalendarDays,
   X,
   UserRound,
+  Eye,
+  Image as ImageIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -70,6 +74,12 @@ const BATCH_PAGE_SIZE = 20;
 const DEFAULT_DAYS = 30;
 // ค่าพิเศษใน dropdown = โหมดเลือกช่วงวันที่เอง (from–to)
 const CUSTOM_DAYS = -1;
+const SOURCE_IMAGE_DATA_URL_COLUMN = 'sourceImageDataUrl';
+const SOURCE_IMAGE_MIME_TYPE_COLUMN = 'sourceImageMimeType';
+const SOURCE_OCR_TEXT_COLUMN = 'sourceOcrText';
+const SOURCE_PARSE_WARNINGS_COLUMN = 'parseWarnings';
+const SOURCE_MISSING_FIELDS_COLUMN = 'missingFields';
+const SOURCE_EXTRACTION_CONFIDENCE_COLUMN = 'extractionConfidence';
 const DAY_WINDOW_OPTIONS: { value: number; label: string }[] = [
   { value: 30, label: '30 วันล่าสุด' },
   { value: 90, label: '90 วันล่าสุด' },
@@ -79,6 +89,7 @@ const DAY_WINDOW_OPTIONS: { value: number; label: string }[] = [
   { value: CUSTOM_DAYS, label: 'กำหนดช่วงเอง…' },
 ];
 const IMPORT_BATCH_READ_STORAGE_KEY = 'movevai:inbox-import-batch-read-v1';
+const IMPORT_LIST_COLLAPSED_STORAGE_KEY = 'movevai:inbox-import-list-collapsed-v1';
 
 function readStoredBatchIds() {
   if (typeof window === 'undefined') return new Set<string>();
@@ -96,6 +107,24 @@ function writeStoredBatchIds(ids: Set<string>) {
     window.localStorage.setItem(IMPORT_BATCH_READ_STORAGE_KEY, JSON.stringify([...ids]));
   } catch {
     // localStorage may be disabled or full; keep the in-memory read state for this session.
+  }
+}
+
+function readStoredListCollapsed() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(IMPORT_LIST_COLLAPSED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredListCollapsed(collapsed: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(IMPORT_LIST_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch {
+    // localStorage may be disabled or full; keep the in-memory collapsed state for this session.
   }
 }
 
@@ -201,12 +230,20 @@ type RowVM = {
   address: string;
   value?: number;
   item?: string;
+  imageDataUrl?: string;
+  imageMimeType?: string;
+  ocrText?: string;
+  parseWarnings?: string[];
+  missingFields?: string[];
+  extractionConfidence?: number;
+  ocrOnly?: boolean;
   errorMessage?: string | null;
   duplicateOfCode?: string | null;
 };
 
 // สรุปสินค้าให้สั้น: "ชื่อสินค้า ×2 (+1)" — โชว์ชิ้นแรก แล้วบอกจำนวนรายการที่เหลือ
 function itemSummary(order: Order | undefined, raw: Record<string, string>): string | undefined {
+  if (isOcrOnlyRaw(raw)) return undefined;
   const first = order?.items[0];
   const name = first?.name || rawField(raw, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า');
   if (!name) return undefined;
@@ -244,6 +281,66 @@ function rawField(raw: Record<string, string>, ...keys: string[]) {
   return '';
 }
 
+function sourceImageDataUrl(raw: Record<string, string>) {
+  const value = raw[SOURCE_IMAGE_DATA_URL_COLUMN]?.trim();
+  return value?.startsWith('data:image/') ? value : undefined;
+}
+
+function sourceImageMimeType(raw: Record<string, string>) {
+  return raw[SOURCE_IMAGE_MIME_TYPE_COLUMN]?.trim() || undefined;
+}
+
+function sourceOcrText(raw: Record<string, string>) {
+  return raw[SOURCE_OCR_TEXT_COLUMN]?.trim() || undefined;
+}
+
+function sourceList(raw: Record<string, string>, key: string) {
+  return (raw[key] ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function sourceConfidence(raw: Record<string, string>) {
+  const value = Number(raw[SOURCE_EXTRACTION_CONFIDENCE_COLUMN]);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : undefined;
+}
+
+function isOcrOnlyRaw(raw: Record<string, string>) {
+  const warnings = sourceList(raw, SOURCE_PARSE_WARNINGS_COLUMN).join(' ').toLowerCase();
+  const missing = new Set(sourceList(raw, SOURCE_MISSING_FIELDS_COLUMN));
+  return (
+    !!sourceOcrText(raw) &&
+    ((missing.has('customerName') &&
+      missing.has('customerPhone') &&
+      missing.has('customerAddress')) ||
+      warnings.includes('no customer') ||
+      warnings.includes('no order'))
+  );
+}
+
+function visibleRawEntries(raw: Record<string, string>) {
+  return Object.entries(raw).filter(([key, value]) => {
+    if (
+      key === SOURCE_IMAGE_DATA_URL_COLUMN ||
+      key === SOURCE_IMAGE_MIME_TYPE_COLUMN ||
+      key === SOURCE_OCR_TEXT_COLUMN ||
+      key === SOURCE_PARSE_WARNINGS_COLUMN ||
+      key === SOURCE_MISSING_FIELDS_COLUMN ||
+      key === SOURCE_EXTRACTION_CONFIDENCE_COLUMN
+    ) {
+      return false;
+    }
+    if (isOcrOnlyRaw(raw)) {
+      return (
+        value.trim() !== '' &&
+        !['qty', 'payment', 'unitPrice', 'totalValue', 'itemName', 'note'].includes(key)
+      );
+    }
+    return true;
+  });
+}
+
 function rowKindForOrder(order: Order | undefined): RowKind {
   if (!order) return 'review';
   if (order.status === 'rejected') return 'rejected';
@@ -252,6 +349,7 @@ function rowKindForOrder(order: Order | undefined): RowKind {
 }
 
 function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, Order>): RowVM {
+  const ocrOnly = isOcrOnlyRaw(row.rawData);
   if (row.status === 'ERROR' || !row.orderId) {
     return {
       rowId: row.id,
@@ -259,9 +357,20 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
       fileName,
       rawData: row.rawData,
       kind: 'error',
-      name: rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') || '(ไม่ระบุชื่อ)',
-      address: rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') || '—',
-      item: itemSummary(undefined, row.rawData),
+      name: ocrOnly
+        ? 'ข้อความ OCR จากรูป'
+        : rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') || '(ไม่ระบุชื่อ)',
+      address: ocrOnly
+        ? 'เปิดกล่อง OCR เพื่อดูข้อความที่ถอดได้'
+        : rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') || '—',
+      item: ocrOnly ? undefined : itemSummary(undefined, row.rawData),
+      imageDataUrl: sourceImageDataUrl(row.rawData),
+      imageMimeType: sourceImageMimeType(row.rawData),
+      ocrText: sourceOcrText(row.rawData),
+      parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
+      missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),
+      extractionConfidence: sourceConfidence(row.rawData),
+      ocrOnly,
       errorMessage: row.errorMessage,
     };
   }
@@ -273,22 +382,32 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
     rawData: row.rawData,
     kind: rowKindForOrder(order),
     orderId: row.orderId,
-    name:
-      order?.customer.name ||
-      rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') ||
-      '(รอโหลด)',
-    address:
-      order?.customer.address ||
-      rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') ||
-      '—',
-    value: order?.totalValue,
-    item: itemSummary(order, row.rawData),
+    name: ocrOnly
+      ? 'ข้อความ OCR จากรูป'
+      : order?.customer.name ||
+        rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') ||
+        '(รอโหลด)',
+    address: ocrOnly
+      ? 'เปิดกล่อง OCR เพื่อดูข้อความที่ถอดได้'
+      : order?.customer.address ||
+        rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') ||
+        '—',
+    value: ocrOnly ? undefined : order?.totalValue,
+    item: ocrOnly ? undefined : itemSummary(order, row.rawData),
+    imageDataUrl: sourceImageDataUrl(row.rawData),
+    imageMimeType: sourceImageMimeType(row.rawData),
+    ocrText: sourceOcrText(row.rawData),
+    parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
+    missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),
+    extractionConfidence: sourceConfidence(row.rawData),
+    ocrOnly,
     duplicateOfCode: row.duplicateOfCode,
   };
 }
 
 function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
   const item = order?.items[0];
+  const ocrOnly = row.ocrOnly || isOcrOnlyRaw(row.rawData);
   const rawTotalValue = Number(rawField(row.rawData, 'totalValue', 'total', 'ราคารวม', 'มูลค่า'));
   const rawItemQty = Number(rawField(row.rawData, 'qty', 'quantity', 'จำนวน'));
   const rawItemUnitPrice = Number(rawField(row.rawData, 'price', 'unitPrice', 'itemPrice', 'ราคา'));
@@ -303,25 +422,34 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
       .join(' '),
   );
   const requestedDelivery = order ? getRequestedDeliveryDraft(order) : rawDelivery;
+  const orderCustomerName =
+    ocrOnly && order?.customer.name === '(รอตรวจจากรูป LINE)' ? '' : order?.customer.name;
+  const orderCustomerAddress = ocrOnly ? '' : order?.customer.address;
   return {
     rawData: row.rawData,
     customerName:
-      order?.customer.name ??
+      orderCustomerName ??
       rawField(row.rawData, 'customerName', 'customer_name', 'ชื่อลูกค้า', 'ชื่อ', 'name'),
     customerPhone:
       order?.customer.phone ??
       rawField(row.rawData, 'customerPhone', 'phone', 'tel', 'เบอร์โทร', 'เบอร์'),
     customerAddress:
-      order?.customer.address ?? rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่'),
+      orderCustomerAddress ?? rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่'),
     customerIdCard:
       order?.customer.idCard ?? rawField(row.rawData, 'idCard', 'เลขบัตร', 'บัตรประชาชน'),
     totalValue: String(order?.totalValue ?? (Number.isFinite(rawTotalValue) ? rawTotalValue : 0)),
     payment: normalizePaymentMethod(order?.payment ?? rawPayment),
-    note: order?.note ?? rawField(row.rawData, 'note', 'หมายเหตุ'),
+    note:
+      ocrOnly && (order?.note === row.ocrText || rawField(row.rawData, 'note', 'หมายเหตุ'))
+        ? ''
+        : (order?.note ?? rawField(row.rawData, 'note', 'หมายเหตุ')),
     deliveryDate: requestedDelivery.date,
     deliveryTime: requestedDelivery.time,
     itemName:
-      item?.name ?? rawField(row.rawData, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า'),
+      ocrOnly && (item?.name === 'สินค้าจากรูป LINE' || !item?.name)
+        ? ''
+        : (item?.name ??
+          rawField(row.rawData, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า')),
     itemSku: item?.sku ?? rawField(row.rawData, 'sku', 'itemSku', 'รหัสสินค้า') ?? '-',
     itemPurity: item?.purity ?? rawField(row.rawData, 'purity', 'ความบริสุทธิ์') ?? '-',
     itemWeight: item?.weight ?? rawField(row.rawData, 'weight', 'น้ำหนัก') ?? '0',
@@ -332,6 +460,59 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
     itemNote: item?.note ?? '',
     addr: EMPTY_THAI_ADDRESS,
   };
+}
+
+function displayOcrText(row: RowVM) {
+  const parts = [row.ocrText?.trim()];
+  if (row.parseWarnings && row.parseWarnings.length > 0) {
+    parts.push(`ข้อสังเกต: ${row.parseWarnings.join(' · ')}`);
+  }
+  return parts.filter(Boolean).join('\n\n');
+}
+
+type OcrDisplayLine = { kind: 'heading' | 'bullet' | 'text' | 'blank'; text: string };
+
+function stripInlineMarkdown(text: string) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+// OCR จาก typhoon-ocr กลับมาเป็น markdown — แปลงเป็นบรรทัดอ่านง่ายสำหรับ user โดยไม่แตะข้อมูลดิบใน rawData
+function ocrDisplayLines(text: string): OcrDisplayLine[] {
+  const out: OcrDisplayLine[] = [];
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) {
+      out.push({ kind: 'blank', text: '' });
+      continue;
+    }
+    if (line.includes('|') && line.includes('-') && /^[|\s:-]+$/.test(line)) continue;
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    if (heading) {
+      out.push({ kind: 'heading', text: stripInlineMarkdown(heading[1]) });
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.*)$/);
+    if (bullet) {
+      out.push({ kind: 'bullet', text: stripInlineMarkdown(bullet[1]) });
+      continue;
+    }
+    if (line.includes('|')) {
+      const cells = line
+        .split('|')
+        .map((cell) => stripInlineMarkdown(cell))
+        .filter(Boolean);
+      out.push({ kind: 'text', text: cells.join('  ·  ') });
+      continue;
+    }
+    out.push({ kind: 'text', text: stripInlineMarkdown(line) });
+  }
+  return out.filter(
+    (line, index, all) => line.kind !== 'blank' || all[index - 1]?.kind !== 'blank',
+  );
 }
 
 function normalizePaymentMethod(value: unknown): Order['payment'] {
@@ -530,6 +711,11 @@ function BatchWorkspace({
   const [editDraft, setEditDraft] = useState<ImportEditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{
+    src: string;
+    fileName: string;
+    rowIndex: number;
+  } | null>(null);
 
   const targetBatchIds = useMemo(
     () => (scope === ALL_SCOPE ? batches.map((b) => b.id) : [scope]),
@@ -654,7 +840,7 @@ function BatchWorkspace({
   const approveAllInScope = () => {
     if (reviewIds.length === 0) return;
     void runAction(
-      `อนุมัติทั้งไฟล์ ${reviewIds.length} รายการ · ${shippingMethodLabel[method]}`,
+      `อนุมัติทั้งรายการ ${reviewIds.length} ออเดอร์ · ${shippingMethodLabel[method]}`,
       () => approveImportOrders(reviewIds, method),
     );
   };
@@ -784,6 +970,31 @@ function BatchWorkspace({
       };
       const beforeQty = existingOrder?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
       const afterQty = toPositiveInt(editDraft.itemQty);
+      const nextMissingFields = [
+        !editDraft.customerName.trim() && 'customerName',
+        !editDraft.customerPhone.trim() && 'customerPhone',
+        !fullAddress.trim() && 'customerAddress',
+      ].filter(Boolean) as string[];
+      const nextRawData = {
+        ...editDraft.rawData,
+        customerName: editDraft.customerName.trim(),
+        customerPhone: editDraft.customerPhone.trim(),
+        customerAddress: fullAddress.trim(),
+        itemName: editDraft.itemName.trim(),
+        sku: editDraft.itemSku.trim() || '-',
+        purity: editDraft.itemPurity.trim() || '-',
+        weight: editDraft.itemWeight.trim() || '0',
+        qty: String(afterQty),
+        unitPrice: String(toNonNegativeNumber(editDraft.itemUnitPrice)),
+        totalValue: String(toNonNegativeNumber(editDraft.totalValue)),
+        payment: normalizePaymentMethod(editDraft.payment),
+        note: editDraft.note.trim(),
+        [SOURCE_MISSING_FIELDS_COLUMN]: nextMissingFields.join(','),
+        [SOURCE_EXTRACTION_CONFIDENCE_COLUMN]:
+          nextMissingFields.length === 0
+            ? String(Math.max(editingRow.extractionConfidence ?? 0, 90))
+            : String(editingRow.extractionConfidence ?? 60),
+      };
       const changeRows = [
         beforeDelivery.date !== afterDelivery.date && {
           field: 'deliveryPlan.plannedDate',
@@ -806,7 +1017,7 @@ function BatchWorkspace({
       ].filter(Boolean);
 
       await updateImportedOrder(editingRow.orderId, {
-        rawData: editDraft.rawData,
+        rawData: nextRawData,
         customer: {
           name: editDraft.customerName.trim(),
           phone: editDraft.customerPhone.trim(),
@@ -842,7 +1053,7 @@ function BatchWorkspace({
         });
       }
       await Promise.all([reloadDetails(), syncFromBackend()]);
-      toast.success('บันทึกข้อมูลจาก CSV แล้ว');
+      toast.success('บันทึกข้อมูลจาก LINE import แล้ว');
       setEditingRow(null);
       setEditDraft(null);
     } catch (error) {
@@ -863,7 +1074,7 @@ function BatchWorkspace({
     return <div className="py-8 text-center text-sm text-muted-foreground">ไม่มีข้อมูลนำเข้า</div>;
   }
 
-  const title = scope === ALL_SCOPE ? `รวมทุกไฟล์ (${details.length})` : details[0].fileName;
+  const title = scope === ALL_SCOPE ? `รวมทุกรายการ (${details.length})` : details[0].fileName;
   const showFile = scope === ALL_SCOPE;
   const errorSummary = scope === ALL_SCOPE ? null : details[0].errorSummary;
   const senderName =
@@ -935,7 +1146,7 @@ function BatchWorkspace({
               ) : (
                 <Download className="h-3.5 w-3.5" />
               )}
-              Export CSV
+              Export Text/CSV
             </Button>
           )}
         </div>
@@ -1072,12 +1283,35 @@ function BatchWorkspace({
                         <span className="truncate">{r.item}</span>
                       </div>
                     )}
+                    {r.imageDataUrl && (
+                      <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground/80">
+                        <ImageIcon className="h-3 w-3 shrink-0" />
+                        <span>มีรูปต้นฉบับ</span>
+                      </div>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-2 py-2.5 text-right align-top tabular-nums">
                     {r.value != null ? formatTHB(r.value) : '—'}
                   </td>
                   <td className="px-2 py-2.5 align-top">
                     <div className="flex items-center justify-end gap-1">
+                      {r.imageDataUrl && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            setPreviewImage({
+                              src: r.imageDataUrl!,
+                              fileName: r.fileName,
+                              rowIndex: r.rowIndex,
+                            })
+                          }
+                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-40"
+                        >
+                          <Eye className="h-3 w-3" />
+                          ดูรูป
+                        </button>
+                      )}
                       {r.kind === 'review' && r.orderId && (
                         <button
                           type="button"
@@ -1161,7 +1395,7 @@ function BatchWorkspace({
         <div className="mt-3 rounded-lg border bg-muted/20 p-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <div className="text-sm font-medium">แก้ไขข้อมูลจาก CSV</div>
+              <div className="text-sm font-medium">แก้ไขข้อมูลจาก LINE import</div>
               <div className="text-xs text-muted-foreground">
                 {editingRow.fileName} · แถวที่ {editingRow.rowIndex + 1}
               </div>
@@ -1352,15 +1586,48 @@ function BatchWorkspace({
             </label>
           </div>
 
+          {editingRow.ocrText && (
+            <div className="mt-3 rounded-md border bg-background">
+              <div className="border-b px-3 py-2">
+                <div className="text-xs font-medium">ข้อความ OCR จากรูป</div>
+              </div>
+              <div
+                className="min-h-24 w-full max-w-full resize overflow-auto px-3 py-2 text-xs leading-5"
+                style={{
+                  height: `${Math.min(13, Math.max(6, ocrDisplayLines(displayOcrText(editingRow)).length * 1.25 + 1.5))}rem`,
+                }}
+              >
+                {ocrDisplayLines(displayOcrText(editingRow)).map((line, index) =>
+                  line.kind === 'blank' ? (
+                    <div key={index} className="h-2" />
+                  ) : line.kind === 'heading' ? (
+                    <div key={index} className="mt-1 font-semibold first:mt-0">
+                      {line.text}
+                    </div>
+                  ) : line.kind === 'bullet' ? (
+                    <div key={index} className="flex gap-1.5">
+                      <span className="shrink-0 text-muted-foreground">•</span>
+                      <span className="min-w-0 break-words">{line.text}</span>
+                    </div>
+                  ) : (
+                    <div key={index} className="break-words">
+                      {line.text}
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-3 rounded-md border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
-              <div className="text-xs font-medium">คอลัมน์ CSV ต้นทาง</div>
+              <div className="text-xs font-medium">ข้อมูลต้นทาง</div>
               <div className="text-[11px] text-muted-foreground">
-                {Object.keys(editDraft.rawData).length} คอลัมน์
+                {visibleRawEntries(editDraft.rawData).length} คอลัมน์
               </div>
             </div>
             <div className="divide-y">
-              {Object.entries(editDraft.rawData).map(([key, value]) => (
+              {visibleRawEntries(editDraft.rawData).map(([key, value]) => (
                 <div key={key} className="grid gap-2 px-3 py-2 md:grid-cols-[180px_1fr]">
                   <div className="min-w-0 break-words rounded-md bg-muted/50 px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
                     {key}
@@ -1378,6 +1645,47 @@ function BatchWorkspace({
                   />
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="ดูรูปต้นฉบับจาก LINE"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{previewImage.fileName}</div>
+                <div className="text-xs text-muted-foreground">
+                  แถวที่ {previewImage.rowIndex + 1} · รูปต้นฉบับจาก LINE
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setPreviewImage(null)}
+                aria-label="ปิดรูป"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-3">
+              <img
+                src={previewImage.src}
+                alt=""
+                className="max-h-[78vh] max-w-full rounded-md object-contain"
+              />
             </div>
           </div>
         </div>
@@ -1445,6 +1753,7 @@ export default function ImportBatchPanel({
   const [range, setRange] = useState<DateRange | undefined>();
   const [rangeOpen, setRangeOpen] = useState(false);
   const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
+  const [listCollapsed, setListCollapsed] = useState(() => readStoredListCollapsed());
   const listRef = useRef<HTMLDivElement>(null);
   // กันยิงซ้ำระหว่างกำลังโหลดหน้าใหม่ (ref อ่านได้ทันทีไม่ต้องรอ re-render)
   const loadingRef = useRef(false);
@@ -1463,6 +1772,14 @@ export default function ImportBatchPanel({
   // key คงที่สำหรับ dep ของ reload — กัน object identity เปลี่ยนทุก render
   const windowKey = windowParams ? JSON.stringify(windowParams) : 'pending';
 
+  const toggleListCollapsed = () => {
+    setListCollapsed((prev) => {
+      const next = !prev;
+      writeStoredListCollapsed(next);
+      return next;
+    });
+  };
+
   const markBatchRead = (batchId: string) => {
     setReadBatchIds((current) => {
       if (current.has(batchId)) return current;
@@ -1480,7 +1797,7 @@ export default function ImportBatchPanel({
       downloadCsv(result.fileName ?? batch.fileName, result.content);
       toast.success(`บันทึกไฟล์ ${result.fileName ?? batch.fileName} แล้ว`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Export CSV ไม่สำเร็จ');
+      toast.error(error instanceof Error ? error.message : 'Export ไม่สำเร็จ');
     } finally {
       setDownloadingBatchId(null);
     }
@@ -1568,21 +1885,90 @@ export default function ImportBatchPanel({
   const workspaceKey =
     selectedId === ALL_SCOPE ? `all:${batches.map((b) => b.id).join(',')}` : selectedId;
 
+  if (listCollapsed) {
+    return (
+      <div className="grid gap-4 lg:grid-cols-[44px_1fr]">
+        <Card className="flex h-[calc(100vh-16rem)] flex-col items-center gap-2 py-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={toggleListCollapsed}
+                aria-label="ขยายรายการไฟล์/รูปนำเข้า"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">ขยายรายการนำเข้า</TooltipContent>
+          </Tooltip>
+          {unreadCount > 0 && (
+            <Badge variant="info" className="h-5 min-w-5 justify-center px-1 text-[10px]">
+              {unreadCount}
+            </Badge>
+          )}
+          <span
+            className="mt-1 text-[11px] font-medium text-muted-foreground"
+            style={{ writingMode: 'vertical-rl' }}
+          >
+            รายการนำเข้า
+          </span>
+        </Card>
+
+        <Card className="app-scroll h-[calc(100vh-16rem)] overflow-auto p-4">
+          {hasBatches ? (
+            <BatchWorkspace
+              key={workspaceKey}
+              scope={selectedId}
+              batches={batches}
+              onFastDispatchOrder={onFastDispatchOrder}
+              onDownloadBatch={(batch) => void exportBatchCsv(batch)}
+              downloadingBatchId={downloadingBatchId}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4" /> ยังไม่มีรายการนำเข้า
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
       <Card className="flex h-[calc(100vh-16rem)] flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">ไฟล์นำเข้าจาก LINE</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={reload}
-              disabled={loading}
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            </Button>
+            <span className="text-sm font-medium">ไฟล์/รูปนำเข้าจาก LINE</span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={reload}
+                disabled={loading}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={toggleListCollapsed}
+                    aria-label="หุบรายการไฟล์/รูปนำเข้า เพื่อขยายพื้นที่ทำงาน"
+                  >
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">หุบรายการ ขยายพื้นที่ทำงาน</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
           <div className="mt-2 flex items-center gap-2">
             <Select
@@ -1676,9 +2062,9 @@ export default function ImportBatchPanel({
           )}
           {!loading && !hasBatches && !(customMode && !rangeReady) && (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              {customMode ? 'ไม่พบไฟล์ในช่วงวันที่ที่เลือก' : 'ยังไม่มีการนำเข้าไฟล์'}
+              {customMode ? 'ไม่พบรายการในช่วงวันที่ที่เลือก' : 'ยังไม่มีการนำเข้าไฟล์หรือรูป'}
               <div className="mt-1 text-[11px]">
-                {customMode ? 'ลองขยายช่วงวันที่' : 'ส่งไฟล์ .csv ใน LINE เพื่อเริ่มต้น'}
+                {customMode ? 'ลองขยายช่วงวันที่' : 'ส่งไฟล์ .csv หรือรูปภาพใน LINE เพื่อเริ่มต้น'}
               </div>
             </div>
           )}
@@ -1694,7 +2080,7 @@ export default function ImportBatchPanel({
               )}
             >
               <span className="flex items-center gap-1.5 text-xs font-medium">
-                <Layers className="h-3.5 w-3.5 text-primary" /> ทุกไฟล์ (รวม)
+                <Layers className="h-3.5 w-3.5 text-primary" /> ทุกรายการ (รวม)
               </span>
               <span className="flex items-center gap-1.5">
                 {unreadCount > 0 && (
@@ -1703,7 +2089,7 @@ export default function ImportBatchPanel({
                   </Badge>
                 )}
                 <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
-                  {batches.length} ไฟล์
+                  {batches.length} รายการ
                 </Badge>
               </span>
             </button>
@@ -1746,7 +2132,7 @@ export default function ImportBatchPanel({
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4" /> ยังไม่มีไฟล์นำเข้า
+              <Clock className="h-4 w-4" /> ยังไม่มีรายการนำเข้า
             </div>
           </div>
         )}

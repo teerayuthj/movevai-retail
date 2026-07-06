@@ -74,7 +74,7 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Order Inbox — คำสั่งซื้อ</h1>
           <p className="text-sm text-muted-foreground">
-            รวมออเดอร์จากทุกช่องทาง intake · อ่านข้อมูลจาก CSV/ข้อความต้นทาง · แก้ไขก่อนยืนยัน
+            รวมออเดอร์จากทุกช่องทาง intake · อ่านข้อมูลจาก CSV/รูป/ข้อความต้นทาง · แก้ไขก่อนยืนยัน
           </p>
         </div>
 
@@ -99,7 +99,7 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
           )}
         >
           <MessageSquareText className="h-3.5 w-3.5" />
-          ไฟล์จาก LINE
+          LINE Import
         </button>
         <button
           type="button"
