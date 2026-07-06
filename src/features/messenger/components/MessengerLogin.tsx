@@ -45,6 +45,11 @@ const TEST_ACCOUNTS = [
 ] as const;
 const PENDING_REGISTRATION_KEY = 'movevai:messenger-pending-registration';
 
+// โชว์บัญชีตัวอย่าง (ปุ่มกรอกอัตโนมัติ) — เปิดใน web dev เสมอ และเปิดบน native build ได้ผ่าน
+// VITE_SHOW_TEST_LOGIN=true (.env.capacitor) เพื่อความสะดวกตอนเทสต์ โดยไม่หลุดไป release
+// จริงที่ไม่ได้ตั้ง flag นี้ (จะถูก tree-shake ออกเหมือนเดิม)
+const SHOW_TEST_LOGIN = import.meta.env.DEV || import.meta.env.VITE_SHOW_TEST_LOGIN === 'true';
+
 type LoginMode = 'login' | 'register' | 'pending';
 type RegisterStepId = 'personal' | 'vehicle' | 'photos' | 'security';
 
@@ -374,7 +379,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
   }
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-muted/30 p-4">
+    <main className="flex min-h-dvh items-center justify-center bg-gradient-to-b from-muted/60 via-background to-background p-4">
       {mode === 'pending' ? (
         <PendingView
           pending={pending}
@@ -396,7 +401,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
           }}
         >
           <div>
-            <h1 className="text-xl font-semibold">สมัคร Messenger</h1>
+            <h1 className="text-xl font-semibold">ลงทะเบียน Messenger</h1>
             <p className="text-sm text-muted-foreground">
               กรอกข้อมูลและรอ admin อนุมัติก่อนเริ่มรับงาน
             </p>
@@ -688,36 +693,49 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
         </form>
       ) : (
         <form
-          className="w-full max-w-sm space-y-4 rounded-lg border bg-background p-6 shadow-sm"
+          className="w-full max-w-sm space-y-4 rounded-2xl border border-border/60 bg-card p-5 shadow-lg shadow-black/5"
           onSubmit={(event) => {
             event.preventDefault();
             void submitLogin();
           }}
         >
-          <div>
-            <h1 className="text-xl font-semibold">Messenger Login</h1>
-            <p className="text-sm text-muted-foreground">ใช้เบอร์โทรและ PIN หรือสมัครบัญชีใหม่</p>
+          <div className="space-y-2">
+            <div className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary">
+              <Bike className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-lg font-semibold tracking-tight">Messenger Login</h1>
+              <p className="text-xs text-muted-foreground">ใช้เบอร์โทรและ PIN หรือสมัครบัญชีใหม่</p>
+            </div>
           </div>
-          {import.meta.env.DEV && (
-            <div className="space-y-3 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm">
-              <p className="font-medium text-warning-foreground">โหมดทดสอบ — เลือกบัญชีตัวอย่าง</p>
-              <div className="space-y-2">
+          {SHOW_TEST_LOGIN && (
+            <div className="space-y-2 rounded-xl border border-warning/30 bg-warning/[0.07] p-2.5 text-xs">
+              <p className="font-semibold text-foreground">โหมดทดสอบ — เลือกบัญชีตัวอย่าง</p>
+              <div className="space-y-1.5">
                 {TEST_ACCOUNTS.map((account) => (
-                  <div key={account.driverCode} className="rounded-md border bg-background/80 p-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 space-y-0.5">
-                        <p className="font-medium text-foreground">
-                          {account.label} · {account.name}
-                        </p>
-                        <p className="font-mono text-xs text-muted-foreground">
-                          {account.driverCode}
-                        </p>
+                  <div
+                    key={account.driverCode}
+                    className="rounded-lg border border-border/60 bg-background p-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-semibold text-foreground">
+                          {account.name.slice(0, 1)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate font-medium leading-tight text-foreground">
+                            {account.name}
+                          </p>
+                          <p className="font-mono text-[10px] text-muted-foreground">
+                            {account.driverCode}
+                          </p>
+                        </div>
                       </div>
                       <Button
                         type="button"
                         variant="outline"
                         size="sm"
-                        className="shrink-0"
+                        className="h-7 shrink-0 rounded-md px-2 text-[11px] whitespace-nowrap"
                         onClick={() => {
                           setPhone(account.phone);
                           setPin(account.pin);
@@ -726,9 +744,8 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                         กรอกอัตโนมัติ
                       </Button>
                     </div>
-                    <div className="mt-2 grid gap-1 text-muted-foreground">
+                    <div className="mt-1.5 flex gap-3 border-t border-border/60 pt-1.5 text-muted-foreground">
                       <p>
-                        เบอร์โทร:{' '}
                         <span className="font-mono font-semibold text-foreground">
                           {account.phone}
                         </span>
@@ -745,38 +762,50 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
               </div>
             </div>
           )}
-          <Input
-            inputMode="tel"
-            autoComplete="tel"
-            placeholder="เบอร์โทร"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            required
-          />
-          <Input
-            inputMode="numeric"
-            autoComplete="current-password"
-            type="password"
-            placeholder="PIN"
-            value={pin}
-            onChange={(e) => setPin(e.target.value)}
-            required
-          />
+          <div className="space-y-2">
+            <div className="relative">
+              <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="เบอร์โทร"
+                className="h-10 rounded-lg pl-9"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
+              />
+            </div>
+            <div className="relative">
+              <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                inputMode="numeric"
+                autoComplete="current-password"
+                type="password"
+                placeholder="PIN"
+                className="h-10 rounded-lg pl-9"
+                value={pin}
+                onChange={(e) => setPin(e.target.value)}
+                required
+              />
+            </div>
+          </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          <Button className="w-full" type="submit" disabled={loading}>
-            {loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
-          </Button>
-          <Button
-            className="w-full"
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setMode('register');
-              setError('');
-            }}
-          >
-            สมัคร Messenger
-          </Button>
+          <div className="space-y-2">
+            <Button className="h-10 w-full rounded-lg" type="submit" disabled={loading}>
+              {loading ? 'กำลังเข้าสู่ระบบ…' : 'เข้าสู่ระบบ'}
+            </Button>
+            <Button
+              className="h-10 w-full rounded-lg"
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setMode('register');
+                setError('');
+              }}
+            >
+              ลงทะเบียน Messenger
+            </Button>
+          </div>
         </form>
       )}
     </main>

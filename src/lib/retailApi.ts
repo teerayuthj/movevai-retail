@@ -182,6 +182,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
   if (IS_NATIVE_APP && INTERNAL_API_KEY && !headers.has('x-internal-key')) {
     headers.set('x-internal-key', INTERNAL_API_KEY);
   }
+  // ทดสอบเครื่องจริงผ่าน ngrok tunnel: free tier แทรกหน้า "you are about to visit"
+  // เป็น HTML แทน JSON ถ้าไม่มี header นี้ — ไม่มีผลถ้า base ไม่ใช่ ngrok
+  if (url.includes('ngrok-free.app') || url.includes('.ngrok.io')) {
+    headers.set('ngrok-skip-browser-warning', 'true');
+  }
   const isMessengerRequest = url.startsWith(MESSENGER_API_BASE);
   let messengerToken: string | null = null;
   if (isMessengerRequest) {

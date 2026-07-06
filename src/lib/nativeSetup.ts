@@ -16,7 +16,8 @@ export async function setupNativeShell() {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
     await StatusBar.setOverlaysWebView({ overlay: false });
     // header แอปเป็นพื้นสว่าง → ใช้ตัวอักษร status bar สีเข้มให้อ่านออก
-    await StatusBar.setStyle({ style: Style.Light });
+    // (Style.Dark = ตัวอักษร/ไอคอนสีเข้ม สำหรับพื้นหลังสว่าง; Style.Light คือกลับกัน)
+    await StatusBar.setStyle({ style: Style.Dark });
   } catch (error) {
     // ไม่ critical — ถ้า plugin ไม่พร้อมก็ปล่อยให้แอปรันต่อ
     console.warn('[nativeSetup] status bar setup skipped:', error);
