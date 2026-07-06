@@ -515,6 +515,35 @@ function ocrDisplayLines(text: string): OcrDisplayLine[] {
   );
 }
 
+function ocrPlainText(text: string) {
+  return ocrDisplayLines(text)
+    .map((line) => (line.kind === 'bullet' ? `• ${line.text}` : line.text))
+    .join('\n')
+    .trim();
+}
+
+async function copyTextToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // clipboard API ใช้ไม่ได้บน http ที่ไม่ใช่ localhost / document ไม่มี focus — fallback เป็น execCommand
+    const scratch = document.createElement('textarea');
+    scratch.value = text;
+    scratch.style.position = 'fixed';
+    scratch.style.opacity = '0';
+    document.body.appendChild(scratch);
+    scratch.select();
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    } finally {
+      scratch.remove();
+    }
+  }
+}
+
 function normalizePaymentMethod(value: unknown): Order['payment'] {
   if (typeof value !== 'string') return 'prepaid';
   const normalized = value.trim().toLowerCase();
@@ -1588,8 +1617,27 @@ function BatchWorkspace({
 
           {editingRow.ocrText && (
             <div className="mt-3 rounded-md border bg-background">
-              <div className="border-b px-3 py-2">
+              <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
                 <div className="text-xs font-medium">ข้อความ OCR จากรูป</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label="คัดลอกข้อความ OCR ทั้งหมด"
+                  className="h-6 gap-1 px-2 text-[11px] text-muted-foreground"
+                  onClick={async () => {
+                    const copied = await copyTextToClipboard(
+                      ocrPlainText(displayOcrText(editingRow)),
+                    );
+                    if (copied) {
+                      toast.success('คัดลอกข้อความ OCR ทั้งหมดแล้ว');
+                    } else {
+                      toast.error('คัดลอกไม่สำเร็จ — กรุณาเลือกข้อความแล้วคัดลอกเอง');
+                    }
+                  }}
+                >
+                  <Copy className="h-3 w-3" /> คัดลอกทั้งหมด
+                </Button>
               </div>
               <div
                 className="min-h-24 w-full max-w-full resize overflow-auto px-3 py-2 text-xs leading-5"

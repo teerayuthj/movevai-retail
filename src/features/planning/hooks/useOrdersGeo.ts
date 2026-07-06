@@ -5,6 +5,20 @@ import { geocodeAddress, type GeoCoordinate } from '@/lib/retailApi';
 export type OrderGeo = { coords: GeoCoordinate | null; pending: boolean };
 
 /**
+ * ที่อยู่จาก LINE/OCR import มักมีชื่ออาคาร-เลขห้องปน (เช่น "98 Wireless Residence ห้อง 2504 ถนนวิทยุ …")
+ * ซึ่งทำให้ geocoder หาไม่เจอทั้งที่ตัวถนน/แขวง/เขตถูกต้อง — ตัดให้เหลือ
+ * เลขที่บ้าน + ตั้งแต่ ถนน/ซอย/แขวง เป็นต้นไป เพื่อลอง geocode รอบสอง
+ */
+function simplifyThaiAddress(address: string): string | null {
+  const tokens = address.split(/\s+/);
+  const anchorIndex = tokens.findIndex((token) => /^(ถนน|ถ\.|ซอย|ซ\.|แขวง|ตำบล|ต\.)/.test(token));
+  if (anchorIndex <= 0) return null;
+  const houseNumber = tokens.slice(0, anchorIndex).find((token) => /^\d+(\/\d+)?$/.test(token));
+  const simplified = [houseNumber, ...tokens.slice(anchorIndex)].filter(Boolean).join(' ');
+  return simplified === address ? null : simplified;
+}
+
+/**
  * แปลงรายการ order → พิกัดปลายทาง สำหรับวาดหมุดบนแผนที่ฝั่ง admin
  * - ใช้ `customer.geo` ถ้ามี (พิกัดที่ backend ยืนยันแล้ว)
  * - ที่อยู่ที่ยังไม่มีพิกัด → geocode ผ่าน backend ทีละจุด (ตามลำดับ เพื่อเป็นมิตรกับ rate limit)
@@ -37,6 +51,10 @@ export function useOrdersGeo(orders: Order[]): Record<string, OrderGeo> {
         try {
           // ใช้ backend geocode เท่านั้น — ไม่มี anchor fallback ฝั่ง client แล้ว
           coords = await geocodeAddress(address);
+          if (!coords) {
+            const simplified = simplifyThaiAddress(address);
+            if (simplified) coords = await geocodeAddress(simplified);
+          }
         } catch {
           // backend geocode ล้มเหลว — ปล่อยเป็น null (ไม่วาดหมุด) แทนการเดาพิกัด
           coords = null;

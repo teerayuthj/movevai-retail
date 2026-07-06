@@ -104,6 +104,10 @@ function InTransitJobSheet({
                 ปลายทางที่กำลังส่ง
               </div>
               <div className="truncate text-sm font-semibold">{order.customer.name}</div>
+              <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
+                <MapPin className="h-3 w-3 shrink-0" />
+                <span className="truncate">{order.customer.address}</span>
+              </div>
             </div>
             {expanded ? (
               <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -256,8 +260,11 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const tracking = useMessengerTracking(authenticated);
   // ถ้า backend เริ่ม tracking session ไม่สำเร็จ ยังอ่าน GPS บนอุปกรณ์เพื่อแสดงแผนที่
   // และแนบพิกัดจริงตอนปิดงานได้ โดยไม่สร้างตำแหน่งจำลอง
+  // เปิดทั้งแท็บกำลังส่งและแผนที่ในแท็บงานใหม่ — สองที่นี้ใช้ location source ร่วมกัน
   const fallbackLocation = useMessengerLocation(
-    authenticated && activeTab === 'in_transit' && !tracking.session,
+    authenticated &&
+      !tracking.session &&
+      (activeTab === 'in_transit' || (activeTab === 'assigned' && assignedView === 'map')),
   );
   const autoOpenedSessionId = useRef<string | null>(null);
   const endingStaleSessionId = useRef<string | null>(null);
@@ -824,8 +831,12 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                   <MessengerRouteMap
                     stops={routeStops}
                     nowMs={nowMs}
-                    locationSource={showTrackingMap ? liveLocationSource : undefined}
-                    showRemainingDistance={showTrackingMap}
+                    // แผนที่งานใหม่ใช้ stream เดียวกับหน้ากำลังส่ง — ถ้ามี tracking session
+                    // จะได้ตำแหน่งจาก session (รวม GPS จากเครื่องที่เริ่ม Route) แทนการเปิด
+                    // watchPosition ของตัวเองซ้ำซึ่งเจอ permission denied ได้ทั้งที่ session มีตำแหน่งอยู่แล้ว
+                    locationSource={liveLocationSource}
+                    // แท็บงานใหม่ก็ต้องเห็นเส้นทางตามถนน + ระยะ กม. แบบเดียวกับหน้ากำลังส่ง
+                    showRemainingDistance
                   />
                 )}
               </div>
