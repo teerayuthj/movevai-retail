@@ -26,6 +26,7 @@ import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { MESSENGER_JOB_STATUSES, MESSENGER_TABS, type MessengerTab } from './messengerTabs';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { useMessengerTab } from './hooks/useMessengerTab';
+import { useSwipeTabTransition } from './hooks/useSwipeTabTransition';
 import {
   clearMessengerAppBadge,
   currentPermission,
@@ -530,6 +531,10 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   // Leaflet ใช้ transform/GPU layers ซึ่งบน iOS Safari สามารถทะลุ fixed modal และ video ได้
   // เมื่อเปิด overlay ต้อง unmount map จริง ไม่ใช่แค่เพิ่ม z-index หรือซ่อนด้วย opacity
   const suspendMap = closingJobOpen || testDialogOpen || profileOpen;
+  // ปัดซ้าย/ขวาเปลี่ยนแท็บได้เฉพาะตอนดูรายการ (ปิดตอนอยู่บนแผนที่ ไม่งั้นชนกับ pan/drag ของ Leaflet
+  // หรือตอนมี dialog/sheet เปิดทับอยู่)
+  const swipeTabEnabled = Boolean(activeTab) && !showAssignedMap && !showTrackingMap && !suspendMap;
+  const swipeContainerRef = useSwipeTabTransition(activeTab, handleSelectTab, swipeTabEnabled);
 
   // จัดงานใหม่เป็นกลุ่มตาม Route + วันส่ง เพื่อให้แผนที่แยกแต่ละรอบชัดเจน
   // (ไม่รวมงานล่วงหน้าหลายวัน/หลาย Route ไว้บนภาพเดียวจนหมุดทับกัน)
@@ -739,191 +744,200 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           </div>
         )}
 
-        {showAssignedMap || showTrackingMap ? (
-          <div className="relative flex min-h-0 flex-1 flex-col">
-            {showAssignedMap &&
-              (focusOrder ? (
-                /* โฟกัสปลายทางเดียว: บอกชัดว่ากำลังดูงานไหน + กลับไปดูทั้ง Route ได้ */
-                <div className="flex items-center gap-2 border-b bg-info/5 px-3 py-2">
-                  <MapPin className="h-4 w-4 shrink-0 text-info" />
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-semibold">{focusOrder.customer.name}</div>
-                    <div className="truncate text-[11px] text-muted-foreground">
-                      {focusOrder.deliveryRoute
-                        ? `${focusOrder.deliveryRoute.code} · จุดที่ ${focusOrder.deliveryRoute.sequence}`
-                        : 'ปลายทางเดียว'}
-                      {focusOrder.deliveryPlan?.plannedDate &&
-                        ` · ${formatPlanningDate(focusOrder.deliveryPlan.plannedDate)}`}
+        <div
+          ref={swipeContainerRef}
+          className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          {showAssignedMap || showTrackingMap ? (
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              {showAssignedMap &&
+                (focusOrder ? (
+                  /* โฟกัสปลายทางเดียว: บอกชัดว่ากำลังดูงานไหน + กลับไปดูทั้ง Route ได้ */
+                  <div className="flex items-center gap-2 border-b bg-info/5 px-3 py-2">
+                    <MapPin className="h-4 w-4 shrink-0 text-info" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-semibold">
+                        {focusOrder.customer.name}
+                      </div>
+                      <div className="truncate text-[11px] text-muted-foreground">
+                        {focusOrder.deliveryRoute
+                          ? `${focusOrder.deliveryRoute.code} · จุดที่ ${focusOrder.deliveryRoute.sequence}`
+                          : 'ปลายทางเดียว'}
+                        {focusOrder.deliveryPlan?.plannedDate &&
+                          ` · ${formatPlanningDate(focusOrder.deliveryPlan.plannedDate)}`}
+                      </div>
+                    </div>
+                    {selectedGroup && selectedGroup.jobs.length > 1 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        onClick={() => setMapFocusOrderId(null)}
+                      >
+                        ดูทั้ง Route ({selectedGroup.jobs.length})
+                      </Button>
+                    )}
+                  </div>
+                ) : mapGroups.length > 1 ? (
+                  /* หลาย Route/วันส่ง: ให้เลือกว่าจะดูรอบไหนบนแผนที่ */
+                  <div className="border-b bg-background px-3 py-2">
+                    <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                      เลือกรอบที่จะดูบนแผนที่
+                    </div>
+                    <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                      {mapGroups.map((group) => (
+                        <button
+                          key={group.key}
+                          type="button"
+                          onClick={() => setMapGroupKey(group.key)}
+                          className={cn(
+                            'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                            group.key === selectedGroup?.key
+                              ? 'border-info bg-info/10 text-info'
+                              : 'border-border text-muted-foreground hover:bg-muted/50',
+                          )}
+                        >
+                          <span>{group.date ? formatPlanningDate(group.date) : 'ไม่ระบุวัน'}</span>
+                          {group.routeCode && (
+                            <span className="opacity-70">· {group.routeCode}</span>
+                          )}
+                          <span className="opacity-70">({group.jobs.length})</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
-                  {selectedGroup && selectedGroup.jobs.length > 1 && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0"
-                      onClick={() => setMapFocusOrderId(null)}
-                    >
-                      ดูทั้ง Route ({selectedGroup.jobs.length})
-                    </Button>
-                  )}
-                </div>
-              ) : mapGroups.length > 1 ? (
-                /* หลาย Route/วันส่ง: ให้เลือกว่าจะดูรอบไหนบนแผนที่ */
-                <div className="border-b bg-background px-3 py-2">
-                  <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
-                    เลือกรอบที่จะดูบนแผนที่
-                  </div>
-                  <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-                    {mapGroups.map((group) => (
-                      <button
-                        key={group.key}
-                        type="button"
-                        onClick={() => setMapGroupKey(group.key)}
-                        className={cn(
-                          'flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
-                          group.key === selectedGroup?.key
-                            ? 'border-info bg-info/10 text-info'
-                            : 'border-border text-muted-foreground hover:bg-muted/50',
-                        )}
-                      >
-                        <span>{group.date ? formatPlanningDate(group.date) : 'ไม่ระบุวัน'}</span>
-                        {group.routeCode && <span className="opacity-70">· {group.routeCode}</span>}
-                        <span className="opacity-70">({group.jobs.length})</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                selectedGroup && (
-                  /* รอบเดียว: บอก context + วิธีดูปลายทางเดี่ยว */
-                  <div className="flex items-center gap-2 border-b bg-background px-3 py-2 text-[11px] text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />
-                    <span className="min-w-0 flex-1 truncate">
-                      {selectedGroup.date ? formatPlanningDate(selectedGroup.date) : 'ไม่ระบุวัน'}
-                      {selectedGroup.routeCode && ` · ${selectedGroup.routeCode}`} ·{' '}
-                      {selectedGroup.jobs.length} จุด — แตะ “ดูแผนที่” ในการ์ดเพื่อดูทีละปลายทาง
-                    </span>
-                  </div>
-                )
-              ))}
-            <div className="relative min-h-0 flex-1">
-              {!suspendMap && (
-                <MessengerRouteMap
-                  stops={routeStops}
+                ) : (
+                  selectedGroup && (
+                    /* รอบเดียว: บอก context + วิธีดูปลายทางเดี่ยว */
+                    <div className="flex items-center gap-2 border-b bg-background px-3 py-2 text-[11px] text-muted-foreground">
+                      <MapPin className="h-3.5 w-3.5 shrink-0" />
+                      <span className="min-w-0 flex-1 truncate">
+                        {selectedGroup.date ? formatPlanningDate(selectedGroup.date) : 'ไม่ระบุวัน'}
+                        {selectedGroup.routeCode && ` · ${selectedGroup.routeCode}`} ·{' '}
+                        {selectedGroup.jobs.length} จุด — แตะ “ดูแผนที่” ในการ์ดเพื่อดูทีละปลายทาง
+                      </span>
+                    </div>
+                  )
+                ))}
+              <div className="relative min-h-0 flex-1">
+                {!suspendMap && (
+                  <MessengerRouteMap
+                    stops={routeStops}
+                    nowMs={nowMs}
+                    locationSource={showTrackingMap ? liveLocationSource : undefined}
+                    showRemainingDistance={showTrackingMap}
+                  />
+                )}
+              </div>
+              {showTrackingMap && activeDeliveryJob && !closingJobOpen && !profileOpen && (
+                <InTransitJobSheet
+                  order={activeDeliveryJob}
                   nowMs={nowMs}
-                  locationSource={showTrackingMap ? liveLocationSource : undefined}
-                  showRemainingDistance={showTrackingMap}
+                  expanded={deliverySheetExpanded}
+                  onExpandedChange={setDeliverySheetExpanded}
+                  onClose={() => setCloseTargetId(activeDeliveryJob.id)}
                 />
               )}
             </div>
-            {showTrackingMap && activeDeliveryJob && !closingJobOpen && !profileOpen && (
-              <InTransitJobSheet
-                order={activeDeliveryJob}
-                nowMs={nowMs}
-                expanded={deliverySheetExpanded}
-                onExpandedChange={setDeliverySheetExpanded}
-                onClose={() => setCloseTargetId(activeDeliveryJob.id)}
-              />
-            )}
-          </div>
-        ) : (
-          /* job list — padding ล่างเผื่อ floating tab bar ให้การ์ดสุดท้ายเลื่อนพ้น dock */
-          <div className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3 pb-[calc(max(env(safe-area-inset-bottom),0.75rem)+5.5rem)]">
-            {jobsLoading && myJobs.length === 0 && (
-              <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                กำลังโหลดงานจาก Route…
-              </div>
-            )}
-            {jobsError && (
-              <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>โหลดข้อมูลงานไม่ได้ — {jobsError}</span>
+          ) : (
+            /* job list — padding ล่างเผื่อ floating tab bar ให้การ์ดสุดท้ายเลื่อนพ้น dock */
+            <div className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3 pb-[calc(max(env(safe-area-inset-bottom),0.75rem)+5.5rem)]">
+              {jobsLoading && myJobs.length === 0 && (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  กำลังโหลดงานจาก Route…
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-3 w-full"
-                  disabled={jobsLoading}
-                  onClick={() => void refreshJobs()}
-                >
-                  <RefreshCw className={jobsLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
-                  ลองโหลดใหม่
-                </Button>
-              </div>
-            )}
-            {activeTab === 'assigned' && overdueCount > 0 && (
-              <div className="rounded-xl border border-warning/20 bg-warning/5 p-3 text-sm font-medium text-warning">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0" />
-                  มี {overdueCount} งานถึงเวลารับแล้ว
-                </div>
-              </div>
-            )}
-            {activeTab === 'in_transit' && counts.assigned > 0 && (
-              <div className="rounded-xl border border-warning/20 bg-warning/5 p-3">
-                <div className="flex items-center gap-2 text-sm font-medium text-warning">
-                  <ClipboardList className="h-4 w-4" />
-                  มีงานใหม่รอรับ {counts.assigned} งาน
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="mt-2 w-full rounded-full border-warning/25 bg-background text-warning hover:bg-warning/10"
-                  onClick={() => setTab('assigned')}
-                >
-                  ไปกดรับงาน
-                </Button>
-              </div>
-            )}
-            {!jobsLoading && activeTab === 'delivered' && messenger ? (
-              // tab สำเร็จ: ดึงรายการที่ส่งสำเร็จจาก backend โดยตรง (privacy-minimal, ไม่มี PII ลูกค้า)
-              <MessengerCompletedList messengerCode={messenger.id} />
-            ) : (
-              <>
-                {tabJobs.map((order, index) => {
-                  const showDate =
-                    activeTab === 'assigned' &&
-                    order.deliveryPlan?.plannedDate !==
-                      tabJobs[index - 1]?.deliveryPlan?.plannedDate;
-                  return (
-                    <div key={order.id}>
-                      {showDate && order.deliveryPlan?.plannedDate && (
-                        <div className="mb-2 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">
-                          งานวันที่{' '}
-                          {new Date(
-                            `${order.deliveryPlan.plannedDate}T00:00:00`,
-                          ).toLocaleDateString('th-TH', { dateStyle: 'full' })}
-                        </div>
-                      )}
-                      <JobCard
-                        order={order}
-                        nowMs={nowMs}
-                        starting={startingJobId === order.id}
-                        onStart={() => void handleStartJob(order)}
-                        onClose={() => setCloseTargetId(order.id)}
-                        onViewMap={
-                          activeTab === 'assigned'
-                            ? () => handleViewOrderMap(order)
-                            : activeTab === 'pending_confirmation'
-                              ? () => openOrderMap(order.id)
-                              : undefined
-                        }
-                      />
-                    </div>
-                  );
-                })}
-                {!jobsLoading && !jobsError && activeTab && tabJobs.length === 0 && (
-                  <div className="py-12 text-center text-sm text-muted-foreground">
-                    <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
-                    ไม่มีงานในสถานะ “{statusLabel[activeTab]}”
+              )}
+              {jobsError && (
+                <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-sm text-destructive">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>โหลดข้อมูลงานไม่ได้ — {jobsError}</span>
                   </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-3 w-full"
+                    disabled={jobsLoading}
+                    onClick={() => void refreshJobs()}
+                  >
+                    <RefreshCw className={jobsLoading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
+                    ลองโหลดใหม่
+                  </Button>
+                </div>
+              )}
+              {activeTab === 'assigned' && overdueCount > 0 && (
+                <div className="rounded-xl border border-warning/20 bg-warning/5 p-3 text-sm font-medium text-warning">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    มี {overdueCount} งานถึงเวลารับแล้ว
+                  </div>
+                </div>
+              )}
+              {activeTab === 'in_transit' && counts.assigned > 0 && (
+                <div className="rounded-xl border border-warning/20 bg-warning/5 p-3">
+                  <div className="flex items-center gap-2 text-sm font-medium text-warning">
+                    <ClipboardList className="h-4 w-4" />
+                    มีงานใหม่รอรับ {counts.assigned} งาน
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 w-full rounded-full border-warning/25 bg-background text-warning hover:bg-warning/10"
+                    onClick={() => setTab('assigned')}
+                  >
+                    ไปกดรับงาน
+                  </Button>
+                </div>
+              )}
+              {!jobsLoading && activeTab === 'delivered' && messenger ? (
+                // tab สำเร็จ: ดึงรายการที่ส่งสำเร็จจาก backend โดยตรง (privacy-minimal, ไม่มี PII ลูกค้า)
+                <MessengerCompletedList messengerCode={messenger.id} />
+              ) : (
+                <>
+                  {tabJobs.map((order, index) => {
+                    const showDate =
+                      activeTab === 'assigned' &&
+                      order.deliveryPlan?.plannedDate !==
+                        tabJobs[index - 1]?.deliveryPlan?.plannedDate;
+                    return (
+                      <div key={order.id}>
+                        {showDate && order.deliveryPlan?.plannedDate && (
+                          <div className="mb-2 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">
+                            งานวันที่{' '}
+                            {new Date(
+                              `${order.deliveryPlan.plannedDate}T00:00:00`,
+                            ).toLocaleDateString('th-TH', { dateStyle: 'full' })}
+                          </div>
+                        )}
+                        <JobCard
+                          order={order}
+                          nowMs={nowMs}
+                          starting={startingJobId === order.id}
+                          onStart={() => void handleStartJob(order)}
+                          onClose={() => setCloseTargetId(order.id)}
+                          onViewMap={
+                            activeTab === 'assigned'
+                              ? () => handleViewOrderMap(order)
+                              : activeTab === 'pending_confirmation'
+                                ? () => openOrderMap(order.id)
+                                : undefined
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                  {!jobsLoading && !jobsError && activeTab && tabJobs.length === 0 && (
+                    <div className="py-12 text-center text-sm text-muted-foreground">
+                      <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />
+                      ไม่มีงานในสถานะ “{statusLabel[activeTab]}”
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </div>
 
         <MessengerTabBar activeTab={activeTab} counts={counts} onSelect={handleSelectTab} />
 
@@ -943,7 +957,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             messenger={messenger}
             effectiveStatus={effectiveMessengerStatus}
             activeOrders={openCustomerJobCount}
-            install={install}
             onClose={() => setProfileOpen(false)}
             onUpdated={() => {
               if (messengerCode) void refreshMessengerJobs(messengerCode);

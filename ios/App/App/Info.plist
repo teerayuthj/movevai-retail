@@ -66,6 +66,10 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<!-- แอปยังไม่มี dark theme — ถ้าปล่อยตาม system dark mode พื้นหลังใต้ status bar
+	     (root view ของ CAPBridgeViewController) จะกลายเป็นสีดำ ทับกับ UI ที่ออกแบบมาสีอ่อนเท่านั้น -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
 	<!-- อนุญาตยิง cleartext HTTP ไปยัง localhost/*.local (dev: backend ที่ http://localhost:4000)
 	     NSAllowsLocalNetworking เปิดเฉพาะ host ในเครือข่ายภายใน ไม่ปิด ATS ทั้งระบบ —
 	     production ที่ใช้ backend HTTPS ไม่ได้รับผลกระทบ -->

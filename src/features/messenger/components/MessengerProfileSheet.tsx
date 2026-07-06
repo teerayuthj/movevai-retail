@@ -17,13 +17,9 @@ import {
   Phone,
   Truck,
 } from 'lucide-react';
-import { isNativeApp } from '@/lib/platform';
 import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
 import { updateMessengerProfile } from '@/lib/retailApi';
 import { composeThaiAddress, type ThaiAddressValue } from '@/lib/thaiAddress';
-import type { useInstallPrompt } from '../hooks/useInstallPrompt';
-import { InstallBanner } from './InstallBanner';
-import { MessengerPushSetupBanner } from './MessengerPushSetupBanner';
 
 const statusLabel: Record<Driver['status'], string> = {
   available: 'ว่าง',
@@ -212,7 +208,6 @@ function ProfileEditForm({
 export function MessengerProfileSheet({
   messenger,
   effectiveStatus,
-  install,
   onClose,
   onUpdated,
   onExit,
@@ -220,7 +215,6 @@ export function MessengerProfileSheet({
   messenger: Driver;
   effectiveStatus?: Driver['status'];
   activeOrders?: number;
-  install: ReturnType<typeof useInstallPrompt>;
   onClose: () => void;
   /** เรียกหลังบันทึก profile สำเร็จ เพื่อให้ console ดึงข้อมูล driver ล่าสุดจาก backend */
   onUpdated?: () => Promise<void> | void;
@@ -305,25 +299,6 @@ export function MessengerProfileSheet({
               <Pencil className="h-4 w-4" />
               แก้ไขข้อมูลส่วนตัว
             </button>
-
-            {/* การแจ้งเตือน & การติดตั้งแอป — เฉพาะ web PWA; native ติดตั้งจาก store + ใช้ native push แล้ว */}
-            {!isNativeApp && (
-              <div className="space-y-2">
-                <div className="px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                  การแจ้งเตือน &amp; แอป
-                </div>
-                <div className="overflow-hidden rounded-xl border">
-                  <MessengerPushSetupBanner
-                    installed={install.installed}
-                    messengerCode={messenger.id}
-                  />
-                  <InstallBanner install={install} />
-                  <div className="px-3 py-2.5 text-[11px] text-muted-foreground">
-                    เปิดแจ้งเตือนเพื่อรับงานใหม่ทันที และติดตั้งแอปเพื่อเปิดแบบเต็มจอ
-                  </div>
-                </div>
-              </div>
-            )}
 
             {/* ออกจากระบบ */}
             {onExit && (

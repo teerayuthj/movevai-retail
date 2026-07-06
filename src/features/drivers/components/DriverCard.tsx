@@ -2,7 +2,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import { CheckCircle2, IdCard, Package, Phone, Play, XCircle } from 'lucide-react';
+import { CheckCircle2, IdCard, Package, Phone, XCircle } from 'lucide-react';
 import { type Driver, type Order, formatTHB, statusLabel } from '@/data/orderTypes';
 import { VehicleIcon } from './VehicleIcon';
 
@@ -10,7 +10,6 @@ type DriverCardProps = {
   driver: Driver;
   driverOrders: Order[];
   onSetStatus: (driverId: string, status: Driver['status']) => void;
-  onStartDelivery: (orderId: string) => void;
   onCompleteDelivery: (orderId: string, success: boolean) => void;
   onFailDelivery: (orderId: string) => void;
 };
@@ -19,7 +18,6 @@ export function DriverCard({
   driver: d,
   driverOrders,
   onSetStatus,
-  onStartDelivery,
   onCompleteDelivery,
   onFailDelivery,
 }: DriverCardProps) {
@@ -136,38 +134,27 @@ export function DriverCard({
                   </span>
                   <span className="font-medium text-warning">{formatTHB(order.totalValue)}</span>
                 </div>
-                <div className="mt-2 flex gap-2">
-                  {order.status === 'assigned' ? (
+                {order.status !== 'assigned' && (
+                  <div className="mt-2 flex gap-2">
                     <Button
                       size="sm"
                       className="h-7 flex-1 text-[11px]"
-                      onClick={() => onStartDelivery(order.id)}
+                      onClick={() => onCompleteDelivery(order.id, true)}
                     >
-                      <Play className="h-3 w-3" />
-                      เริ่มส่ง
+                      <CheckCircle2 className="h-3 w-3" />
+                      สำเร็จ
                     </Button>
-                  ) : (
-                    <>
-                      <Button
-                        size="sm"
-                        className="h-7 flex-1 text-[11px]"
-                        onClick={() => onCompleteDelivery(order.id, true)}
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                        สำเร็จ
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 flex-1 text-[11px]"
-                        onClick={() => onFailDelivery(order.id)}
-                      >
-                        <XCircle className="h-3 w-3" />
-                        ไม่สำเร็จ
-                      </Button>
-                    </>
-                  )}
-                </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 flex-1 text-[11px]"
+                      onClick={() => onFailDelivery(order.id)}
+                    >
+                      <XCircle className="h-3 w-3" />
+                      ไม่สำเร็จ
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </div>

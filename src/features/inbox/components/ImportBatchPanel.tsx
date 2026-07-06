@@ -666,12 +666,42 @@ function BatchWorkspace({
     });
   };
 
-  const bulkReject = () => {
-    const ids = [...selected];
+  // ปฏิเสธแล้วเด้ง toast ที่บอกชัดว่า "ไปอยู่แท็บ ปฏิเสธ" + ปุ่มดึงกลับ (undo) ในตัว
+  // แก้ปัญหาแถวหายวับจากแท็บรอตรวจโดยไม่รู้ว่าไปไหน
+  const rejectOrders = async (ids: string[], input?: { reason?: ImportRejectReason }) => {
     if (ids.length === 0) return;
-    void runAction(`ปฏิเสธ ${ids.length} รายการ`, () =>
-      rejectImportOrders(ids, reason ? { reason } : undefined),
-    );
+    setBusy(true);
+    try {
+      await rejectImportOrders(ids, input?.reason ? { reason: input.reason } : undefined);
+      setSelected(new Set());
+      const count = ids.length;
+      toast.success(count === 1 ? 'ปฏิเสธออเดอร์แล้ว' : `ปฏิเสธ ${count} รายการแล้ว`, {
+        description: 'ย้ายไปที่แท็บ “ปฏิเสธ” แล้ว — ยังกดดึงกลับมาตรวจใหม่ได้',
+        duration: 6000,
+        action: {
+          label: 'ดึงกลับ',
+          onClick: () => {
+            void restoreImportOrders(ids)
+              .then(() =>
+                toast.success(
+                  count === 1 ? 'ดึงกลับมาตรวจใหม่แล้ว' : `ดึงกลับ ${count} รายการแล้ว`,
+                ),
+              )
+              .catch((error) =>
+                toast.error(error instanceof Error ? error.message : 'ดึงกลับไม่สำเร็จ'),
+              );
+          },
+        },
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'ปฏิเสธไม่สำเร็จ');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const bulkReject = () => {
+    void rejectOrders([...selected], reason ? { reason } : undefined);
   };
 
   const reloadDetails = async () => {
@@ -984,7 +1014,12 @@ function BatchWorkspace({
               return (
                 <tr
                   key={r.rowId}
-                  className={cn('transition-colors hover:bg-muted/40', checked && 'bg-primary/5')}
+                  className={cn(
+                    'transition-colors hover:bg-muted/40',
+                    checked && 'bg-primary/5',
+                    // ปฏิเสธแล้ว → แต้มพื้นหลังหรี่ให้อ่านออกทันทีว่า "ตัดออกแล้ว"
+                    r.kind === 'rejected' && 'bg-muted/30',
+                  )}
                 >
                   <td className="px-3 py-2.5 align-top">
                     <input
@@ -999,8 +1034,18 @@ function BatchWorkspace({
                   <td className="px-2 py-2.5 align-top">
                     <RowStatusBadge kind={r.kind} />
                   </td>
-                  <td className="min-w-0 px-2 py-2.5 align-top">
-                    <div className="truncate font-medium">
+                  <td
+                    className={cn(
+                      'min-w-0 px-2 py-2.5 align-top',
+                      r.kind === 'rejected' && 'text-muted-foreground',
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'truncate font-medium',
+                        r.kind === 'rejected' && 'text-muted-foreground line-through',
+                      )}
+                    >
                       {r.name}
                       <span className="ml-1 text-[10px] font-normal text-muted-foreground">
                         {showFile
@@ -1084,9 +1129,7 @@ function BatchWorkspace({
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() =>
-                              runAction('ปฏิเสธ 1 รายการ', () => rejectImportOrders([r.orderId!]))
-                            }
+                            onClick={() => void rejectOrders([r.orderId!])}
                             className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
                           >
                             ปฏิเสธ

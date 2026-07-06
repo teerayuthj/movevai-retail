@@ -750,7 +750,6 @@ export function DriversPage() {
                         driver={driver}
                         driverOrders={driverOrders}
                         onSetStatus={(driverId, status) => void setStatus(driverId, status)}
-                        onStartDelivery={startDelivery}
                         onCompleteDelivery={completeDelivery}
                         onFailDelivery={setFailTargetId}
                       />
