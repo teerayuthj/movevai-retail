@@ -36,6 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -528,11 +529,12 @@ function hasPublishedDeliveryJob(order: Order | undefined) {
 }
 
 function canOpenFastDispatch(card: CardVM, order: Order | undefined) {
+  // แสดง "ส่งทันที" คู่กับ "จัดรอบส่ง" เสมอ ตราบใดที่ยังไม่มีคิวส่งมอบจริง —
+  // order ที่จัดรอบไว้แล้ว (releaseState 'planned') ก็ยังกดส่งทันทีได้ (จะถอดออกจากรอบให้ก่อน)
   return (
     !!card.orderId &&
     card.kind !== 'error' &&
     card.kind !== 'rejected' &&
-    !(order && isUnreleasedPlannedOrder(order)) &&
     !hasPublishedDeliveryJob(order)
   );
 }
@@ -946,8 +948,14 @@ function BatchWorkspace({
   onDownloadBatch: (batch: Pick<ImportBatch, 'id' | 'fileName'>) => void;
   downloadingBatchId: string | null;
 }) {
-  const { orders, approveImportOrders, rejectImportOrders, restoreImportOrders, syncFromBackend } =
-    useRetailStore();
+  const {
+    orders,
+    approveImportOrders,
+    rejectImportOrders,
+    restoreImportOrders,
+    clearPlannedOrders,
+    syncFromBackend,
+  } = useRetailStore();
   const [details, setDetails] = useState<ImportBatchDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('review');
@@ -1154,7 +1162,12 @@ function BatchWorkspace({
     );
   };
 
-  const ensureInternalDriverReady = async (orderId: string) => {
+  const ensureInternalDriverReady = async (orderId: string, opts?: { clearPlan?: boolean }) => {
+    // order ที่จัดรอบไว้แล้วต้องถอดออกจากรอบก่อน ไม่งั้นจะไม่โผล่ในคิว "ส่งทันที"
+    // (execution queue กรอง order ที่ releaseState 'planned' ออก)
+    if (opts?.clearPlan) {
+      await clearPlannedOrders([orderId]);
+    }
     await approveImportOrders([orderId], 'internal_driver');
     const order = ordersById.get(orderId);
     if (!order) return;
@@ -1165,15 +1178,21 @@ function BatchWorkspace({
       confidence: Math.max(order.confidence, 90),
       dispatchReadiness: order.dispatchReadiness ?? 'ready',
       shippingMethod: 'internal_driver',
+      // ล้าง plan ในเพย์โหลดด้วย เพราะ ordersById ใน closure อาจยังไม่รีเฟรชหลัง clear
+      ...(opts?.clearPlan ? { deliveryPlan: undefined } : {}),
     });
     await syncFromBackend();
   };
 
   const approveAndOpenFastDispatch = (orderId: string) => {
-    void runAction('เปิดหน้าส่งทันที', async () => {
-      await ensureInternalDriverReady(orderId);
-      onFastDispatchOrder?.(orderId);
-    });
+    const wasPlanned = isUnreleasedPlannedOrder(ordersById.get(orderId) ?? ({} as Order));
+    void runAction(
+      wasPlanned ? 'ถอดออกจากรอบ แล้วเปิดหน้าส่งทันที' : 'เปิดหน้าส่งทันที',
+      async () => {
+        await ensureInternalDriverReady(orderId, { clearPlan: wasPlanned });
+        onFastDispatchOrder?.(orderId);
+      },
+    );
   };
 
   const approveAndOpenPlanning = (orderId: string) => {
@@ -1420,20 +1439,29 @@ function BatchWorkspace({
         payment: normalizePaymentMethod(editDraft.payment),
         note: buildNoteWithRequestedDelivery(editDraft.note.trim(), afterDelivery).trim() || null,
       });
+      // บันทึก activity log เป็น audit trail เสริม — ไม่ควร block การบันทึกข้อมูลหลัก
+      // (บาง backend ยังไม่มี route /orders/:id/activity → 404 "Cannot POST" ก็ยังต้อง save สำเร็จ)
       if (changeRows.length > 0) {
-        await addOrderActivity(editingRow.orderId, {
-          type: 'order_details_updated',
-          actor: {
-            kind: 'operator',
-            handler: existingOrder?.handledBy ?? {
-              name: 'พนักงาน Ausiris',
-              department: 'Import Review',
+        try {
+          await addOrderActivity(editingRow.orderId, {
+            type: 'order_details_updated',
+            actor: {
+              kind: 'operator',
+              handler: existingOrder?.handledBy ?? {
+                name: 'พนักงาน Ausiris',
+                department: 'Import Review',
+              },
             },
-          },
-          summary: 'แก้ไขวันนัด / จำนวนสินค้า',
-          details: `${editingRow.fileName} · แถวที่ ${editingRow.rowIndex + 1}`,
-          changes: changeRows,
-        });
+            summary: 'แก้ไขวันนัด / จำนวนสินค้า',
+            details: `${editingRow.fileName} · แถวที่ ${editingRow.rowIndex + 1}`,
+            changes: changeRows,
+          });
+        } catch (activityError) {
+          console.warn(
+            'บันทึก activity log ไม่สำเร็จ (ข้าม ไม่กระทบการบันทึกข้อมูล)',
+            activityError,
+          );
+        }
       }
       await Promise.all([reloadDetails(), syncFromBackend()]);
       toast.success('บันทึกข้อมูลจาก LINE import แล้ว');
@@ -1669,6 +1697,7 @@ function BatchWorkspace({
           const editable = !!card.orderId && card.kind !== 'error';
           const showFastDispatchAction = !!card.orderId && canOpenFastDispatch(card, order);
           const showPlanningAction = !!card.orderId && canOpenPlanning(card, order);
+          const plannedAlready = !!order && isUnreleasedPlannedOrder(order);
           const deliveryQueueBadge = getDeliveryQueueBadge(order);
           const rowLabel =
             card.rows.length === 1
@@ -1787,10 +1816,15 @@ function BatchWorkspace({
                           </button>
                         </TooltipTrigger>
                         <TooltipContent side="top" align="end" className="max-w-[240px]">
-                          <p className="font-semibold">อนุมัติแล้วไปหน้าส่งทันที</p>
+                          <p className="font-semibold">
+                            {plannedAlready
+                              ? 'ถอดออกจากรอบ แล้วส่งทันที'
+                              : 'อนุมัติแล้วไปหน้าส่งทันที'}
+                          </p>
                           <p className="mt-0.5 font-normal leading-snug text-background/80">
-                            เปิดหน้า “ส่งทันที” พร้อมโฟกัส order นี้ให้เลย — เลือกคนขับแล้วมอบงานให้
-                            Messenger ได้ทันที
+                            {plannedAlready
+                              ? 'order นี้ถูกจัดรอบไว้แล้ว — กดเพื่อถอดออกจากรอบ แล้วเปิดหน้า “ส่งทันที” เลือกคนขับมอบงานให้ Messenger ทันที'
+                              : 'เปิดหน้า “ส่งทันที” พร้อมโฟกัส order นี้ให้เลย — เลือกคนขับแล้วมอบงานให้ Messenger ได้ทันที'}
                           </p>
                         </TooltipContent>
                       </Tooltip>
@@ -2036,11 +2070,11 @@ function BatchWorkspace({
             </label>
             <label className="space-y-1 text-xs">
               <span className="text-muted-foreground">วันนัดส่ง</span>
-              <input
-                type="date"
+              <DatePicker
+                size="sm"
                 value={editDraft.deliveryDate}
-                onChange={(e) => setEditDraft({ ...editDraft, deliveryDate: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
+                onChange={(value) => setEditDraft({ ...editDraft, deliveryDate: value })}
+                className="w-full"
               />
             </label>
             <label className="space-y-1 text-xs">

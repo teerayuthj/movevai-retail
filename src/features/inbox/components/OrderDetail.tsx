@@ -20,6 +20,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Separator } from '@/components/ui/separator';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import {
@@ -248,16 +249,16 @@ export default function OrderDetail({
             <div className="text-[11px] font-medium text-muted-foreground">นัดส่ง</div>
             {editing ? (
               <div className="mt-1 grid grid-cols-[minmax(0,1fr)_88px] gap-1">
-                <input
-                  type="date"
+                <DatePicker
+                  size="sm"
                   value={draftRequestedDelivery.date}
-                  onChange={(event) =>
+                  onChange={(value) =>
                     setDraftRequestedDelivery((current) => ({
                       ...current,
-                      date: event.target.value,
+                      date: value,
                     }))
                   }
-                  className="h-8 min-w-0 rounded-md border bg-background px-3 text-xs"
+                  className="min-w-0"
                 />
                 <input
                   type="time"

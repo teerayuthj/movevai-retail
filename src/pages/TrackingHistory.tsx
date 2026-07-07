@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Select } from '@/components/ui/select';
 import { useRetailStore } from '@/state/retailStore';
 import {
@@ -242,14 +242,13 @@ export function TrackingHistoryPage() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           ถึงวันที่
-          <Input
-            type="date"
+          <DatePicker
             value={date}
-            onChange={(event) => {
-              setFilters((current) => ({ ...current, date: event.target.value }));
+            onChange={(value) => {
+              setFilters((current) => ({ ...current, date: value }));
               setSelectedId(null);
             }}
-            className="h-9 w-44"
+            className="w-44"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">

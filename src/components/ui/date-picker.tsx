@@ -14,6 +14,8 @@ interface DatePickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /** Match compact form rows (h-8 / text-xs) — defaults to standard h-9 control size. */
+  size?: 'sm' | 'default';
 }
 
 const ISO_FORMAT = 'yyyy-MM-dd';
@@ -24,6 +26,7 @@ export function DatePicker({
   placeholder = 'เลือกวันที่',
   className,
   disabled,
+  size = 'default',
 }: DatePickerProps) {
   const selected = React.useMemo(() => {
     if (!value) return undefined;
@@ -39,6 +42,7 @@ export function DatePicker({
         <Button
           type="button"
           variant="outline"
+          size={size}
           disabled={disabled}
           data-empty={!selected}
           className={cn(
@@ -46,7 +50,7 @@ export function DatePicker({
             className,
           )}
         >
-          <CalendarIcon className="mr-2 size-4" />
+          <CalendarIcon className={cn('mr-2 size-4', size === 'sm' && 'size-3.5')} />
           {selected ? format(selected, 'd MMM yyyy', { locale: th }) : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>

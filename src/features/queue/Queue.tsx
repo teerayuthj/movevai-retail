@@ -683,19 +683,12 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                   </div>
                 </div>
 
+                {/* ปุ่มส่งทันทีของ order ที่พร้อมจ่าย อยู่ที่แผง "ยืนยันการมอบหมาย" ด้านล่างแล้ว
+                    (assignmentActions) — ไม่ต้องมีปุ่มซ้ำในการ์ด simulator */}
                 {selectedOrder?.status === 'ready' && (
-                  <Button
-                    className="w-full"
-                    disabled={!canAssign}
-                    onClick={() => {
-                      if (!selectedOrder || selectedDriverIds.length === 0) return;
-                      setUrgentError('');
-                      setUrgentTarget({ orderId: selectedOrder.id, driverIds: selectedDriverIds });
-                    }}
-                  >
-                    <Send className="h-4 w-4" />
-                    สร้าง Route ส่งทันทีจาก simulator
-                  </Button>
+                  <div className="rounded-lg border border-dashed bg-background/70 p-3 text-center text-xs text-muted-foreground">
+                    เลือกคนขับด้านล่าง แล้วกด “ส่งทันที” ที่แผงยืนยันการมอบหมาย
+                  </div>
                 )}
 
                 {selectedOrder?.status === 'assigned' && (
