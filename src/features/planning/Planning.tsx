@@ -339,8 +339,8 @@ export function PlanningPage({
     setPaneView('map');
   };
 
-  const openOrderCsvEdit = (orderId: string) => {
-    onOpenInbox(buildInboxOrderEditSearch(orderId));
+  const openOrderCsvEdit = (order: Order) => {
+    onOpenInbox(buildInboxOrderEditSearch(order));
   };
 
   const addAllVisible = () => {
@@ -549,8 +549,8 @@ export function PlanningPage({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_320px_380px]">
-        <Card className="overflow-hidden xl:h-[calc(100vh-12rem)]">
-          <CardHeader className="pb-3">
+        <Card className="overflow-hidden xl:flex xl:h-[calc(100vh-12rem)] xl:flex-col">
+          <CardHeader className="pb-3 xl:shrink-0">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -671,7 +671,7 @@ export function PlanningPage({
               )}
             </div>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 xl:h-[calc(100%-10.5rem)]">
+          <CardContent className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
             {paneView === 'map' ? (
               <section
                 className="flex min-h-0 flex-1 flex-col"
@@ -759,7 +759,7 @@ export function PlanningPage({
                         onSelect={() => selectOrder(order.id)}
                         onToggleGroup={() => toggleOrderInGroup(order.id)}
                         onViewMap={() => viewOrderOnMap(order.id)}
-                        onEditSource={() => openOrderCsvEdit(order.id)}
+                        onEditSource={() => openOrderCsvEdit(order)}
                       />
                     ))}
                     {visibleOrders.length > 0 && (
@@ -779,7 +779,7 @@ export function PlanningPage({
                     onSelect={() => selectOrder(order.id)}
                     onToggleGroup={() => toggleOrderInGroup(order.id)}
                     onViewMap={() => viewOrderOnMap(order.id)}
-                    onEditSource={() => openOrderCsvEdit(order.id)}
+                    onEditSource={() => openOrderCsvEdit(order)}
                   />
                 ))}
                 {visibleOrders.length === 0 && unscheduledOrders.length === 0 && (

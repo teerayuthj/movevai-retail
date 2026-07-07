@@ -5,6 +5,11 @@ export function hasCsvImportSource(order: Order) {
   return Boolean(importMeta?.batchId && importMeta.fileName);
 }
 
-export function buildInboxOrderEditSearch(orderId: string) {
-  return `?tab=orders&order=${encodeURIComponent(orderId)}&edit=1`;
+export function buildInboxOrderEditSearch(order: Order) {
+  const importMeta = order.metadataJson?.import;
+  if (!importMeta?.batchId) {
+    return `?tab=orders&order=${encodeURIComponent(order.id)}&edit=1`;
+  }
+
+  return `?tab=line_import&batch=${encodeURIComponent(importMeta.batchId)}&order=${encodeURIComponent(order.id)}&edit=1`;
 }

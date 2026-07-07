@@ -66,6 +66,7 @@ import { cn } from '@/lib/utils';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import {
   buildNoteWithRequestedDelivery,
+  formatRequestedDelivery,
   getRequestedDeliveryDraft,
   parseDeliveryFromText,
 } from '@/features/inbox/utils/orderSchedule';
@@ -687,6 +688,19 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
   };
 }
 
+function getRowRequestedDelivery(row: RowVM, order: Order | undefined) {
+  if (order) return getRequestedDeliveryDraft(order);
+  return parseDeliveryFromText(
+    [
+      rawField(row.rawData, 'deliveryDate', 'delivery_date', 'scheduledDate', 'นัดส่ง', 'วันส่ง'),
+      rawField(row.rawData, 'deliveryTime', 'delivery_time', 'scheduledTime', 'เวลา', 'เวลาส่ง'),
+      rawField(row.rawData, 'note', 'หมายเหตุ'),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+}
+
 function displayOcrText(row: RowVM) {
   const parts = [row.ocrText?.trim()];
   if (row.parseWarnings && row.parseWarnings.length > 0) {
@@ -936,6 +950,8 @@ const REJECT_REASONS: ImportRejectReason[] = [
 function BatchWorkspace({
   scope,
   batches,
+  focusedOrderId,
+  editOnOpen,
   onFastDispatchOrder,
   onPlanningOrder,
   onDownloadBatch,
@@ -943,6 +959,8 @@ function BatchWorkspace({
 }: {
   scope: string; // batchId | 'all'
   batches: ImportBatch[];
+  focusedOrderId?: string | null;
+  editOnOpen?: boolean;
   onFastDispatchOrder?: (orderId: string) => void;
   onPlanningOrder?: (orderId: string) => void;
   onDownloadBatch: (batch: Pick<ImportBatch, 'id' | 'fileName'>) => void;
@@ -978,6 +996,7 @@ function BatchWorkspace({
     fileName: string;
     rowIndex: number;
   } | null>(null);
+  const autoOpenedOrderRef = useRef<string | null>(null);
 
   const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
   const targetBatchIds = useMemo(
@@ -1051,6 +1070,16 @@ function BatchWorkspace({
 
   // 1 card = 1 draft order — CSV ที่มี orderNo เดียวกันหลายแถว (หรือถูก merge แล้ว) รวมเป็น card เดียว
   const cards = useMemo(() => buildCards(rows), [rows]);
+
+  useEffect(() => {
+    if (!focusedOrderId || !editOnOpen) return;
+    if (autoOpenedOrderRef.current === focusedOrderId) return;
+    const targetCard = cards.find((card) => card.orderId === focusedOrderId);
+    const targetRow = targetCard?.rows.find((row) => row.orderId === focusedOrderId);
+    if (!targetRow) return;
+    startEditRow(targetRow);
+    autoOpenedOrderRef.current = focusedOrderId;
+  }, [cards, editOnOpen, focusedOrderId]);
 
   const stats = useMemo(() => {
     let review = 0;
@@ -1710,6 +1739,10 @@ function BatchWorkspace({
             skuCount > 0
               ? `${skuCount.toLocaleString('th-TH')} SKU · ${totalQty.toLocaleString('th-TH')} ชิ้น`
               : r.item;
+          const requestedDelivery = getRowRequestedDelivery(r, order);
+          const requestedDeliveryText = requestedDelivery.date
+            ? formatRequestedDelivery(requestedDelivery)
+            : null;
 
           return (
             <div
@@ -1777,6 +1810,16 @@ function BatchWorkspace({
                       r.address
                     )}
                   </div>
+
+                  {requestedDeliveryText && (
+                    <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-info/30 bg-info/5 px-2.5 py-1 text-xs text-info">
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                      <span className="shrink-0 font-medium">นัดส่ง</span>
+                      <span className="min-w-0 truncate text-foreground">
+                        {requestedDeliveryText}
+                      </span>
+                    </div>
+                  )}
 
                   {order ? (
                     <OrderItemPreviewList order={order} />
@@ -2402,9 +2445,11 @@ function BatchWorkspace({
 }
 
 export default function ImportBatchPanel({
+  locationSearch,
   onFastDispatchOrder,
   onPlanningOrder,
 }: {
+  locationSearch?: string;
   onFastDispatchOrder?: (orderId: string) => void;
   onPlanningOrder?: (orderId: string) => void;
 }) {
@@ -2421,6 +2466,10 @@ export default function ImportBatchPanel({
   const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
   const [listCollapsed, setListCollapsed] = useState(() => readStoredListCollapsed());
   const listRef = useRef<HTMLDivElement>(null);
+  const params = useMemo(() => new URLSearchParams(locationSearch ?? ''), [locationSearch]);
+  const focusedBatchId = params.get('batch');
+  const focusedOrderId = params.get('order');
+  const editOnOpen = params.get('edit') === '1';
   // กันยิงซ้ำระหว่างกำลังโหลดหน้าใหม่ (ref อ่านได้ทันทีไม่ต้องรอ re-render)
   const loadingRef = useRef(false);
   const pageRef = useRef(1);
@@ -2594,6 +2643,13 @@ export default function ImportBatchPanel({
   const workspaceKey =
     selectedId === ALL_SCOPE ? `all:${batches.map((b) => b.id).join(',')}` : selectedId;
 
+  useEffect(() => {
+    if (!focusedBatchId) return;
+    if (!batches.some((batch) => batch.id === focusedBatchId)) return;
+    markBatchRead(focusedBatchId);
+    setSelectedId(focusedBatchId);
+  }, [batches, focusedBatchId]);
+
   if (listCollapsed) {
     return (
       <div className="grid gap-4 lg:grid-cols-[44px_1fr]">
@@ -2631,6 +2687,8 @@ export default function ImportBatchPanel({
               key={workspaceKey}
               scope={selectedId}
               batches={batches}
+              focusedOrderId={selectedId === focusedBatchId ? focusedOrderId : null}
+              editOnOpen={selectedId === focusedBatchId && editOnOpen}
               onFastDispatchOrder={onFastDispatchOrder}
               onPlanningOrder={onPlanningOrder}
               onDownloadBatch={(batch) => void exportBatchCsv(batch)}
@@ -2843,6 +2901,8 @@ export default function ImportBatchPanel({
             key={workspaceKey}
             scope={selectedId}
             batches={batches}
+            focusedOrderId={selectedId === focusedBatchId ? focusedOrderId : null}
+            editOnOpen={selectedId === focusedBatchId && editOnOpen}
             onFastDispatchOrder={onFastDispatchOrder}
             onPlanningOrder={onPlanningOrder}
             onDownloadBatch={(batch) => void exportBatchCsv(batch)}

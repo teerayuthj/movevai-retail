@@ -15,7 +15,7 @@ import {
   OrderSummary,
   QueueOrderCard,
 } from '@/components/delivery/DeliveryExecutionShared';
-import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/orderTypes';
+import { type CancelReason, type Order, cancelReasonLabel, statusLabel } from '@/data/orderTypes';
 import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
   getDriverQueueTab,
@@ -241,8 +241,8 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     onOpenTracking(`?tab=overdue&order=${encodeURIComponent(selectedOrder.id)}`);
   };
 
-  const openOrderCsvEdit = (orderId: string) => {
-    onOpenInbox(buildInboxOrderEditSearch(orderId));
+  const openOrderCsvEdit = (order: Order) => {
+    onOpenInbox(buildInboxOrderEditSearch(order));
   };
 
   const selectedOrderSet = useMemo(
@@ -593,7 +593,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-warning/30 bg-background px-2.5 text-xs font-medium text-warning transition hover:bg-warning/10"
                               aria-label={`แก้ไขข้อมูลจาก CSV ของ ${order.code}`}
                               title="แก้ไขข้อมูลจาก CSV"
-                              onClick={() => openOrderCsvEdit(order.id)}
+                              onClick={() => openOrderCsvEdit(order)}
                             >
                               <FileSpreadsheet className="h-4 w-4" />
                               แก้ CSV
@@ -739,7 +739,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
             order={selectedOrder}
             drivers={selectedDrivers}
             orders={orders}
-            onEditOrderSource={(order) => openOrderCsvEdit(order.id)}
+            onEditOrderSource={(order) => openOrderCsvEdit(order)}
             actions={assignmentActions}
           />
           <OrderTimeline
@@ -766,7 +766,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                 type="button"
                 variant="outline"
                 className="w-full border-warning/30 text-warning hover:bg-warning/10 hover:text-warning"
-                onClick={() => openOrderCsvEdit(selectedOrder.id)}
+                onClick={() => openOrderCsvEdit(selectedOrder)}
               >
                 <FileSpreadsheet className="h-4 w-4" />
                 แก้ไขข้อมูลจาก CSV

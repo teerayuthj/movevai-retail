@@ -153,6 +153,7 @@ export function InboxPage({
         <ManualImportPanel onOpenOrder={openManualOrder} />
       ) : tab === 'line_import' ? (
         <ImportBatchPanel
+          locationSearch={locationSearch}
           onFastDispatchOrder={(orderId) =>
             onOpenQueue?.(`?tab=ready&order=${encodeURIComponent(orderId)}&mode=fast`)
           }

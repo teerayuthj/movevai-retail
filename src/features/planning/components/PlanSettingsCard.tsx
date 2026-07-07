@@ -133,7 +133,7 @@ export function PlanSettingsCard({
               </Button>
             )}
           </div>
-          <div className="grid max-h-52 gap-2 overflow-auto rounded-md border bg-background p-2">
+          <div className="app-scroll grid max-h-64 gap-2 overflow-auto rounded-md border bg-background p-2 pr-3">
             {drivers.map((driver) => {
               const selected = selectedDriverSet.has(driver.id);
               const workload = getDriverWorkloadSummary(driver, orders, { plannedDate: planDate });
@@ -143,7 +143,7 @@ export function PlanSettingsCard({
                   type="button"
                   onClick={() => toggleDriver(driver.id)}
                   className={cn(
-                    'flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                    'flex min-h-20 items-start gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors',
                     selected
                       ? 'border-primary bg-primary/5 text-primary'
                       : 'border-transparent hover:bg-muted',
@@ -152,21 +152,21 @@ export function PlanSettingsCard({
                 >
                   <span
                     className={cn(
-                      'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                      'mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border',
                       selected ? 'border-primary bg-primary text-primary-foreground' : 'bg-card',
                     )}
                   >
                     {selected && <Check className="h-3 w-3" />}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{driver.name}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="grid min-w-0 flex-1 gap-1">
+                    <span className="block truncate font-medium leading-5">{driver.name}</span>
+                    <span className="block truncate text-[11px] leading-4 text-muted-foreground">
                       {driver.phone}
                     </span>
                     <DriverWorkloadChips
                       workload={workload}
                       plannedLabel="แผนวันนั้น"
-                      className="mt-1"
+                      className="min-h-5 gap-x-1 gap-y-1"
                     />
                   </span>
                 </button>
