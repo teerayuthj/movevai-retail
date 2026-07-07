@@ -114,23 +114,42 @@ export function formatOverdueDuration(minutes: number) {
   return `เลยเวลานัดส่ง ${days} วัน${remainingHours ? ` ${remainingHours} ชม.` : ''}`;
 }
 
-export function getAssignedOrderOverdueMinutes(order: Order, nowMs = Date.now()) {
-  const plan = order.deliveryPlan;
+export type AssignedOrderOverdue = {
+  minutes: number;
+  /** นับจากอะไร — เวลานัดจริงของออเดอร์ หรือ SLA รับงานด่วน (dispatch + 5 นาที) */
+  basis: 'appointment' | 'urgent_accept';
+};
+
+export function getAssignedOrderOverdue(
+  order: Order,
+  nowMs = Date.now(),
+): AssignedOrderOverdue | null {
   if (order.status !== 'assigned') return null;
 
+  // มีเวลานัดจริง → เวลานัดเป็นตัวตัดสินเสมอ (รวมงานด่วน) ให้ตรงกับ SLA ที่ admin เห็น
+  const plan = order.deliveryPlan;
+  const scheduledAt =
+    plan?.plannedDate && plan.plannedTime
+      ? getPlanningDateTimeMs(plan.plannedDate, plan.plannedTime)
+      : null;
+  if (scheduledAt != null) {
+    const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
+    if (nowMs < overdueAt) return null;
+    return { minutes: Math.floor((nowMs - scheduledAt) / 60_000), basis: 'appointment' };
+  }
+
+  // งานด่วนที่ไม่มีเวลานัด → ใช้ SLA รับงานแบบเดิม
   if (order.deliveryRoute?.dispatchMode === 'urgent' && order.deliveryRoute.acceptBy) {
     const acceptBy = new Date(order.deliveryRoute.acceptBy).getTime();
     if (Number.isNaN(acceptBy) || nowMs < acceptBy) return null;
-    return Math.floor((nowMs - acceptBy) / 60_000);
+    return { minutes: Math.floor((nowMs - acceptBy) / 60_000), basis: 'urgent_accept' };
   }
 
-  if (!plan?.plannedDate || !plan.plannedTime) return null;
+  return null;
+}
 
-  const scheduledAt = getPlanningDateTimeMs(plan.plannedDate, plan.plannedTime);
-  if (scheduledAt == null) return null;
-  const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
-  if (nowMs < overdueAt) return null;
-  return Math.floor((nowMs - scheduledAt) / 60_000);
+export function getAssignedOrderOverdueMinutes(order: Order, nowMs = Date.now()) {
+  return getAssignedOrderOverdue(order, nowMs)?.minutes ?? null;
 }
 
 export function normalizeOrderPlanning(order: Order): Order {

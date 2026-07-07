@@ -395,6 +395,7 @@ function serializeOrderForBackend(order: Order) {
     requiresIdCheck: order.requiresIdCheck,
     insured: order.insured,
     shippingMethod: order.shippingMethod,
+    metadataJson: order.metadataJson,
   };
 }
 

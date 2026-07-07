@@ -27,14 +27,21 @@ import { cn } from '@/lib/utils';
 import {
   formatInTransitStartTime,
   getMessengerAppointmentCountdown,
-  getMessengerJobOverdueMinutes,
+  getMessengerJobOverdue,
   getMessengerJobTiming,
 } from '../messengerSchedule';
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { navigationUrl } from '../geocode';
+import type { AssignedOrderOverdue } from '@/lib/deliveryPlanning';
 
-function formatMessengerDueLabel(minutes: number) {
-  return formatOverdueDuration(minutes);
+// งานด่วนไม่มีเวลานัด → เส้นตายคือ SLA รับงาน (dispatch + 5 นาที) ต้องไม่พูดว่า "เวลานัด"
+function formatMessengerDueLabel(overdue: AssignedOrderOverdue) {
+  if (overdue.basis === 'urgent_accept') {
+    return overdue.minutes < 1
+      ? 'งานด่วน · ควรออกตัวได้แล้ว'
+      : `งานด่วน · เลยเวลาออกตัว ${formatElapsedDuration(overdue.minutes)}`;
+  }
+  return formatOverdueDuration(overdue.minutes);
 }
 
 export function JobCard({
@@ -58,8 +65,8 @@ export function JobCard({
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
   const isFutureJob =
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
-  const overdueMinutes = getMessengerJobOverdueMinutes(order, nowMs);
-  const isOverdue = overdueMinutes != null;
+  const overdue = getMessengerJobOverdue(order, nowMs);
+  const isOverdue = overdue != null;
   const timing = getMessengerJobTiming(order, nowMs);
   const isPendingReview = order.status === 'pending_confirmation';
   // งานที่กำลังส่ง: โชว์เวลาเริ่ม (นิ่ง) + เหลือ/เลยเวลานัด — ไม่โชว์นาฬิกาจับเวลา
@@ -71,8 +78,8 @@ export function JobCard({
 
   const plannedTime = order.deliveryPlan?.plannedTime;
   // สถานะเวลานัด (สี + บรรทัดสรุป) — รวม เลย/ใกล้ถึง/เหลือ ไว้ในกล่องนัดส่งกล่องเดียว
-  const apptStatus: { tone: 'info' | 'warning' | 'danger'; label: string } | null = isOverdue
-    ? { tone: 'danger', label: formatMessengerDueLabel(overdueMinutes) }
+  const apptStatus: { tone: 'info' | 'warning' | 'danger'; label: string } | null = overdue
+    ? { tone: 'danger', label: formatMessengerDueLabel(overdue) }
     : timing
       ? {
           tone: timing.phase === 'scheduled' ? 'info' : 'warning',

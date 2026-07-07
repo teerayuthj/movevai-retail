@@ -332,10 +332,12 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const deliveredOrderCount = myJobs.filter((o) => o.status === 'delivered').length;
   const hasTestTrackingSession = tracking.session?.type === 'test';
   const openCustomerJobCount = assignedOrderCount + inTransitOrderCount + pendingConfirmationCount;
+  // "กำลังส่ง" เฉพาะตอนมีงาน in_transit จริงหรือกำลังบันทึก GPS ทดสอบ —
+  // งานที่แค่ assigned/รอตรวจสอบยังถือว่า "ว่าง" (สอดคล้อง deriveDriverDisplayStatus ฝั่ง admin)
   const effectiveMessengerStatus: NonNullable<typeof messenger>['status'] | undefined =
     messenger?.status === 'off_duty'
       ? 'off_duty'
-      : openCustomerJobCount > 0 || hasTestTrackingSession
+      : inTransitOrderCount > 0 || hasTestTrackingSession
         ? 'on_delivery'
         : messenger
           ? 'available'

@@ -152,12 +152,21 @@ export function updateOrderDetailsState(
           updatedAt: nowIso(),
         },
       };
+      const deliveryPlan =
+        order.deliveryPlan && nextDelivery.date
+          ? {
+              ...order.deliveryPlan,
+              plannedDate: nextDelivery.date,
+              plannedTime: nextDelivery.time || undefined,
+            }
+          : order.deliveryPlan;
 
       return appendEvent(
         {
           ...order,
           items: nextItems,
           metadataJson,
+          deliveryPlan,
         },
         {
           type: 'order_details_updated',

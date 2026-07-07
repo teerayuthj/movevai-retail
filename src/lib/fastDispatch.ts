@@ -1,5 +1,7 @@
 import type { Order } from '@/data/orderTypes';
 import { getRequestedDeliveryDraft } from '@/features/inbox/utils/orderSchedule';
+import { formatElapsedDuration } from '@/lib/deliveryExecution';
+import { getPlanningDateTimeMs } from '@/lib/deliveryPlanning';
 
 export type FastDispatchSla = {
   urgent: boolean;
@@ -17,7 +19,9 @@ export type FastDispatchSla = {
 function resolveAppointmentDueAt(order: Order): Date | null {
   const { date, time } = getRequestedDeliveryDraft(order);
   if (!date) return null;
-  const dt = new Date(`${date}T${time || '23:59'}:00`);
+  const scheduledMs = getPlanningDateTimeMs(date, time || '23:59');
+  if (scheduledMs == null) return null;
+  const dt = new Date(scheduledMs);
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
@@ -54,7 +58,8 @@ export function getFastDispatchSla(order: Order, now = new Date()): FastDispatch
   const basis: FastDispatchSla['basis'] = appointmentDueAt ? 'appointment' : 'received';
   const dueAt = appointmentDueAt ?? new Date(baseTime.getTime() + 24 * 60 * 60 * 1000);
   const remainingMs = dueAt.getTime() - now.getTime();
-  const remainingHours = Math.ceil(Math.abs(remainingMs) / 3_600_000);
+  const remainingMinutes = Math.max(1, Math.ceil(Math.abs(remainingMs) / 60_000));
+  const remainingLabel = formatElapsedDuration(remainingMinutes);
   const urgent = isFastDispatchOrder(order);
   const state: FastDispatchSla['state'] =
     remainingMs < 0 ? 'overdue' : remainingMs <= 4 * 3_600_000 ? 'warning' : 'ok';
@@ -75,11 +80,11 @@ export function getFastDispatchSla(order: Order, now = new Date()): FastDispatch
   const detail =
     basis === 'appointment'
       ? remainingMs < 0
-        ? `เกินเวลานัดแล้ว ${remainingHours} ชม.`
-        : `เหลือ ${remainingHours} ชม. ก่อนถึงเวลานัด`
+        ? `เกินเวลานัดแล้ว ${remainingLabel}`
+        : `ต้องถึงก่อนเวลานัดอีก ${remainingLabel}`
       : remainingMs < 0
-        ? `เกิน SLA แล้ว ${remainingHours} ชม.`
-        : `เหลือ ${remainingHours} ชม. ก่อนครบ 1 วัน`;
+        ? `เกิน SLA แล้ว ${remainingLabel}`
+        : `ต้องถึงก่อนครบ 1 วันอีก ${remainingLabel}`;
 
   return {
     urgent,

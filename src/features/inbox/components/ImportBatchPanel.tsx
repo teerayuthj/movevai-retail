@@ -1399,6 +1399,8 @@ function BatchWorkspace({
         totalValue: String(toNonNegativeNumber(editDraft.totalValue)),
         payment: normalizePaymentMethod(editDraft.payment),
         note: editDraft.note.trim(),
+        deliveryDate: afterDelivery.date,
+        deliveryTime: afterDelivery.time,
         [SOURCE_MISSING_FIELDS_COLUMN]: nextMissingFields.join(','),
         [SOURCE_EXTRACTION_CONFIDENCE_COLUMN]:
           nextMissingFields.length === 0

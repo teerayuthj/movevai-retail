@@ -18,7 +18,6 @@ import {
 import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/orderTypes';
 import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
-  canDriverTakeOrder,
   getDriverQueueTab,
   planAutoAssignments,
   recommendDriverForOrder,
@@ -179,10 +178,11 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     );
   }, [recommendedDriverId, selectedOrder]);
 
-  const canAssign =
+  const canUrgentDispatch =
     selectedOrder?.status === 'ready' &&
-    selectedDrivers.length > 0 &&
-    selectedDrivers.every((driver) => canDriverTakeOrder(selectedOrder, driver));
+    selectedDriverIds.length > 0 &&
+    selectedDrivers.length === selectedDriverIds.length &&
+    selectedDrivers.every((driver) => driver.status !== 'off_duty');
 
   const handleStartRoute = (orderIds: string[], selectedOrderForFocus?: string) => {
     orderIds.forEach((orderId) => startDelivery(orderId));
@@ -278,7 +278,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
         <div className="space-y-2">
           <Button
             className="w-full"
-            disabled={!canAssign}
+            disabled={!canUrgentDispatch}
             onClick={() => {
               if (!selectedOrder || selectedDriverIds.length === 0) return;
               setUrgentError('');

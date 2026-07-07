@@ -1,8 +1,9 @@
 import type { Order } from '@/data/orderTypes';
 import {
   getPlanningDateTimeMs,
-  getAssignedOrderOverdueMinutes,
+  getAssignedOrderOverdue,
   SCHEDULED_DELIVERY_GRACE_MINUTES,
+  type AssignedOrderOverdue,
 } from '@/lib/deliveryPlanning';
 
 export const SCHEDULED_DELIVERY_REMINDER_MINUTES = 15;
@@ -20,7 +21,7 @@ export function getMessengerJobScheduledAt(order: Order): number | null {
 }
 
 export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJobTiming | null {
-  if (order.status !== 'assigned' || order.deliveryRoute?.dispatchMode === 'urgent') return null;
+  if (order.status !== 'assigned') return null;
 
   const scheduledAt = getMessengerJobScheduledAt(order);
   if (scheduledAt == null) return null;
@@ -42,8 +43,12 @@ export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJob
   return null;
 }
 
+export function getMessengerJobOverdue(order: Order, nowMs: number): AssignedOrderOverdue | null {
+  return getAssignedOrderOverdue(order, nowMs);
+}
+
 export function getMessengerJobOverdueMinutes(order: Order, nowMs: number): number | null {
-  return getAssignedOrderOverdueMinutes(order, nowMs);
+  return getMessengerJobOverdue(order, nowMs)?.minutes ?? null;
 }
 
 // เวลานัดของงานที่ "กำลังส่งอยู่" — messenger เห็นเป็นเป้าหมาย (เหลือ/เลยเท่าไร)
