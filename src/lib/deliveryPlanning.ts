@@ -156,6 +156,12 @@ export function canPlanOrder(order: Order) {
   );
 }
 
+// อนุมัติจาก Inbox แล้ว (ready + คนขับภายใน) แต่ยังไม่ถูกจัดรอบ — รอ admin กำหนดวัน/เวลา/คนขับ
+// โผล่ในลิสต์ "รอจัดรอบ" ของหน้า Planning โดยไม่ผูกกับวันใดวันหนึ่ง จนกว่าจะบันทึกแผน
+export function isUnscheduledPlanningOrder(order: Order) {
+  return canPlanOrder(order) && order.deliveryPlan?.releaseState !== 'planned';
+}
+
 export function isVisibleInExecutionQueue(order: Order) {
   return (
     isInternalDriverOrder(order) &&

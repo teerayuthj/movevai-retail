@@ -134,7 +134,10 @@ export default function App() {
           {page === 'overview' && <OverviewPage />}
           {page === 'script_transform' && <ScriptTransformPage />}
           {page === 'inbox' && (
-            <InboxPage onOpenQueue={(search) => navigateToPage('queue', { search })} />
+            <InboxPage
+              onOpenQueue={(search) => navigateToPage('queue', { search })}
+              onOpenPlanning={(search) => navigateToPage('planning', { search })}
+            />
           )}
           {page === 'queue' && (
             <QueuePage

@@ -6,7 +6,16 @@ import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import { AlertTriangle, CalendarClock, List, MapPin, Route, Search, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  CalendarClock,
+  Inbox,
+  List,
+  MapPin,
+  Route,
+  Search,
+  Users,
+} from 'lucide-react';
 import {
   planningCancelReasonLabel,
   type DispatchReadiness,
@@ -23,6 +32,7 @@ import {
   getTodayDateKey,
   getTomorrowDateKey,
   isUnreleasedPlannedOrder,
+  isUnscheduledPlanningOrder,
 } from '@/lib/deliveryPlanning';
 import { useRetailStore } from '@/state/retailStore';
 import { PlanningOrderCard } from './components/PlanningOrderCard';
@@ -121,8 +131,16 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const visibleOrders = plannedForSelectedDate.filter((order) =>
     matchesPlanningQuery(order, drivers, query),
   );
+  // งานที่อนุมัติจาก Inbox แล้วแต่ยังไม่ถูกจัดรอบ (ไม่มีวันส่ง) — โผล่ในลิสต์ "รอจัดรอบ"
+  // แยกจากวันที่เลือก เพราะยังไม่ผูกกับวันใด จนกว่าจะบันทึกแผน
+  const unscheduledOrders = planningEligibleOrders
+    .filter((order) => isUnscheduledPlanningOrder(order))
+    .filter((order) => matchesPlanningQuery(order, drivers, query))
+    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
   const selectedOrderSet = new Set(selectedOrderIds);
-  const selectedOrders = visibleOrders.filter((order) => selectedOrderSet.has(order.id));
+  // เลือกได้ทั้งงานที่จัดรอบไว้วันนี้ + งานที่รอจัดรอบ (order เดียวอยู่ได้ที่เดียวเท่านั้น)
+  const selectablePool = [...visibleOrders, ...unscheduledOrders];
+  const selectedOrders = selectablePool.filter((order) => selectedOrderSet.has(order.id));
   const selectedOrderSnapshot = selectedOrders
     .map(
       (order) =>
@@ -157,11 +175,12 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
 
   useEffect(() => {
     if (!focusedOrderId) return;
-    const focusedOrder = orders.find(
-      (order) => order.id === focusedOrderId && isUnreleasedPlannedOrder(order),
-    );
-    if (!focusedOrder?.deliveryPlan) return;
-    setSelectedDate(focusedOrder.deliveryPlan.plannedDate);
+    // โฟกัส order ที่ส่งมาจาก Inbox — รองรับทั้งงานที่จัดรอบไว้แล้ว และงานที่เพิ่งอนุมัติ (รอจัดรอบ)
+    const focusedOrder = orders.find((order) => order.id === focusedOrderId && canPlanOrder(order));
+    if (!focusedOrder) return;
+    if (isUnreleasedPlannedOrder(focusedOrder) && focusedOrder.deliveryPlan) {
+      setSelectedDate(focusedOrder.deliveryPlan.plannedDate);
+    }
     setSelectedOrderIds([focusedOrder.id]);
   }, [focusedOrderId, orders]);
 
@@ -683,6 +702,36 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               </section>
             ) : (
               <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
+                {unscheduledOrders.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-info/30 bg-info/5 px-3 py-2">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-info">
+                        <Inbox className="h-3.5 w-3.5" />
+                        รอจัดรอบ · {unscheduledOrders.length} งาน
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        อนุมัติจาก Order Inbox แล้ว — เลือกเพื่อกำหนดวัน/เวลา/คนขับ
+                      </span>
+                    </div>
+                    {unscheduledOrders.map((order) => (
+                      <PlanningOrderCard
+                        key={order.id}
+                        order={order}
+                        drivers={drivers}
+                        selected={selectedOrderSet.has(order.id)}
+                        onSelect={() => selectOrder(order.id)}
+                        onToggleGroup={() => toggleOrderInGroup(order.id)}
+                        onViewMap={() => viewOrderOnMap(order.id)}
+                      />
+                    ))}
+                    {visibleOrders.length > 0 && (
+                      <div className="flex items-center gap-2 pt-1 text-[11px] font-medium text-muted-foreground">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        จัดรอบไว้แล้ว · {formatPlanningDate(selectedDate)}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {visibleOrders.map((order) => (
                   <PlanningOrderCard
                     key={order.id}
@@ -694,7 +743,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                     onViewMap={() => viewOrderOnMap(order.id)}
                   />
                 ))}
-                {visibleOrders.length === 0 && (
+                {visibleOrders.length === 0 && unscheduledOrders.length === 0 && (
                   <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
                     <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
                     {plannedForSelectedDate.length > 0

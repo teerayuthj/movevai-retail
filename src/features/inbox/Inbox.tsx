@@ -27,7 +27,13 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
 
 type InboxTab = 'manual_import' | 'line_import' | 'orders';
 
-export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => void }) {
+export function InboxPage({
+  onOpenQueue,
+  onOpenPlanning,
+}: {
+  onOpenQueue?: (search?: string) => void;
+  onOpenPlanning?: (search?: string) => void;
+}) {
   const {
     orders,
     confirmOrder,
@@ -135,6 +141,7 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
           onFastDispatchOrder={(orderId) =>
             onOpenQueue?.(`?tab=ready&order=${encodeURIComponent(orderId)}&mode=fast`)
           }
+          onPlanningOrder={(orderId) => onOpenPlanning?.(`?order=${encodeURIComponent(orderId)}`)}
         />
       ) : (
         <>
