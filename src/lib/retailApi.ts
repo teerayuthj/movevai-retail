@@ -1297,8 +1297,6 @@ export type ImportBatchRow = {
   status: 'PENDING' | 'IMPORTED' | 'ERROR';
   errorMessage: string | null;
   orderId: string | null;
-  /** code ของออเดอร์อื่นที่เบอร์ตรงกัน (ข้ามไฟล์ได้) — null = ไม่ซ้ำ */
-  duplicateOfCode: string | null;
 };
 
 export type ImportRejectReason = 'incomplete_data' | 'duplicate' | 'wrong_group' | 'other';
@@ -1312,6 +1310,16 @@ type ImportModerationInput = {
   note?: string;
 };
 
+export type ImportOrderItemInput = {
+  sku: string;
+  name: string;
+  purity: string;
+  weight: string;
+  qty: number;
+  unitPrice: number;
+  note?: string;
+};
+
 export type ImportOrderUpdateInput = {
   rawData?: Record<string, string>;
   customer: {
@@ -1320,15 +1328,9 @@ export type ImportOrderUpdateInput = {
     address: string;
     idCard?: string;
   };
-  item: {
-    sku: string;
-    name: string;
-    purity: string;
-    weight: string;
-    qty: number;
-    unitPrice: number;
-    note?: string;
-  };
+  /** legacy single item — ใช้ items[] แทน */
+  item?: ImportOrderItemInput;
+  items?: ImportOrderItemInput[];
   totalValue: number;
   payment: Order['payment'];
   note?: string | null;
@@ -1366,6 +1368,22 @@ export function updateImportedOrder(orderId: string, input: ImportOrderUpdateInp
   );
 }
 
+/** รวมหลาย draft orders เป็นออเดอร์เดียว — ตัวแรกใน orderIds เป็น target */
+export function mergeImportOrders(orderIds: string[]) {
+  return request<{ merged: true; targetOrderId: string; mergedOrderIds: string[] }>(
+    `${APP_API_BASE}/import-batches/orders/merge`,
+    { method: 'POST', body: JSON.stringify({ orderIds }) },
+  );
+}
+
+/** แยก import rows ที่เลือกออกเป็น draft order ใหม่ (1 order ต่อ 1 แถว) */
+export function splitImportOrderRows(orderId: string, rowIds: string[]) {
+  return request<{ split: true; createdOrderIds: string[] }>(
+    `${APP_API_BASE}/import-batches/orders/${encodeURIComponent(orderId)}/split-import-rows`,
+    { method: 'POST', body: JSON.stringify({ rowIds }) },
+  );
+}
+
 export function addOrderActivity(
   orderId: string,
   input: {
@@ -1385,7 +1403,18 @@ export function addOrderActivity(
   );
 }
 
-export type ImportBatchDetail = ImportBatch & { rows: ImportBatchRow[] };
+/** กลุ่ม "น่าจะรวมได้" ที่ backend เสนอ (เบอร์+ที่อยู่ตรงกัน, ไม่มี explicit orderNo) */
+export type ImportGroupSuggestion = {
+  key: string;
+  orderIds: string[];
+  rowIds: string[];
+  rowIndexes: number[];
+};
+
+export type ImportBatchDetail = ImportBatch & {
+  rows: ImportBatchRow[];
+  groupSuggestions?: ImportGroupSuggestion[];
+};
 
 export async function fetchImportBatches(params?: {
   page?: number;

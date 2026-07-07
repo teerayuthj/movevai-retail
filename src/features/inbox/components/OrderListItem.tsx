@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   Image as ImageIcon,
   MessageSquare,
+  Package,
   Pencil,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -55,6 +56,9 @@ export default function OrderListItem({
   selected: boolean;
   onClick: () => void;
 }) {
+  const totalQty = order.items.reduce((sum, item) => sum + item.qty, 0);
+  const firstItem = order.items[0];
+
   return (
     <button
       type="button"
@@ -95,6 +99,16 @@ export default function OrderListItem({
               {formatTHB(order.totalValue)}
             </span>
           </div>
+          {firstItem && (
+            <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+              <Package className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                {order.items.length.toLocaleString('th-TH')} SKU ·{' '}
+                {totalQty.toLocaleString('th-TH')} ชิ้น · {firstItem.name}
+                {order.items.length > 1 && ` (+${order.items.length - 1})`}
+              </span>
+            </div>
+          )}
           {(isUnreleasedPlannedOrder(order) || order.dispatchReadiness === 'awaiting_items') && (
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {isUnreleasedPlannedOrder(order) && order.deliveryPlan && (
