@@ -28,9 +28,11 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
 type InboxTab = 'manual_import' | 'line_import' | 'orders';
 
 export function InboxPage({
+  locationSearch,
   onOpenQueue,
   onOpenPlanning,
 }: {
+  locationSearch?: string;
   onOpenQueue?: (search?: string) => void;
   onOpenPlanning?: (search?: string) => void;
 }) {
@@ -51,6 +53,10 @@ export function InboxPage({
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [query, setQuery] = useState('');
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const params = new URLSearchParams(locationSearch ?? '');
+  const focusedOrderId = params.get('order');
+  const requestedTab = params.get('tab');
+  const editOnOpen = params.get('edit') === '1';
 
   const { inboxOrders, filteredOrders, filterCounts, inboxValue } = useOrderFiltering(
     orders,
@@ -69,10 +75,19 @@ export function InboxPage({
   };
 
   useEffect(() => {
+    if (focusedOrderId && orders.some((order) => order.id === focusedOrderId)) {
+      setTab(requestedTab === 'orders' ? 'orders' : 'line_import');
+      setFilter('all');
+      setQuery('');
+      setSelectedId(focusedOrderId);
+      setMobileDetailOpen(false);
+      return;
+    }
+
     if (!selectedId || !inboxOrders.some((order) => order.id === selectedId)) {
       setSelectedId(inboxOrders[0]?.id ?? null);
     }
-  }, [inboxOrders, selectedId]);
+  }, [focusedOrderId, inboxOrders, orders, requestedTab, selectedId]);
 
   return (
     <div className="space-y-4">
@@ -164,6 +179,9 @@ export function InboxPage({
               {selected ? (
                 <OrderDetail
                   order={selected}
+                  editOnOpenKey={
+                    editOnOpen && focusedOrderId === selected.id ? locationSearch : undefined
+                  }
                   onConfirm={confirmOrder}
                   onSaveCustomer={updateOrderCustomer}
                   onSaveDetails={updateOrderDetails}
@@ -187,6 +205,9 @@ export function InboxPage({
             {selected && (
               <OrderDetail
                 order={selected}
+                editOnOpenKey={
+                  editOnOpen && focusedOrderId === selected.id ? locationSearch : undefined
+                }
                 onConfirm={confirmOrder}
                 onSaveCustomer={updateOrderCustomer}
                 onSaveDetails={updateOrderDetails}

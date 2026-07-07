@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Check,
   Coins,
+  FileSpreadsheet,
   Headset,
   Package,
   Pencil,
@@ -99,6 +100,7 @@ function ItemRow({ item, index }: { item: OrderItem; index: number }) {
 
 type OrderDetailProps = {
   order: Order;
+  editOnOpenKey?: string;
   onConfirm: (orderId: string, shippingMethod: ShippingMethod) => void;
   onSaveCustomer: (orderId: string, customer: Order['customer']) => void;
   onSaveDetails: (orderId: string, input: UpdateOrderDetailsInput) => void;
@@ -108,6 +110,7 @@ type OrderDetailProps = {
 
 export default function OrderDetail({
   order,
+  editOnOpenKey,
   onConfirm,
   onSaveCustomer,
   onSaveDetails,
@@ -130,6 +133,10 @@ export default function OrderDetail({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.id]);
 
+  useEffect(() => {
+    if (editOnOpenKey) setEditing(true);
+  }, [editOnOpenKey]);
+
   const lowConfidence = order.confidence < 80;
   const isHighValue = order.totalValue >= 500000;
   const shippingMethod: ShippingMethod = order.shippingMethod ?? 'internal_driver';
@@ -150,6 +157,8 @@ export default function OrderDetail({
       ? formatRequestedDelivery(rawRequestedDelivery)
       : '';
   const itemCountSummary = getItemCountSummary(order);
+  const importMeta = order.metadataJson?.import;
+  const importColumnEntries = importMeta ? Object.entries(importMeta.columns) : [];
 
   return (
     <div className="space-y-4">
@@ -407,6 +416,45 @@ export default function OrderDetail({
                 </div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {importMeta && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-sm">
+              <FileSpreadsheet className="h-4 w-4 text-warning" />
+              ต้นฉบับ CSV
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 text-xs sm:grid-cols-3">
+              <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="text-[10px] text-muted-foreground">ไฟล์</div>
+                <div className="mt-0.5 truncate font-medium">{importMeta.fileName}</div>
+              </div>
+              <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="text-[10px] text-muted-foreground">แถว</div>
+                <div className="mt-0.5 font-medium tabular-nums">{importMeta.rowIndex + 1}</div>
+              </div>
+              <div className="rounded-md border bg-muted/20 px-3 py-2">
+                <div className="text-[10px] text-muted-foreground">Batch</div>
+                <div className="mt-0.5 truncate font-mono font-medium">{importMeta.batchId}</div>
+              </div>
+            </div>
+            {importColumnEntries.length > 0 && (
+              <div className="grid gap-1.5 text-xs sm:grid-cols-2">
+                {importColumnEntries.map(([key, value]) => (
+                  <div key={key} className="rounded-md border px-2.5 py-2">
+                    <div className="truncate text-[10px] font-medium text-muted-foreground">
+                      {key}
+                    </div>
+                    <div className="mt-0.5 break-words text-foreground">{value || '-'}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

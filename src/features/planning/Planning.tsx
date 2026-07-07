@@ -55,6 +55,7 @@ import {
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
 import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
+import { buildInboxOrderEditSearch } from '@/lib/orderSourceLink';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 import { toast } from 'sonner';
@@ -73,7 +74,13 @@ function uniqueDriverIds(orders: Order[]) {
   );
 }
 
-export function PlanningPage({ locationSearch }: { locationSearch: string }) {
+export function PlanningPage({
+  locationSearch,
+  onOpenInbox,
+}: {
+  locationSearch: string;
+  onOpenInbox: (search?: string) => void;
+}) {
   const {
     orders,
     drivers,
@@ -330,6 +337,10 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setSelectedRouteId(route.id);
     setSelectedOrderIds(route.stops.map((stop) => stop.order.id));
     setPaneView('map');
+  };
+
+  const openOrderCsvEdit = (orderId: string) => {
+    onOpenInbox(buildInboxOrderEditSearch(orderId));
   };
 
   const addAllVisible = () => {
@@ -748,6 +759,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                         onSelect={() => selectOrder(order.id)}
                         onToggleGroup={() => toggleOrderInGroup(order.id)}
                         onViewMap={() => viewOrderOnMap(order.id)}
+                        onEditSource={() => openOrderCsvEdit(order.id)}
                       />
                     ))}
                     {visibleOrders.length > 0 && (
@@ -767,6 +779,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                     onSelect={() => selectOrder(order.id)}
                     onToggleGroup={() => toggleOrderInGroup(order.id)}
                     onViewMap={() => viewOrderOnMap(order.id)}
+                    onEditSource={() => openOrderCsvEdit(order.id)}
                   />
                 ))}
                 {visibleOrders.length === 0 && unscheduledOrders.length === 0 && (

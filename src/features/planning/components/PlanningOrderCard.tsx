@@ -1,8 +1,9 @@
 import { Badge } from '@/components/ui/badge';
 import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/orderTypes';
 import { formatPlanningDateTime, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import { hasCsvImportSource } from '@/lib/orderSourceLink';
 import { cn } from '@/lib/utils';
-import { MapPin, Minus, Package, Plus } from 'lucide-react';
+import { FileSpreadsheet, MapPin, Minus, Package, Plus } from 'lucide-react';
 
 type PlanningOrderCardProps = {
   order: Order;
@@ -11,6 +12,7 @@ type PlanningOrderCardProps = {
   onSelect: () => void;
   onToggleGroup: () => void;
   onViewMap: () => void;
+  onEditSource?: () => void;
 };
 
 export function PlanningOrderCard({
@@ -20,6 +22,7 @@ export function PlanningOrderCard({
   onSelect,
   onToggleGroup,
   onViewMap,
+  onEditSource,
 }: PlanningOrderCardProps) {
   const plannedDriverName = order.deliveryPlan?.plannedDriverId
     ? drivers.find((driver) => driver.id === order.deliveryPlan?.plannedDriverId)?.name
@@ -92,7 +95,20 @@ export function PlanningOrderCard({
           <span className="font-medium text-warning">{formatTHB(order.totalValue)}</span>
         </div>
       </div>
-      <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
+        {hasCsvImportSource(order) && onEditSource && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onEditSource();
+            }}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-warning/30 bg-warning/5 px-2.5 py-1 text-[11px] font-medium text-warning transition-colors hover:bg-warning/10"
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            แก้ CSV
+          </button>
+        )}
         <button
           type="button"
           onClick={(event) => {
@@ -115,7 +131,7 @@ export function PlanningOrderCard({
             event.stopPropagation();
             onViewMap();
           }}
-          className="ml-2 inline-flex items-center gap-1.5 rounded-lg border border-info/30 bg-info/5 px-2.5 py-1 text-[11px] font-medium text-info transition-colors hover:bg-info/10"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-info/30 bg-info/5 px-2.5 py-1 text-[11px] font-medium text-info transition-colors hover:bg-info/10"
         >
           <MapPin className="h-3.5 w-3.5" />
           ดูแผนที่

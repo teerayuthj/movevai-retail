@@ -1,4 +1,4 @@
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import {
@@ -186,6 +186,7 @@ export function QueueOrderCard({
   onClick,
   statusText = 'พร้อมส่ง',
   rank,
+  actions,
 }: {
   order: Order;
   selected: boolean;
@@ -193,113 +194,122 @@ export function QueueOrderCard({
   statusText?: string;
   /** ลำดับในคิวตาม priority (1 = ควรมอบหมายก่อน) */
   rank?: number;
+  actions?: ReactNode;
 }) {
   const fastSla = getFastDispatchSla(order);
 
   return (
-    <button
-      onClick={onClick}
+    <div
       className={cn(
-        'w-full rounded-lg border bg-card p-4 text-left transition-all',
+        'w-full overflow-hidden rounded-lg border bg-card transition-all',
         selected ? 'border-primary ring-1 ring-primary shadow-xs' : 'hover:border-primary/40',
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            {rank != null && (
-              <span
-                className={cn(
-                  'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums',
-                  rank <= 3
-                    ? 'bg-primary text-primary-foreground'
-                    : 'bg-muted text-muted-foreground',
-                )}
-                title="ลำดับคิวตามความสำคัญ"
+      <button onClick={onClick} className="w-full p-4 text-left">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              {rank != null && (
+                <span
+                  className={cn(
+                    'inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-[10px] font-semibold tabular-nums',
+                    rank <= 3
+                      ? 'bg-primary text-primary-foreground'
+                      : 'bg-muted text-muted-foreground',
+                  )}
+                  title="ลำดับคิวตามความสำคัญ"
+                >
+                  #{rank}
+                </span>
+              )}
+              <span className="font-mono text-xs font-medium">{order.code}</span>
+              <Badge
+                variant={order.status === 'ready' ? 'success' : 'muted'}
+                className="h-5 px-1.5 text-[10px]"
               >
-                #{rank}
-              </span>
-            )}
-            <span className="font-mono text-xs font-medium">{order.code}</span>
-            <Badge
-              variant={order.status === 'ready' ? 'success' : 'muted'}
-              className="h-5 px-1.5 text-[10px]"
+                {statusText}
+              </Badge>
+              {order.totalValue >= 500000 && (
+                <Badge
+                  variant="warning"
+                  className="h-5 gap-0.5 border-destructive/30 bg-destructive/10 px-1.5 text-[10px] text-destructive"
+                >
+                  <ShieldCheck className="h-2.5 w-2.5" />
+                  High-value
+                </Badge>
+              )}
+              {order.requiresIdCheck && (
+                <Badge variant="warning" className="h-5 gap-0.5 px-1.5 text-[10px]">
+                  <IdCard className="h-2.5 w-2.5" />
+                  ตรวจบัตร
+                </Badge>
+              )}
+              {order.deliveryPlan?.releaseState === 'released' && (
+                <Badge variant="info" className="h-5 px-1.5 text-[10px]">
+                  จาก Planning
+                </Badge>
+              )}
+              {fastSla.urgent && (
+                <Badge
+                  variant={fastSla.state === 'overdue' ? 'destructive' : 'warning'}
+                  className="h-5 gap-0.5 px-1.5 text-[10px]"
+                >
+                  <Clock className="h-2.5 w-2.5" />
+                  {fastSla.label}
+                </Badge>
+              )}
+            </div>
+            <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
+          </div>
+          <Badge variant="muted" className="shrink-0">
+            <Package className="h-3 w-3" /> {order.items.length}
+          </Badge>
+        </div>
+
+        <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
+          {fastSla.urgent && (
+            <div
+              className={cn(
+                'flex items-center gap-1.5 font-medium',
+                fastSla.state === 'overdue'
+                  ? 'text-destructive'
+                  : fastSla.state === 'warning'
+                    ? 'text-warning'
+                    : 'text-info',
+              )}
             >
-              {statusText}
-            </Badge>
-            {order.totalValue >= 500000 && (
-              <Badge
-                variant="warning"
-                className="h-5 gap-0.5 border-destructive/30 bg-destructive/10 px-1.5 text-[10px] text-destructive"
-              >
-                <ShieldCheck className="h-2.5 w-2.5" />
-                High-value
-              </Badge>
-            )}
-            {order.requiresIdCheck && (
-              <Badge variant="warning" className="h-5 gap-0.5 px-1.5 text-[10px]">
-                <IdCard className="h-2.5 w-2.5" />
-                ตรวจบัตร
-              </Badge>
-            )}
-            {order.deliveryPlan?.releaseState === 'released' && (
-              <Badge variant="info" className="h-5 px-1.5 text-[10px]">
-                จาก Planning
-              </Badge>
-            )}
-            {fastSla.urgent && (
-              <Badge
-                variant={fastSla.state === 'overdue' ? 'destructive' : 'warning'}
-                className="h-5 gap-0.5 px-1.5 text-[10px]"
-              >
-                <Clock className="h-2.5 w-2.5" />
-                {fastSla.label}
-              </Badge>
-            )}
+              <Clock className="h-3 w-3" />
+              <span>
+                {fastSla.detail} · ต้องถึงก่อน {formatFastDispatchDueAt(fastSla.dueAt)}
+              </span>
+            </div>
+          )}
+          <div className="flex items-start gap-1.5">
+            <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+            <span className="line-clamp-1">{order.customer.address}</span>
           </div>
-          <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
-        </div>
-        <Badge variant="muted" className="shrink-0">
-          <Package className="h-3 w-3" /> {order.items.length}
-        </Badge>
-      </div>
-      <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
-        {fastSla.urgent && (
-          <div
-            className={cn(
-              'flex items-center gap-1.5 font-medium',
-              fastSla.state === 'overdue'
-                ? 'text-destructive'
-                : fastSla.state === 'warning'
-                  ? 'text-warning'
-                  : 'text-info',
-            )}
-          >
-            <Clock className="h-3 w-3" />
-            <span>
-              {fastSla.detail} · ต้องถึงก่อน {formatFastDispatchDueAt(fastSla.dueAt)}
-            </span>
+          <div className="flex items-center gap-1.5">
+            <Phone className="h-3 w-3" />
+            <span>{order.customer.phone}</span>
           </div>
-        )}
-        <div className="flex items-start gap-1.5">
-          <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
-          <span className="line-clamp-1">{order.customer.address}</span>
         </div>
-        <div className="flex items-center gap-1.5">
-          <Phone className="h-3 w-3" />
-          <span>{order.customer.phone}</span>
+
+        <div className="mt-2 flex items-center justify-between border-t pt-2">
+          <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+            <Coins className="h-3 w-3 text-warning" />
+            {paymentLabel[order.payment]}
+          </div>
+          <span className="text-sm font-semibold tabular-nums text-warning">
+            {formatTHB(order.totalValue)}
+          </span>
         </div>
-      </div>
-      <div className="mt-2 flex items-center justify-between border-t pt-2">
-        <div className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-          <Coins className="h-3 w-3 text-warning" />
-          {paymentLabel[order.payment]}
+      </button>
+      {actions && (
+        <div className="flex flex-wrap justify-end gap-2 border-t bg-muted/20 px-3 py-2">
+          {actions}
         </div>
-        <span className="text-sm font-semibold tabular-nums text-warning">
-          {formatTHB(order.totalValue)}
-        </span>
-      </div>
-    </button>
+      )}
+    </div>
   );
 }
 

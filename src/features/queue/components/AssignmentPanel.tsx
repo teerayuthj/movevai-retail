@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DriverAvatar } from '@/components/DriverAvatar';
+import { Button } from '@/components/ui/button';
 import {
   DriverSummary,
   DriverWorkloadChips,
@@ -9,18 +10,26 @@ import {
 } from '@/components/delivery/DeliveryExecutionShared';
 import type { Driver, Order } from '@/data/orderTypes';
 import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
-import { AlertTriangle } from 'lucide-react';
+import { hasCsvImportSource } from '@/lib/orderSourceLink';
+import { AlertTriangle, FileSpreadsheet } from 'lucide-react';
 
 type AssignmentPanelProps = {
   order: Order | null;
   /** คนขับที่เลือก (co-delivery) — index 0 = คนขับหลัก, ที่เหลือ = คนขับร่วม */
   drivers: Driver[];
   orders: Order[];
+  onEditOrderSource?: (order: Order) => void;
   actions: ReactNode;
 };
 
 /** คอลัมน์ขวา (เดสก์ท็อป) — สรุป order + คนขับที่เลือก + ปุ่มยืนยันมอบหมาย */
-export function AssignmentPanel({ order, drivers, orders, actions }: AssignmentPanelProps) {
+export function AssignmentPanel({
+  order,
+  drivers,
+  orders,
+  onEditOrderSource,
+  actions,
+}: AssignmentPanelProps) {
   const selectedWorkloads = drivers.map((driver) => ({
     driver,
     workload: getDriverWorkloadSummary(driver, orders),
@@ -47,6 +56,18 @@ export function AssignmentPanel({ order, drivers, orders, actions }: AssignmentP
               <div className="mt-1">
                 <OrderSummary order={order} />
               </div>
+              {hasCsvImportSource(order) && onEditOrderSource && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 w-full justify-center"
+                  onClick={() => onEditOrderSource(order)}
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" />
+                  แก้ไขข้อมูลจาก CSV
+                </Button>
+              )}
             </div>
 
             <div>
