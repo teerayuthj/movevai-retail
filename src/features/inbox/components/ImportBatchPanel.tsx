@@ -18,6 +18,14 @@ import {
   CalendarDays,
   X,
   UserRound,
+  Eye,
+  Image as ImageIcon,
+  Merge,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Split,
+  Trash2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -35,12 +43,15 @@ import {
   fetchImportBatch,
   downloadImportBatchCsv,
   updateImportedOrder,
+  mergeImportOrders,
+  splitImportOrderRows,
   addOrderActivity,
   parseAddress,
   fetchAddressSubdistricts,
   type ImportBatch,
   type ImportBatchDetail,
   type ImportBatchRow,
+  type ImportOrderItemInput,
   type ImportRejectReason,
 } from '@/lib/retailApi';
 import { downloadCsv } from '@/lib/export';
@@ -70,6 +81,12 @@ const BATCH_PAGE_SIZE = 20;
 const DEFAULT_DAYS = 30;
 // ค่าพิเศษใน dropdown = โหมดเลือกช่วงวันที่เอง (from–to)
 const CUSTOM_DAYS = -1;
+const SOURCE_IMAGE_DATA_URL_COLUMN = 'sourceImageDataUrl';
+const SOURCE_IMAGE_MIME_TYPE_COLUMN = 'sourceImageMimeType';
+const SOURCE_OCR_TEXT_COLUMN = 'sourceOcrText';
+const SOURCE_PARSE_WARNINGS_COLUMN = 'parseWarnings';
+const SOURCE_MISSING_FIELDS_COLUMN = 'missingFields';
+const SOURCE_EXTRACTION_CONFIDENCE_COLUMN = 'extractionConfidence';
 const DAY_WINDOW_OPTIONS: { value: number; label: string }[] = [
   { value: 30, label: '30 วันล่าสุด' },
   { value: 90, label: '90 วันล่าสุด' },
@@ -78,7 +95,12 @@ const DAY_WINDOW_OPTIONS: { value: number; label: string }[] = [
   { value: 0, label: 'ทั้งหมด' },
   { value: CUSTOM_DAYS, label: 'กำหนดช่วงเอง…' },
 ];
+// ปุ่ม action บน order card — ทุกปุ่มขนาด/จัดกลางเหมือนกัน ให้ grid เรียงเป็นระเบียบ
+const CARD_ACTION_CLASS =
+  'inline-flex h-7 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-2 text-[11px] font-medium transition-colors disabled:opacity-40';
+
 const IMPORT_BATCH_READ_STORAGE_KEY = 'movevai:inbox-import-batch-read-v1';
+const IMPORT_LIST_COLLAPSED_STORAGE_KEY = 'movevai:inbox-import-list-collapsed-v1';
 
 function readStoredBatchIds() {
   if (typeof window === 'undefined') return new Set<string>();
@@ -96,6 +118,24 @@ function writeStoredBatchIds(ids: Set<string>) {
     window.localStorage.setItem(IMPORT_BATCH_READ_STORAGE_KEY, JSON.stringify([...ids]));
   } catch {
     // localStorage may be disabled or full; keep the in-memory read state for this session.
+  }
+}
+
+function readStoredListCollapsed() {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(IMPORT_LIST_COLLAPSED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writeStoredListCollapsed(collapsed: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(IMPORT_LIST_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
+  } catch {
+    // localStorage may be disabled or full; keep the in-memory collapsed state for this session.
   }
 }
 
@@ -201,12 +241,61 @@ type RowVM = {
   address: string;
   value?: number;
   item?: string;
+  imageDataUrl?: string;
+  imageMimeType?: string;
+  ocrText?: string;
+  parseWarnings?: string[];
+  missingFields?: string[];
+  extractionConfidence?: number;
+  ocrOnly?: boolean;
   errorMessage?: string | null;
-  duplicateOfCode?: string | null;
 };
+
+// 1 card = 1 draft order (อาจมาจากหลายแถวต้นทาง เมื่อ CSV มี orderNo เดียวกันหรือ admin กดรวม)
+// แถว ERROR ไม่มี order → card เดี่ยวของตัวเอง
+type CardVM = {
+  key: string;
+  orderId?: string;
+  kind: RowKind;
+  rows: RowVM[];
+  primary: RowVM;
+};
+
+function buildCards(rows: RowVM[]): CardVM[] {
+  const byOrder = new Map<string, CardVM>();
+  const cards: CardVM[] = [];
+  for (const row of rows) {
+    if (!row.orderId) {
+      cards.push({ key: row.rowId, kind: row.kind, rows: [row], primary: row });
+      continue;
+    }
+    const existing = byOrder.get(row.orderId);
+    if (existing) {
+      existing.rows.push(row);
+      continue;
+    }
+    const card: CardVM = {
+      key: row.orderId,
+      orderId: row.orderId,
+      kind: row.kind,
+      rows: [row],
+      primary: row,
+    };
+    byOrder.set(row.orderId, card);
+    cards.push(card);
+  }
+  return cards;
+}
+
+function orderItemStats(order: Order | undefined) {
+  const skuCount = order?.items.length ?? 0;
+  const totalQty = order?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
+  return { skuCount, totalQty };
+}
 
 // สรุปสินค้าให้สั้น: "ชื่อสินค้า ×2 (+1)" — โชว์ชิ้นแรก แล้วบอกจำนวนรายการที่เหลือ
 function itemSummary(order: Order | undefined, raw: Record<string, string>): string | undefined {
+  if (isOcrOnlyRaw(raw)) return undefined;
   const first = order?.items[0];
   const name = first?.name || rawField(raw, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า');
   if (!name) return undefined;
@@ -214,6 +303,77 @@ function itemSummary(order: Order | undefined, raw: Record<string, string>): str
   const extra = order && order.items.length > 1 ? ` (+${order.items.length - 1})` : '';
   return `${name}${qty > 1 ? ` ×${qty}` : ''}${extra}`;
 }
+
+// ค่า placeholder จาก import ("-", "0", ว่าง) ไม่มีข้อมูลจริง — ไม่ต้องโชว์ให้รก
+function hasItemValue(value: string | undefined | null) {
+  const trimmed = value?.trim();
+  return !!trimmed && trimmed !== '-' && trimmed !== '0';
+}
+
+function OrderItemPreviewList({ order }: { order: Order }) {
+  const visibleItems = order.items.slice(0, 4);
+  const hiddenCount = Math.max(0, order.items.length - visibleItems.length);
+
+  return (
+    <div className="mt-2 rounded-md border bg-background">
+      <div className="divide-y">
+        {visibleItems.map((item, index) => (
+          <div
+            key={`${item.sku}-${index}`}
+            className="grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2"
+          >
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <span className="truncate text-xs font-medium">{item.name}</span>
+                {hasItemValue(item.purity) && (
+                  <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
+                    {item.purity}
+                  </Badge>
+                )}
+              </div>
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                {hasItemValue(item.sku) && <span className="font-mono">{item.sku}</span>}
+                {hasItemValue(item.weight) && <span>นน. {item.weight}</span>}
+                <span>ราคา/ชิ้น {formatTHB(item.unitPrice)}</span>
+              </div>
+            </div>
+            <div className="text-right text-xs tabular-nums">
+              <div className="font-semibold">× {item.qty}</div>
+              <div className="text-[11px] text-muted-foreground">
+                {formatTHB(item.qty * item.unitPrice)}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      {hiddenCount > 0 && (
+        <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
+          อีก {hiddenCount.toLocaleString('th-TH')} SKU
+        </div>
+      )}
+    </div>
+  );
+}
+
+type ImportItemDraft = {
+  name: string;
+  sku: string;
+  purity: string;
+  weight: string;
+  qty: string;
+  unitPrice: string;
+  note: string;
+};
+
+const EMPTY_ITEM_DRAFT: ImportItemDraft = {
+  name: '',
+  sku: '',
+  purity: '',
+  weight: '',
+  qty: '1',
+  unitPrice: '0',
+  note: '',
+};
 
 type ImportEditDraft = {
   rawData: Record<string, string>;
@@ -227,13 +387,7 @@ type ImportEditDraft = {
   note: string;
   deliveryDate: string;
   deliveryTime: string;
-  itemName: string;
-  itemSku: string;
-  itemPurity: string;
-  itemWeight: string;
-  itemQty: string;
-  itemUnitPrice: string;
-  itemNote: string;
+  items: ImportItemDraft[];
 };
 
 function rawField(raw: Record<string, string>, ...keys: string[]) {
@@ -244,6 +398,66 @@ function rawField(raw: Record<string, string>, ...keys: string[]) {
   return '';
 }
 
+function sourceImageDataUrl(raw: Record<string, string>) {
+  const value = raw[SOURCE_IMAGE_DATA_URL_COLUMN]?.trim();
+  return value?.startsWith('data:image/') ? value : undefined;
+}
+
+function sourceImageMimeType(raw: Record<string, string>) {
+  return raw[SOURCE_IMAGE_MIME_TYPE_COLUMN]?.trim() || undefined;
+}
+
+function sourceOcrText(raw: Record<string, string>) {
+  return raw[SOURCE_OCR_TEXT_COLUMN]?.trim() || undefined;
+}
+
+function sourceList(raw: Record<string, string>, key: string) {
+  return (raw[key] ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function sourceConfidence(raw: Record<string, string>) {
+  const value = Number(raw[SOURCE_EXTRACTION_CONFIDENCE_COLUMN]);
+  return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : undefined;
+}
+
+function isOcrOnlyRaw(raw: Record<string, string>) {
+  const warnings = sourceList(raw, SOURCE_PARSE_WARNINGS_COLUMN).join(' ').toLowerCase();
+  const missing = new Set(sourceList(raw, SOURCE_MISSING_FIELDS_COLUMN));
+  return (
+    !!sourceOcrText(raw) &&
+    ((missing.has('customerName') &&
+      missing.has('customerPhone') &&
+      missing.has('customerAddress')) ||
+      warnings.includes('no customer') ||
+      warnings.includes('no order'))
+  );
+}
+
+function visibleRawEntries(raw: Record<string, string>) {
+  return Object.entries(raw).filter(([key, value]) => {
+    if (
+      key === SOURCE_IMAGE_DATA_URL_COLUMN ||
+      key === SOURCE_IMAGE_MIME_TYPE_COLUMN ||
+      key === SOURCE_OCR_TEXT_COLUMN ||
+      key === SOURCE_PARSE_WARNINGS_COLUMN ||
+      key === SOURCE_MISSING_FIELDS_COLUMN ||
+      key === SOURCE_EXTRACTION_CONFIDENCE_COLUMN
+    ) {
+      return false;
+    }
+    if (isOcrOnlyRaw(raw)) {
+      return (
+        value.trim() !== '' &&
+        !['qty', 'payment', 'unitPrice', 'totalValue', 'itemName', 'note'].includes(key)
+      );
+    }
+    return true;
+  });
+}
+
 function rowKindForOrder(order: Order | undefined): RowKind {
   if (!order) return 'review';
   if (order.status === 'rejected') return 'rejected';
@@ -252,6 +466,7 @@ function rowKindForOrder(order: Order | undefined): RowKind {
 }
 
 function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, Order>): RowVM {
+  const ocrOnly = isOcrOnlyRaw(row.rawData);
   if (row.status === 'ERROR' || !row.orderId) {
     return {
       rowId: row.id,
@@ -259,9 +474,20 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
       fileName,
       rawData: row.rawData,
       kind: 'error',
-      name: rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') || '(ไม่ระบุชื่อ)',
-      address: rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') || '—',
-      item: itemSummary(undefined, row.rawData),
+      name: ocrOnly
+        ? 'ข้อความ OCR จากรูป'
+        : rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') || '(ไม่ระบุชื่อ)',
+      address: ocrOnly
+        ? 'เปิดกล่อง OCR เพื่อดูข้อความที่ถอดได้'
+        : rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') || '—',
+      item: ocrOnly ? undefined : itemSummary(undefined, row.rawData),
+      imageDataUrl: sourceImageDataUrl(row.rawData),
+      imageMimeType: sourceImageMimeType(row.rawData),
+      ocrText: sourceOcrText(row.rawData),
+      parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
+      missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),
+      extractionConfidence: sourceConfidence(row.rawData),
+      ocrOnly,
       errorMessage: row.errorMessage,
     };
   }
@@ -273,25 +499,66 @@ function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, 
     rawData: row.rawData,
     kind: rowKindForOrder(order),
     orderId: row.orderId,
-    name:
-      order?.customer.name ||
-      rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') ||
-      '(รอโหลด)',
-    address:
-      order?.customer.address ||
-      rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') ||
-      '—',
-    value: order?.totalValue,
-    item: itemSummary(order, row.rawData),
-    duplicateOfCode: row.duplicateOfCode,
+    name: ocrOnly
+      ? 'ข้อความ OCR จากรูป'
+      : order?.customer.name ||
+        rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') ||
+        '(รอโหลด)',
+    address: ocrOnly
+      ? 'เปิดกล่อง OCR เพื่อดูข้อความที่ถอดได้'
+      : order?.customer.address ||
+        rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') ||
+        '—',
+    value: ocrOnly ? undefined : order?.totalValue,
+    item: ocrOnly ? undefined : itemSummary(order, row.rawData),
+    imageDataUrl: sourceImageDataUrl(row.rawData),
+    imageMimeType: sourceImageMimeType(row.rawData),
+    ocrText: sourceOcrText(row.rawData),
+    parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
+    missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),
+    extractionConfidence: sourceConfidence(row.rawData),
+    ocrOnly,
   };
 }
 
-function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
-  const item = order?.items[0];
-  const rawTotalValue = Number(rawField(row.rawData, 'totalValue', 'total', 'ราคารวม', 'มูลค่า'));
+// items ของออเดอร์ → ตารางแก้ไข: ใช้ของจริงจาก order ทุก SKU (รองรับออเดอร์หลายแถว/รวมแล้ว)
+// ถ้ายังไม่มี order (แถว error) fallback เป็น item เดียวจาก rawData
+function itemDraftsFromRow(
+  row: RowVM,
+  order: Order | undefined,
+  ocrOnly: boolean,
+): ImportItemDraft[] {
+  if (order && order.items.length > 0) {
+    return order.items.map((item) => ({
+      name: ocrOnly && item.name === 'สินค้าจากรูป LINE' ? '' : item.name,
+      sku: item.sku || '-',
+      purity: item.purity || '-',
+      weight: item.weight || '0',
+      qty: String(item.qty),
+      unitPrice: String(item.unitPrice),
+      note: item.note ?? '',
+    }));
+  }
   const rawItemQty = Number(rawField(row.rawData, 'qty', 'quantity', 'จำนวน'));
   const rawItemUnitPrice = Number(rawField(row.rawData, 'price', 'unitPrice', 'itemPrice', 'ราคา'));
+  return [
+    {
+      name: ocrOnly
+        ? ''
+        : rawField(row.rawData, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า'),
+      sku: rawField(row.rawData, 'sku', 'itemSku', 'รหัสสินค้า') || '-',
+      purity: rawField(row.rawData, 'purity', 'ความบริสุทธิ์') || '-',
+      weight: rawField(row.rawData, 'weight', 'น้ำหนัก') || '0',
+      qty: String(Number.isFinite(rawItemQty) && rawItemQty > 0 ? rawItemQty : 1),
+      unitPrice: String(Number.isFinite(rawItemUnitPrice) ? rawItemUnitPrice : 0),
+      note: '',
+    },
+  ];
+}
+
+function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
+  const ocrOnly = row.ocrOnly || isOcrOnlyRaw(row.rawData);
+  const rawTotalValue = Number(rawField(row.rawData, 'totalValue', 'total', 'ราคารวม', 'มูลค่า'));
   const rawPayment = rawField(row.rawData, 'payment', 'การชำระ', 'ชำระ');
   const rawDelivery = parseDeliveryFromText(
     [
@@ -303,35 +570,114 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
       .join(' '),
   );
   const requestedDelivery = order ? getRequestedDeliveryDraft(order) : rawDelivery;
+  const orderCustomerName =
+    ocrOnly && order?.customer.name === '(รอตรวจจากรูป LINE)' ? '' : order?.customer.name;
+  const orderCustomerAddress = ocrOnly ? '' : order?.customer.address;
   return {
     rawData: row.rawData,
     customerName:
-      order?.customer.name ??
+      orderCustomerName ??
       rawField(row.rawData, 'customerName', 'customer_name', 'ชื่อลูกค้า', 'ชื่อ', 'name'),
     customerPhone:
       order?.customer.phone ??
       rawField(row.rawData, 'customerPhone', 'phone', 'tel', 'เบอร์โทร', 'เบอร์'),
     customerAddress:
-      order?.customer.address ?? rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่'),
+      orderCustomerAddress ?? rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่'),
     customerIdCard:
       order?.customer.idCard ?? rawField(row.rawData, 'idCard', 'เลขบัตร', 'บัตรประชาชน'),
     totalValue: String(order?.totalValue ?? (Number.isFinite(rawTotalValue) ? rawTotalValue : 0)),
     payment: normalizePaymentMethod(order?.payment ?? rawPayment),
-    note: order?.note ?? rawField(row.rawData, 'note', 'หมายเหตุ'),
+    note:
+      ocrOnly && (order?.note === row.ocrText || rawField(row.rawData, 'note', 'หมายเหตุ'))
+        ? ''
+        : (order?.note ?? rawField(row.rawData, 'note', 'หมายเหตุ')),
     deliveryDate: requestedDelivery.date,
     deliveryTime: requestedDelivery.time,
-    itemName:
-      item?.name ?? rawField(row.rawData, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า'),
-    itemSku: item?.sku ?? rawField(row.rawData, 'sku', 'itemSku', 'รหัสสินค้า') ?? '-',
-    itemPurity: item?.purity ?? rawField(row.rawData, 'purity', 'ความบริสุทธิ์') ?? '-',
-    itemWeight: item?.weight ?? rawField(row.rawData, 'weight', 'น้ำหนัก') ?? '0',
-    itemQty: String(item?.qty ?? (Number.isFinite(rawItemQty) && rawItemQty > 0 ? rawItemQty : 1)),
-    itemUnitPrice: String(
-      item?.unitPrice ?? (Number.isFinite(rawItemUnitPrice) ? rawItemUnitPrice : 0),
-    ),
-    itemNote: item?.note ?? '',
+    items: itemDraftsFromRow(row, order, ocrOnly),
     addr: EMPTY_THAI_ADDRESS,
   };
+}
+
+function displayOcrText(row: RowVM) {
+  const parts = [row.ocrText?.trim()];
+  if (row.parseWarnings && row.parseWarnings.length > 0) {
+    parts.push(`ข้อสังเกต: ${row.parseWarnings.join(' · ')}`);
+  }
+  return parts.filter(Boolean).join('\n\n');
+}
+
+type OcrDisplayLine = { kind: 'heading' | 'bullet' | 'text' | 'blank'; text: string };
+
+function stripInlineMarkdown(text: string) {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+// OCR จาก typhoon-ocr กลับมาเป็น markdown — แปลงเป็นบรรทัดอ่านง่ายสำหรับ user โดยไม่แตะข้อมูลดิบใน rawData
+function ocrDisplayLines(text: string): OcrDisplayLine[] {
+  const out: OcrDisplayLine[] = [];
+  for (const rawLine of text.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) {
+      out.push({ kind: 'blank', text: '' });
+      continue;
+    }
+    if (line.includes('|') && line.includes('-') && /^[|\s:-]+$/.test(line)) continue;
+    const heading = line.match(/^#{1,6}\s+(.*)$/);
+    if (heading) {
+      out.push({ kind: 'heading', text: stripInlineMarkdown(heading[1]) });
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.*)$/);
+    if (bullet) {
+      out.push({ kind: 'bullet', text: stripInlineMarkdown(bullet[1]) });
+      continue;
+    }
+    if (line.includes('|')) {
+      const cells = line
+        .split('|')
+        .map((cell) => stripInlineMarkdown(cell))
+        .filter(Boolean);
+      out.push({ kind: 'text', text: cells.join('  ·  ') });
+      continue;
+    }
+    out.push({ kind: 'text', text: stripInlineMarkdown(line) });
+  }
+  return out.filter(
+    (line, index, all) => line.kind !== 'blank' || all[index - 1]?.kind !== 'blank',
+  );
+}
+
+function ocrPlainText(text: string) {
+  return ocrDisplayLines(text)
+    .map((line) => (line.kind === 'bullet' ? `• ${line.text}` : line.text))
+    .join('\n')
+    .trim();
+}
+
+async function copyTextToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // clipboard API ใช้ไม่ได้บน http ที่ไม่ใช่ localhost / document ไม่มี focus — fallback เป็น execCommand
+    const scratch = document.createElement('textarea');
+    scratch.value = text;
+    scratch.style.position = 'fixed';
+    scratch.style.opacity = '0';
+    document.body.appendChild(scratch);
+    scratch.select();
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    } finally {
+      scratch.remove();
+    }
+  }
 }
 
 function normalizePaymentMethod(value: unknown): Order['payment'] {
@@ -530,6 +876,11 @@ function BatchWorkspace({
   const [editDraft, setEditDraft] = useState<ImportEditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [autoFilling, setAutoFilling] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{
+    src: string;
+    fileName: string;
+    rowIndex: number;
+  } | null>(null);
 
   const targetBatchIds = useMemo(
     () => (scope === ALL_SCOPE ? batches.map((b) => b.id) : [scope]),
@@ -566,23 +917,32 @@ function BatchWorkspace({
     [details, ordersById],
   );
 
+  // 1 card = 1 draft order — CSV ที่มี orderNo เดียวกันหลายแถว (หรือถูก merge แล้ว) รวมเป็น card เดียว
+  const cards = useMemo(() => buildCards(rows), [rows]);
+
   const stats = useMemo(() => {
     let review = 0;
     let approved = 0;
     let rejected = 0;
     let error = 0;
-    let duplicate = 0;
     let value = 0;
-    for (const r of rows) {
-      if (r.kind === 'review') review += 1;
-      else if (r.kind === 'approved') approved += 1;
-      else if (r.kind === 'rejected') rejected += 1;
+    for (const card of cards) {
+      if (card.kind === 'review') review += 1;
+      else if (card.kind === 'approved') approved += 1;
+      else if (card.kind === 'rejected') rejected += 1;
       else error += 1;
-      if (r.duplicateOfCode) duplicate += 1;
-      if (r.value) value += r.value;
+      if (card.primary.value) value += card.primary.value;
     }
-    return { review, approved, rejected, error, duplicate, value, total: rows.length };
-  }, [rows]);
+    return {
+      review,
+      approved,
+      rejected,
+      error,
+      value,
+      total: cards.length,
+      totalRows: rows.length,
+    };
+  }, [cards, rows.length]);
 
   // ถ้าผู้ใช้ยังไม่กดแท็บเอง ให้เด้งไปแท็บแรกที่มีรายการ (ตรวจครบแล้ว → ไปดู "อนุมัติแล้ว" แทนหน้าว่าง)
   useEffect(() => {
@@ -593,30 +953,41 @@ function BatchWorkspace({
     else setTab('all');
   }, [loading, tabTouched, stats.review, stats.error, stats.approved, stats.rejected]);
 
-  const visibleRows = useMemo(() => {
-    if (tab === 'all') return rows;
-    if (tab === 'review') return rows.filter((r) => r.kind === 'review' || r.kind === 'error');
-    if (tab === 'approved') return rows.filter((r) => r.kind === 'approved');
-    return rows.filter((r) => r.kind === 'rejected');
-  }, [rows, tab]);
+  const visibleCards = useMemo(() => {
+    if (tab === 'all') return cards;
+    if (tab === 'review') return cards.filter((c) => c.kind === 'review' || c.kind === 'error');
+    if (tab === 'approved') return cards.filter((c) => c.kind === 'approved');
+    return cards.filter((c) => c.kind === 'rejected');
+  }, [cards, tab]);
 
-  // เลือกได้เฉพาะแถวที่ยังรอตรวจ (มี order อยู่ใน store)
+  // เลือกได้เฉพาะออเดอร์ที่ยังรอตรวจ (มี order อยู่ใน store)
   const selectableIds = useMemo(
     () =>
-      visibleRows
-        .filter((r) => r.kind === 'review' && r.orderId && ordersById.has(r.orderId))
-        .map((r) => r.orderId!),
-    [visibleRows, ordersById],
+      visibleCards
+        .filter((c) => c.kind === 'review' && c.orderId && ordersById.has(c.orderId))
+        .map((c) => c.orderId!),
+    [visibleCards, ordersById],
   );
 
   // รอตรวจทั้งหมดในสโคปนี้ (ไม่ผูกกับแท็บที่เปิดอยู่) — ใช้กับปุ่ม "อนุมัติทั้งหมด"
   const reviewIds = useMemo(
     () =>
-      rows
-        .filter((r) => r.kind === 'review' && r.orderId && ordersById.has(r.orderId))
-        .map((r) => r.orderId!),
-    [rows, ordersById],
+      cards
+        .filter((c) => c.kind === 'review' && c.orderId && ordersById.has(c.orderId))
+        .map((c) => c.orderId!),
+    [cards, ordersById],
   );
+
+  // กลุ่มที่ backend เสนอว่า "น่าจะรวมได้" — โชว์เฉพาะกลุ่มที่ทุกออเดอร์ยังรอตรวจอยู่
+  const mergeSuggestions = useMemo(() => {
+    const reviewOrderIds = new Set(reviewIds);
+    return details
+      .flatMap((detail) =>
+        (detail.groupSuggestions ?? []).map((s) => ({ ...s, fileName: detail.fileName })),
+      )
+      .map((s) => ({ ...s, orderIds: s.orderIds.filter((id) => reviewOrderIds.has(id)) }))
+      .filter((s) => s.orderIds.length >= 2);
+  }, [details, reviewIds]);
 
   const toggle = (orderId: string) => {
     setSelected((prev) => {
@@ -654,7 +1025,7 @@ function BatchWorkspace({
   const approveAllInScope = () => {
     if (reviewIds.length === 0) return;
     void runAction(
-      `อนุมัติทั้งไฟล์ ${reviewIds.length} รายการ · ${shippingMethodLabel[method]}`,
+      `อนุมัติทั้งรายการ ${reviewIds.length} ออเดอร์ · ${shippingMethodLabel[method]}`,
       () => approveImportOrders(reviewIds, method),
     );
   };
@@ -709,6 +1080,28 @@ function BatchWorkspace({
     setDetails(res);
   };
 
+  // รวมหลาย draft orders เป็นออเดอร์เดียว (ตัวแรกเป็นหลัก) — ย้อนกลับได้ด้วย "แยกตามแถวต้นทาง"
+  const mergeOrders = (orderIds: string[]) => {
+    if (orderIds.length < 2) return;
+    void runAction(
+      `รวม ${orderIds.length} รายการเป็น 1 ออเดอร์แล้ว — ตรวจอีกครั้งก่อนอนุมัติ`,
+      async () => {
+        await mergeImportOrders(orderIds);
+        await Promise.all([reloadDetails(), syncFromBackend()]);
+      },
+    );
+  };
+
+  // แยกออเดอร์ที่มีหลายแถวต้นทาง กลับเป็น 1 ออเดอร์ต่อ 1 แถว (แถวแรกอยู่ที่ออเดอร์เดิม)
+  const splitCard = (card: CardVM) => {
+    if (!card.orderId || card.rows.length < 2) return;
+    const rowIds = card.rows.slice(1).map((row) => row.rowId);
+    void runAction(`แยกออเดอร์กลับเป็น ${card.rows.length} รายการตามแถวต้นทางแล้ว`, async () => {
+      await splitImportOrderRows(card.orderId!, rowIds);
+      await Promise.all([reloadDetails(), syncFromBackend()]);
+    });
+  };
+
   const startEditRow = (row: RowVM) => {
     if (!row.orderId) return;
     const draft = draftFromRow(row, ordersById.get(row.orderId));
@@ -746,6 +1139,31 @@ function BatchWorkspace({
     }
   };
 
+  const updateItemDraft = (index: number, patch: Partial<ImportItemDraft>) => {
+    setEditDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            items: prev.items.map((item, i) => (i === index ? { ...item, ...patch } : item)),
+          }
+        : prev,
+    );
+  };
+
+  const addItemDraft = () => {
+    setEditDraft((prev) =>
+      prev ? { ...prev, items: [...prev.items, { ...EMPTY_ITEM_DRAFT }] } : prev,
+    );
+  };
+
+  const removeItemDraft = (index: number) => {
+    setEditDraft((prev) =>
+      prev && prev.items.length > 1
+        ? { ...prev, items: prev.items.filter((_, i) => i !== index) }
+        : prev,
+    );
+  };
+
   const saveEditRow = async () => {
     if (!editingRow?.orderId || !editDraft) return;
     let addr = editDraft.addr;
@@ -759,13 +1177,15 @@ function BatchWorkspace({
     }
     // customerAddress = ส่วน free-text, addr = ที่เลือกจาก picker → รวมเป็นที่อยู่เต็ม
     const fullAddress = composeThaiAddress(editDraft.customerAddress, addr);
+    // นับเฉพาะแถวสินค้าที่กรอกชื่อแล้ว — แถวว่างที่เผลอกดเพิ่มไว้ถูกตัดทิ้งตอนบันทึก
+    const filledItems = editDraft.items.filter((item) => item.name.trim() !== '');
     const missing = [
       !editDraft.customerName.trim() && 'ชื่อผู้รับ',
       !editDraft.customerPhone.trim() && 'เบอร์โทร',
       !fullAddress.trim() && 'ที่อยู่',
       // กันลืมรหัสไปรษณีย์ (เผลอกด X แล้วไม่เติมกลับ) — ต้องครบ 5 หลัก
       !/^\d{5}$/.test(addr.postalCode.trim()) && 'รหัสไปรษณีย์ (5 หลัก)',
-      !editDraft.itemName.trim() && 'สินค้า',
+      filledItems.length === 0 && 'สินค้า (อย่างน้อย 1 รายการ)',
     ].filter(Boolean);
     if (missing.length > 0) {
       toast.error(`กรอกข้อมูลให้ครบก่อนบันทึก: ${missing.join(', ')}`);
@@ -783,7 +1203,43 @@ function BatchWorkspace({
         time: editDraft.deliveryTime,
       };
       const beforeQty = existingOrder?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
-      const afterQty = toPositiveInt(editDraft.itemQty);
+      const itemsPayload = filledItems.map((item) => ({
+        sku: item.sku.trim() || '-',
+        name: item.name.trim(),
+        purity: item.purity.trim() || '-',
+        weight: item.weight.trim() || '0',
+        qty: toPositiveInt(item.qty),
+        unitPrice: toNonNegativeNumber(item.unitPrice),
+        note: item.note.trim() || undefined,
+      })) satisfies ImportOrderItemInput[];
+      const afterQty = itemsPayload.reduce((sum, item) => sum + item.qty, 0);
+      const firstItem = itemsPayload[0]!;
+      const nextMissingFields = [
+        !editDraft.customerName.trim() && 'customerName',
+        !editDraft.customerPhone.trim() && 'customerPhone',
+        !fullAddress.trim() && 'customerAddress',
+      ].filter(Boolean) as string[];
+      // คอลัมน์สินค้าใน rawData เป็นตัวแทนของแถวต้นทาง (รับได้ 1 SKU) — ใช้ SKU แรก
+      const nextRawData = {
+        ...editDraft.rawData,
+        customerName: editDraft.customerName.trim(),
+        customerPhone: editDraft.customerPhone.trim(),
+        customerAddress: fullAddress.trim(),
+        itemName: firstItem.name,
+        sku: firstItem.sku,
+        purity: firstItem.purity,
+        weight: firstItem.weight,
+        qty: String(firstItem.qty),
+        unitPrice: String(firstItem.unitPrice),
+        totalValue: String(toNonNegativeNumber(editDraft.totalValue)),
+        payment: normalizePaymentMethod(editDraft.payment),
+        note: editDraft.note.trim(),
+        [SOURCE_MISSING_FIELDS_COLUMN]: nextMissingFields.join(','),
+        [SOURCE_EXTRACTION_CONFIDENCE_COLUMN]:
+          nextMissingFields.length === 0
+            ? String(Math.max(editingRow.extractionConfidence ?? 0, 90))
+            : String(editingRow.extractionConfidence ?? 60),
+      };
       const changeRows = [
         beforeDelivery.date !== afterDelivery.date && {
           field: 'deliveryPlan.plannedDate',
@@ -806,22 +1262,14 @@ function BatchWorkspace({
       ].filter(Boolean);
 
       await updateImportedOrder(editingRow.orderId, {
-        rawData: editDraft.rawData,
+        rawData: nextRawData,
         customer: {
           name: editDraft.customerName.trim(),
           phone: editDraft.customerPhone.trim(),
           address: fullAddress.trim(),
           idCard: editDraft.customerIdCard.trim() || undefined,
         },
-        item: {
-          sku: editDraft.itemSku.trim() || '-',
-          name: editDraft.itemName.trim() || 'สินค้า',
-          purity: editDraft.itemPurity.trim() || '-',
-          weight: editDraft.itemWeight.trim() || '0',
-          qty: afterQty,
-          unitPrice: toNonNegativeNumber(editDraft.itemUnitPrice),
-          note: editDraft.itemNote.trim() || undefined,
-        },
+        items: itemsPayload,
         totalValue: toNonNegativeNumber(editDraft.totalValue),
         payment: normalizePaymentMethod(editDraft.payment),
         note: buildNoteWithRequestedDelivery(editDraft.note.trim(), afterDelivery).trim() || null,
@@ -842,7 +1290,7 @@ function BatchWorkspace({
         });
       }
       await Promise.all([reloadDetails(), syncFromBackend()]);
-      toast.success('บันทึกข้อมูลจาก CSV แล้ว');
+      toast.success('บันทึกข้อมูลจาก LINE import แล้ว');
       setEditingRow(null);
       setEditDraft(null);
     } catch (error) {
@@ -863,7 +1311,7 @@ function BatchWorkspace({
     return <div className="py-8 text-center text-sm text-muted-foreground">ไม่มีข้อมูลนำเข้า</div>;
   }
 
-  const title = scope === ALL_SCOPE ? `รวมทุกไฟล์ (${details.length})` : details[0].fileName;
+  const title = scope === ALL_SCOPE ? `รวมทุกรายการ (${details.length})` : details[0].fileName;
   const showFile = scope === ALL_SCOPE;
   const errorSummary = scope === ALL_SCOPE ? null : details[0].errorSummary;
   const senderName =
@@ -871,6 +1319,7 @@ function BatchWorkspace({
       ? null
       : details[0].lineSenderDisplayName?.trim() ||
         (details[0].lineSenderUserId ? `LINE ${details[0].lineSenderUserId.slice(0, 8)}...` : null);
+  const editingOrder = editingRow?.orderId ? ordersById.get(editingRow.orderId) : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -902,7 +1351,7 @@ function BatchWorkspace({
             )}
             <span className="inline-flex items-center gap-1">
               <Coins className="h-3 w-3 text-muted-foreground" />
-              {stats.total} แถว · มูลค่ารวม {formatTHB(stats.value)}
+              {stats.total} ออเดอร์ · {stats.totalRows} แถว · มูลค่ารวม {formatTHB(stats.value)}
             </span>
           </div>
         </div>
@@ -935,7 +1384,7 @@ function BatchWorkspace({
               ) : (
                 <Download className="h-3.5 w-3.5" />
               )}
-              Export CSV
+              Export Text/CSV
             </Button>
           )}
         </div>
@@ -973,195 +1422,307 @@ function BatchWorkspace({
         />
       </div>
 
-      {/* table */}
+      {/* กลุ่มที่น่าจะรวมได้ — เสนอเท่านั้น admin ตัดสินใจกดรวมเอง (บางไฟล์ตั้งใจเป็นหลายออเดอร์จริง) */}
+      {(tab === 'review' || tab === 'all') &&
+        mergeSuggestions.map((suggestion) => (
+          <div
+            key={suggestion.key}
+            className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-info/40 bg-info/5 px-3 py-2"
+          >
+            <div className="flex min-w-0 items-center gap-2 text-xs">
+              <Merge className="h-3.5 w-3.5 shrink-0 text-info" />
+              <span className="min-w-0">
+                พบ {suggestion.rowIndexes.length} แถว (แถวที่{' '}
+                {suggestion.rowIndexes.map((i) => i + 1).join(', ')}) ที่เบอร์+ที่อยู่เดียวกัน —
+                อาจเป็น 1 ออเดอร์ / {suggestion.rowIndexes.length} SKU
+              </span>
+            </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 border-info/60 text-xs text-info hover:bg-info/10"
+              disabled={busy}
+              onClick={() => mergeOrders(suggestion.orderIds)}
+            >
+              <Merge className="h-3 w-3" /> รวมเป็น 1 ออเดอร์
+            </Button>
+          </div>
+        ))}
+
+      {/* order review list */}
       <div
         className={cn(
-          'mt-3 overflow-auto rounded-lg border',
-          editingRow ? 'max-h-56 flex-none' : 'min-h-0 flex-1',
+          'mt-3 min-h-0 flex-1 space-y-2 overflow-auto rounded-lg border bg-muted/20 p-2',
+          editingRow && 'max-h-72 flex-none',
         )}
       >
-        <table className="w-full text-xs">
-          <thead className="sticky top-0 z-10 bg-muted/80 backdrop-blur">
-            <tr className="text-left text-muted-foreground">
-              <th className="w-9 px-3 py-2">
-                <input
-                  type="checkbox"
-                  aria-label="เลือกทั้งหมดที่รอตรวจ"
-                  checked={allSelected}
-                  onChange={toggleAll}
-                  disabled={selectableIds.length === 0}
-                  className="h-3.5 w-3.5 align-middle"
-                />
-              </th>
-              <th className="w-24 px-2 py-2 font-medium">สถานะ</th>
-              <th className="px-2 py-2 font-medium">ผู้รับ / ที่อยู่</th>
-              <th className="w-20 px-2 py-2 text-right font-medium">มูลค่า</th>
-              <th className="w-[220px] px-2 py-2 text-right font-medium">จัดการ</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y">
-            {visibleRows.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-3 py-10 text-center">
-                  <TabEmptyState tab={tab} stats={stats} onJump={selectTab} />
-                </td>
-              </tr>
-            )}
-            {visibleRows.map((r) => {
-              const selectable = r.kind === 'review' && !!r.orderId && ordersById.has(r.orderId);
-              const checked = !!r.orderId && selected.has(r.orderId);
-              const editable = !!r.orderId && r.kind !== 'error';
-              return (
-                <tr
-                  key={r.rowId}
-                  className={cn(
-                    'transition-colors hover:bg-muted/40',
-                    checked && 'bg-primary/5',
-                    // ปฏิเสธแล้ว → แต้มพื้นหลังหรี่ให้อ่านออกทันทีว่า "ตัดออกแล้ว"
-                    r.kind === 'rejected' && 'bg-muted/30',
-                  )}
-                >
-                  <td className="px-3 py-2.5 align-top">
+        <div className="sticky top-0 z-10 -mx-2 -mt-2 flex items-center justify-between gap-2 border-b bg-muted/90 px-3 py-2 text-xs backdrop-blur">
+          <label className="flex items-center gap-2 text-muted-foreground">
+            <input
+              type="checkbox"
+              aria-label="เลือกทั้งหมดที่รอตรวจ"
+              checked={allSelected}
+              onChange={toggleAll}
+              disabled={selectableIds.length === 0}
+              className="h-3.5 w-3.5"
+            />
+            เลือกออเดอร์รอตรวจ
+          </label>
+          <span className="text-muted-foreground">
+            {visibleCards.length.toLocaleString('th-TH')} รายการ
+          </span>
+        </div>
+
+        {visibleCards.length === 0 && (
+          <div className="px-3 py-10 text-center">
+            <TabEmptyState tab={tab} stats={stats} onJump={selectTab} />
+          </div>
+        )}
+
+        {visibleCards.map((card) => {
+          const r = card.primary;
+          const order = card.orderId ? ordersById.get(card.orderId) : undefined;
+          const selectable = card.kind === 'review' && !!card.orderId && !!order;
+          const checked = !!card.orderId && selected.has(card.orderId);
+          const editable = !!card.orderId && card.kind !== 'error';
+          const rowLabel =
+            card.rows.length === 1
+              ? `แถว ${r.rowIndex + 1}`
+              : `แถว ${card.rows.map((row) => row.rowIndex + 1).join(', ')}`;
+          const { skuCount, totalQty } = orderItemStats(order);
+          const skuSummary =
+            skuCount > 0
+              ? `${skuCount.toLocaleString('th-TH')} SKU · ${totalQty.toLocaleString('th-TH')} ชิ้น`
+              : r.item;
+
+          return (
+            <div
+              key={card.key}
+              className={cn(
+                'rounded-lg border bg-background p-3 transition-colors hover:border-border',
+                checked && 'border-primary/40 bg-primary/5',
+                card.kind === 'rejected' && 'bg-muted/40 text-muted-foreground',
+              )}
+            >
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <input
                       type="checkbox"
-                      aria-label={`เลือกแถว ${r.rowIndex + 1}`}
+                      aria-label={`เลือกออเดอร์จาก${rowLabel}`}
                       checked={checked}
                       disabled={!selectable}
-                      onChange={() => r.orderId && toggle(r.orderId)}
-                      className="mt-0.5 h-3.5 w-3.5 disabled:opacity-30"
+                      onChange={() => card.orderId && toggle(card.orderId)}
+                      className="h-3.5 w-3.5 disabled:opacity-30"
                     />
-                  </td>
-                  <td className="px-2 py-2.5 align-top">
-                    <RowStatusBadge kind={r.kind} />
-                  </td>
-                  <td
+                    <RowStatusBadge kind={card.kind} />
+                    {card.rows.length > 1 && (
+                      <Badge variant="info" className="h-5 gap-1 px-1.5 text-[10px]">
+                        <Layers className="h-3 w-3" />
+                        รวม {card.rows.length} แถว
+                      </Badge>
+                    )}
+                    {skuSummary && (
+                      <Badge variant="muted" className="h-5 gap-1 px-1.5 text-[10px]">
+                        <Package className="h-3 w-3" />
+                        {skuSummary}
+                      </Badge>
+                    )}
+                    {r.imageDataUrl && (
+                      <Badge variant="muted" className="h-5 gap-1 px-1.5 text-[10px]">
+                        <ImageIcon className="h-3 w-3" />
+                        รูปต้นฉบับ
+                      </Badge>
+                    )}
+                    <span className="text-[10px] text-muted-foreground">
+                      {showFile ? `${r.fileName} · ${rowLabel}` : rowLabel}
+                    </span>
+                  </div>
+
+                  <div
                     className={cn(
-                      'min-w-0 px-2 py-2.5 align-top',
-                      r.kind === 'rejected' && 'text-muted-foreground',
+                      'mt-2 truncate text-sm font-semibold',
+                      card.kind === 'rejected' && 'line-through',
                     )}
                   >
-                    <div
-                      className={cn(
-                        'truncate font-medium',
-                        r.kind === 'rejected' && 'text-muted-foreground line-through',
-                      )}
-                    >
-                      {r.name}
-                      <span className="ml-1 text-[10px] font-normal text-muted-foreground">
-                        {showFile
-                          ? `· ${r.fileName} · แถว ${r.rowIndex + 1}`
-                          : `· แถว ${r.rowIndex + 1}`}
-                      </span>
-                    </div>
-                    {r.duplicateOfCode ? (
-                      <div className="flex items-center gap-1 text-[11px] text-destructive">
-                        <Copy className="h-3 w-3" /> ซ้ำกับ {r.duplicateOfCode}
-                      </div>
+                    {r.name}
+                  </div>
+
+                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                    {card.kind === 'error' && r.errorMessage ? (
+                      <span className="text-destructive">{r.errorMessage}</span>
                     ) : (
-                      <div className="truncate text-muted-foreground">
-                        {r.kind === 'error' && r.errorMessage ? (
-                          <span className="text-destructive">{r.errorMessage}</span>
-                        ) : (
-                          r.address
-                        )}
-                      </div>
+                      r.address
                     )}
-                    {r.item && (
-                      <div className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground/80">
-                        <Package className="h-3 w-3 shrink-0" />
+                  </div>
+
+                  {order ? (
+                    <OrderItemPreviewList order={order} />
+                  ) : (
+                    r.item && (
+                      <div className="mt-2 flex items-center gap-1 rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">
+                        <Package className="h-3.5 w-3.5 shrink-0" />
                         <span className="truncate">{r.item}</span>
                       </div>
+                    )
+                  )}
+                </div>
+
+                <div className="flex shrink-0 flex-col items-stretch gap-2 xl:w-[230px]">
+                  <div className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 xl:block xl:text-right">
+                    <div className="text-[11px] text-muted-foreground">มูลค่ารวม</div>
+                    <div className="text-sm font-semibold tabular-nums text-warning">
+                      {r.value != null ? formatTHB(r.value) : '—'}
+                    </div>
+                  </div>
+
+                  {/* ปุ่มเรียงเป็น grid 2 คอลัมน์ขนาดเท่ากัน (จำนวนคี่ → ปุ่มสุดท้ายเต็มแถว)
+                      เรียงตามความสำคัญ: อนุมัติ/Fast Dispatch ก่อน, ปฏิเสธไว้ท้ายสุด */}
+                  <div className="grid grid-cols-2 gap-1.5 [&>*:last-child:nth-child(odd)]:col-span-2">
+                    {card.kind === 'review' && card.orderId && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          runAction('อนุมัติเข้าคิว 1 รายการ', () =>
+                            approveImportOrders([card.orderId!], method),
+                          )
+                        }
+                        className={cn(
+                          CARD_ACTION_CLASS,
+                          'border-success/60 text-success hover:bg-success/10',
+                        )}
+                      >
+                        <CheckCircle2 className="h-3 w-3" />
+                        อนุมัติ
+                      </button>
                     )}
-                  </td>
-                  <td className="whitespace-nowrap px-2 py-2.5 text-right align-top tabular-nums">
-                    {r.value != null ? formatTHB(r.value) : '—'}
-                  </td>
-                  <td className="px-2 py-2.5 align-top">
-                    <div className="flex items-center justify-end gap-1">
-                      {r.kind === 'review' && r.orderId && (
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            runAction('อนุมัติเข้าคิว 1 รายการ', () =>
-                              approveImportOrders([r.orderId!], method),
-                            )
-                          }
-                          className="rounded-md border border-success/60 px-2 py-1 text-[11px] font-medium text-success hover:bg-success/10 disabled:opacity-40"
-                        >
-                          อนุมัติ
-                        </button>
-                      )}
-                      {editable && (
-                        <button
-                          type="button"
-                          disabled={busy || savingEdit}
-                          onClick={() => startEditRow(r)}
-                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-40"
-                        >
-                          <Pencil className="h-3 w-3" />
-                          แก้ไข
-                        </button>
-                      )}
-                      {r.kind === 'review' && r.orderId && (
-                        <>
-                          {onFastDispatchOrder && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <button
-                                  type="button"
-                                  disabled={busy}
-                                  onClick={() => approveAndOpenFastDispatch(r.orderId!)}
-                                  className="rounded-md border border-primary/40 px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/5 disabled:opacity-40"
-                                >
-                                  Fast Dispatch
-                                </button>
-                              </TooltipTrigger>
-                              <TooltipContent side="top" align="end" className="max-w-[240px]">
-                                <p className="font-semibold">ส่งด่วน 1 วัน</p>
-                                <p className="mt-0.5 font-normal leading-snug text-background/80">
-                                  อนุมัติแล้วดันเข้าคิวส่งด่วนทันที ข้ามขั้นวางแผนรอบ — dispatcher
-                                  ยังกดยืนยัน Route เอง
-                                </p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
+                    {card.kind === 'review' && card.orderId && onFastDispatchOrder && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
                           <button
                             type="button"
                             disabled={busy}
-                            onClick={() => void rejectOrders([r.orderId!])}
-                            className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted disabled:opacity-40"
+                            onClick={() => approveAndOpenFastDispatch(card.orderId!)}
+                            className={cn(
+                              CARD_ACTION_CLASS,
+                              'border-primary/40 text-primary hover:bg-primary/5',
+                            )}
                           >
-                            ปฏิเสธ
+                            Fast Dispatch
                           </button>
-                        </>
-                      )}
-                      {r.kind === 'rejected' && r.orderId && (
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            runAction('ดึงกลับ 1 รายการ', () => restoreImportOrders([r.orderId!]))
-                          }
-                          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-40"
-                        >
-                          <RotateCcw className="h-3 w-3" /> ดึงกลับ
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="end" className="max-w-[240px]">
+                          <p className="font-semibold">ส่งด่วน 1 วัน</p>
+                          <p className="mt-0.5 font-normal leading-snug text-background/80">
+                            อนุมัติแล้วดันเข้าคิวส่งด่วนทันที ข้ามขั้นวางแผนรอบ — dispatcher
+                            ยังกดยืนยัน Route เอง
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {editable && (
+                      <button
+                        type="button"
+                        disabled={busy || savingEdit}
+                        onClick={() => startEditRow(r)}
+                        className={cn(
+                          CARD_ACTION_CLASS,
+                          'border-border text-foreground hover:bg-muted',
+                        )}
+                      >
+                        <Pencil className="h-3 w-3" />
+                        แก้ไข
+                      </button>
+                    )}
+                    {r.imageDataUrl && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          setPreviewImage({
+                            src: r.imageDataUrl!,
+                            fileName: r.fileName,
+                            rowIndex: r.rowIndex,
+                          })
+                        }
+                        className={cn(
+                          CARD_ACTION_CLASS,
+                          'border-border text-foreground hover:bg-muted',
+                        )}
+                      >
+                        <Eye className="h-3 w-3" />
+                        ดูรูป
+                      </button>
+                    )}
+                    {card.kind === 'review' && card.orderId && card.rows.length > 1 && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => splitCard(card)}
+                            className={cn(
+                              CARD_ACTION_CLASS,
+                              'border-border text-foreground hover:bg-muted',
+                            )}
+                          >
+                            <Split className="h-3 w-3" />
+                            แยกตามแถว
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="end" className="max-w-[240px]">
+                          <p className="font-semibold">แยกตามแถวต้นทาง</p>
+                          <p className="mt-0.5 font-normal leading-snug text-background/80">
+                            แตกกลับเป็น {card.rows.length} ออเดอร์ตามแถวเดิมในไฟล์ —
+                            ใช้เมื่อรวมผิดหรือไฟล์ตั้งใจให้เป็นคนละออเดอร์
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {card.kind === 'review' && card.orderId && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void rejectOrders([card.orderId!])}
+                        className={cn(
+                          CARD_ACTION_CLASS,
+                          'border-border text-muted-foreground hover:bg-muted',
+                        )}
+                      >
+                        <XCircle className="h-3 w-3" />
+                        ปฏิเสธ
+                      </button>
+                    )}
+                    {card.kind === 'rejected' && card.orderId && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          runAction('ดึงกลับ 1 รายการ', () => restoreImportOrders([card.orderId!]))
+                        }
+                        className={cn(
+                          CARD_ACTION_CLASS,
+                          'border-border text-foreground hover:bg-muted',
+                        )}
+                      >
+                        <RotateCcw className="h-3 w-3" /> ดึงกลับ
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {editingRow && editDraft && (
         <div className="mt-3 rounded-lg border bg-muted/20 p-3">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <div className="text-sm font-medium">แก้ไขข้อมูลจาก CSV</div>
+              <div className="text-sm font-medium">แก้ไขข้อมูลจาก LINE import</div>
               <div className="text-xs text-muted-foreground">
                 {editingRow.fileName} · แถวที่ {editingRow.rowIndex + 1}
               </div>
@@ -1299,68 +1860,165 @@ function BatchWorkspace({
             </label>
           </div>
 
-          <div className="mt-3 grid gap-2 md:grid-cols-6">
-            <label className="space-y-1 text-xs md:col-span-2">
-              <span className="text-muted-foreground">สินค้า</span>
-              <input
-                value={editDraft.itemName}
-                onChange={(e) => setEditDraft({ ...editDraft, itemName: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
-              />
-            </label>
-            <label className="space-y-1 text-xs">
-              <span className="text-muted-foreground">SKU</span>
-              <input
-                value={editDraft.itemSku}
-                onChange={(e) => setEditDraft({ ...editDraft, itemSku: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
-              />
-            </label>
-            <label className="space-y-1 text-xs">
-              <span className="text-muted-foreground">Purity</span>
-              <input
-                value={editDraft.itemPurity}
-                onChange={(e) => setEditDraft({ ...editDraft, itemPurity: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
-              />
-            </label>
-            <label className="space-y-1 text-xs">
-              <span className="text-muted-foreground">น้ำหนัก</span>
-              <input
-                value={editDraft.itemWeight}
-                onChange={(e) => setEditDraft({ ...editDraft, itemWeight: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
-              />
-            </label>
-            <label className="space-y-1 text-xs">
-              <span className="text-muted-foreground">จำนวน</span>
-              <input
-                inputMode="numeric"
-                value={editDraft.itemQty}
-                onChange={(e) => setEditDraft({ ...editDraft, itemQty: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
-              />
-            </label>
-            <label className="space-y-1 text-xs">
-              <span className="text-muted-foreground">ราคา/ชิ้น</span>
-              <input
-                inputMode="decimal"
-                value={editDraft.itemUnitPrice}
-                onChange={(e) => setEditDraft({ ...editDraft, itemUnitPrice: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
-              />
-            </label>
+          <div className="mt-3 rounded-md border bg-background">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+              <div className="text-xs font-medium">
+                สินค้าในออเดอร์
+                <span className="ml-1.5 font-normal text-muted-foreground">
+                  {editDraft.items.length.toLocaleString('th-TH')} SKU ·{' '}
+                  {editDraft.items
+                    .reduce((sum, item) => sum + toPositiveInt(item.qty), 0)
+                    .toLocaleString('th-TH')}{' '}
+                  ชิ้น
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-[11px]"
+                disabled={savingEdit}
+                onClick={addItemDraft}
+              >
+                <Plus className="h-3 w-3" /> เพิ่ม SKU
+              </Button>
+            </div>
+            <div className="hidden gap-2 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground md:grid md:grid-cols-[2fr_1fr_1fr_1fr_72px_1fr_32px]">
+              <span>สินค้า</span>
+              <span>SKU</span>
+              <span>Purity</span>
+              <span>น้ำหนัก</span>
+              <span>จำนวน</span>
+              <span>ราคา/ชิ้น</span>
+              <span />
+            </div>
+            <div className="divide-y">
+              {editDraft.items.map((item, index) => (
+                <div
+                  key={index}
+                  className="grid gap-2 px-3 py-2 md:grid-cols-[2fr_1fr_1fr_1fr_72px_1fr_32px] md:items-center"
+                >
+                  <input
+                    value={item.name}
+                    placeholder="ชื่อสินค้า"
+                    aria-label={`สินค้า SKU ที่ ${index + 1}`}
+                    onChange={(e) => updateItemDraft(index, { name: e.target.value })}
+                    className="h-8 w-full rounded-md border bg-background px-3 text-xs"
+                  />
+                  <input
+                    value={item.sku}
+                    placeholder="SKU"
+                    aria-label={`รหัส SKU ที่ ${index + 1}`}
+                    onChange={(e) => updateItemDraft(index, { sku: e.target.value })}
+                    className="h-8 w-full rounded-md border bg-background px-3 text-xs"
+                  />
+                  <input
+                    value={item.purity}
+                    placeholder="Purity"
+                    aria-label={`Purity SKU ที่ ${index + 1}`}
+                    onChange={(e) => updateItemDraft(index, { purity: e.target.value })}
+                    className="h-8 w-full rounded-md border bg-background px-3 text-xs"
+                  />
+                  <input
+                    value={item.weight}
+                    placeholder="น้ำหนัก"
+                    aria-label={`น้ำหนัก SKU ที่ ${index + 1}`}
+                    onChange={(e) => updateItemDraft(index, { weight: e.target.value })}
+                    className="h-8 w-full rounded-md border bg-background px-3 text-xs"
+                  />
+                  <input
+                    inputMode="numeric"
+                    value={item.qty}
+                    placeholder="จำนวน"
+                    aria-label={`จำนวน SKU ที่ ${index + 1}`}
+                    onChange={(e) => updateItemDraft(index, { qty: e.target.value })}
+                    className="h-8 w-full rounded-md border bg-background px-3 text-xs"
+                  />
+                  <input
+                    inputMode="decimal"
+                    value={item.unitPrice}
+                    placeholder="ราคา/ชิ้น"
+                    aria-label={`ราคาต่อชิ้น SKU ที่ ${index + 1}`}
+                    onChange={(e) => updateItemDraft(index, { unitPrice: e.target.value })}
+                    className="h-8 w-full rounded-md border bg-background px-3 text-xs"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 justify-self-end text-muted-foreground hover:text-destructive"
+                    aria-label={`ลบ SKU ที่ ${index + 1}`}
+                    disabled={savingEdit || editDraft.items.length <= 1}
+                    onClick={() => removeItemDraft(index)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {editingRow.ocrText && (
+            <div className="mt-3 rounded-md border bg-background">
+              <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+                <div className="text-xs font-medium">ข้อความ OCR จากรูป</div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label="คัดลอกข้อความ OCR ทั้งหมด"
+                  className="h-6 gap-1 px-2 text-[11px] text-muted-foreground"
+                  onClick={async () => {
+                    const copied = await copyTextToClipboard(
+                      ocrPlainText(displayOcrText(editingRow)),
+                    );
+                    if (copied) {
+                      toast.success('คัดลอกข้อความ OCR ทั้งหมดแล้ว');
+                    } else {
+                      toast.error('คัดลอกไม่สำเร็จ — กรุณาเลือกข้อความแล้วคัดลอกเอง');
+                    }
+                  }}
+                >
+                  <Copy className="h-3 w-3" /> คัดลอกทั้งหมด
+                </Button>
+              </div>
+              <div
+                className="min-h-24 w-full max-w-full resize overflow-auto px-3 py-2 text-xs leading-5"
+                style={{
+                  height: `${Math.min(13, Math.max(6, ocrDisplayLines(displayOcrText(editingRow)).length * 1.25 + 1.5))}rem`,
+                }}
+              >
+                {ocrDisplayLines(displayOcrText(editingRow)).map((line, index) =>
+                  line.kind === 'blank' ? (
+                    <div key={index} className="h-2" />
+                  ) : line.kind === 'heading' ? (
+                    <div key={index} className="mt-1 font-semibold first:mt-0">
+                      {line.text}
+                    </div>
+                  ) : line.kind === 'bullet' ? (
+                    <div key={index} className="flex gap-1.5">
+                      <span className="shrink-0 text-muted-foreground">•</span>
+                      <span className="min-w-0 break-words">{line.text}</span>
+                    </div>
+                  ) : (
+                    <div key={index} className="break-words">
+                      {line.text}
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="mt-3 rounded-md border bg-background">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
-              <div className="text-xs font-medium">คอลัมน์ CSV ต้นทาง</div>
+              <div className="text-xs font-medium">ข้อมูลต้นทาง</div>
               <div className="text-[11px] text-muted-foreground">
-                {Object.keys(editDraft.rawData).length} คอลัมน์
+                {visibleRawEntries(editDraft.rawData).length} คอลัมน์
               </div>
             </div>
             <div className="divide-y">
-              {Object.entries(editDraft.rawData).map(([key, value]) => (
+              {visibleRawEntries(editDraft.rawData).map(([key, value]) => (
                 <div key={key} className="grid gap-2 px-3 py-2 md:grid-cols-[180px_1fr]">
                   <div className="min-w-0 break-words rounded-md bg-muted/50 px-2 py-1.5 font-mono text-[11px] text-muted-foreground">
                     {key}
@@ -1378,6 +2036,47 @@ function BatchWorkspace({
                   />
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {previewImage && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="ดูรูปต้นฉบับจาก LINE"
+          onClick={() => setPreviewImage(null)}
+        >
+          <div
+            className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{previewImage.fileName}</div>
+                <div className="text-xs text-muted-foreground">
+                  แถวที่ {previewImage.rowIndex + 1} · รูปต้นฉบับจาก LINE
+                </div>
+              </div>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8 shrink-0"
+                onClick={() => setPreviewImage(null)}
+                aria-label="ปิดรูป"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-muted/30 p-3">
+              <img
+                src={previewImage.src}
+                alt=""
+                className="max-h-[78vh] max-w-full rounded-md object-contain"
+              />
             </div>
           </div>
         </div>
@@ -1406,6 +2105,27 @@ function BatchWorkspace({
             <Button size="sm" disabled={busy} onClick={bulkApprove}>
               <CheckCircle2 className="h-3.5 w-3.5" /> อนุมัติ ({selected.size})
             </Button>
+            {selected.size >= 2 && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => mergeOrders([...selected])}
+                  >
+                    <Merge className="h-3.5 w-3.5" /> รวมเป็น 1 ออเดอร์
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[260px]">
+                  <p className="font-semibold">รวม {selected.size} รายการเป็นออเดอร์เดียว</p>
+                  <p className="mt-0.5 font-normal leading-snug text-background/80">
+                    สินค้าทุก SKU และแถวต้นทางย้ายไปอยู่ออเดอร์แรกที่เลือก ยอดรวมถูกบวกให้ —
+                    แยกกลับได้ด้วย “แยกตามแถว”
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            )}
             <Separator orientation="vertical" className="h-6" />
             <Select
               value={reason}
@@ -1445,6 +2165,7 @@ export default function ImportBatchPanel({
   const [range, setRange] = useState<DateRange | undefined>();
   const [rangeOpen, setRangeOpen] = useState(false);
   const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
+  const [listCollapsed, setListCollapsed] = useState(() => readStoredListCollapsed());
   const listRef = useRef<HTMLDivElement>(null);
   // กันยิงซ้ำระหว่างกำลังโหลดหน้าใหม่ (ref อ่านได้ทันทีไม่ต้องรอ re-render)
   const loadingRef = useRef(false);
@@ -1463,6 +2184,14 @@ export default function ImportBatchPanel({
   // key คงที่สำหรับ dep ของ reload — กัน object identity เปลี่ยนทุก render
   const windowKey = windowParams ? JSON.stringify(windowParams) : 'pending';
 
+  const toggleListCollapsed = () => {
+    setListCollapsed((prev) => {
+      const next = !prev;
+      writeStoredListCollapsed(next);
+      return next;
+    });
+  };
+
   const markBatchRead = (batchId: string) => {
     setReadBatchIds((current) => {
       if (current.has(batchId)) return current;
@@ -1480,7 +2209,7 @@ export default function ImportBatchPanel({
       downloadCsv(result.fileName ?? batch.fileName, result.content);
       toast.success(`บันทึกไฟล์ ${result.fileName ?? batch.fileName} แล้ว`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Export CSV ไม่สำเร็จ');
+      toast.error(error instanceof Error ? error.message : 'Export ไม่สำเร็จ');
     } finally {
       setDownloadingBatchId(null);
     }
@@ -1568,21 +2297,90 @@ export default function ImportBatchPanel({
   const workspaceKey =
     selectedId === ALL_SCOPE ? `all:${batches.map((b) => b.id).join(',')}` : selectedId;
 
+  if (listCollapsed) {
+    return (
+      <div className="grid gap-4 lg:grid-cols-[44px_1fr]">
+        <Card className="flex h-[calc(100vh-16rem)] flex-col items-center gap-2 py-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                onClick={toggleListCollapsed}
+                aria-label="ขยายรายการไฟล์/รูปนำเข้า"
+              >
+                <PanelLeftOpen className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">ขยายรายการนำเข้า</TooltipContent>
+          </Tooltip>
+          {unreadCount > 0 && (
+            <Badge variant="info" className="h-5 min-w-5 justify-center px-1 text-[10px]">
+              {unreadCount}
+            </Badge>
+          )}
+          <span
+            className="mt-1 text-[11px] font-medium text-muted-foreground"
+            style={{ writingMode: 'vertical-rl' }}
+          >
+            รายการนำเข้า
+          </span>
+        </Card>
+
+        <Card className="app-scroll h-[calc(100vh-16rem)] overflow-auto p-4">
+          {hasBatches ? (
+            <BatchWorkspace
+              key={workspaceKey}
+              scope={selectedId}
+              batches={batches}
+              onFastDispatchOrder={onFastDispatchOrder}
+              onDownloadBatch={(batch) => void exportBatchCsv(batch)}
+              downloadingBatchId={downloadingBatchId}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Clock className="h-4 w-4" /> ยังไม่มีรายการนำเข้า
+              </div>
+            </div>
+          )}
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
       <Card className="flex h-[calc(100vh-16rem)] flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">ไฟล์นำเข้าจาก LINE</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={reload}
-              disabled={loading}
-            >
-              <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
-            </Button>
+            <span className="text-sm font-medium">ไฟล์/รูปนำเข้าจาก LINE</span>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={reload}
+                disabled={loading}
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', loading && 'animate-spin')} />
+              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={toggleListCollapsed}
+                    aria-label="หุบรายการไฟล์/รูปนำเข้า เพื่อขยายพื้นที่ทำงาน"
+                  >
+                    <PanelLeftClose className="h-3.5 w-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">หุบรายการ ขยายพื้นที่ทำงาน</TooltipContent>
+              </Tooltip>
+            </div>
           </div>
           <div className="mt-2 flex items-center gap-2">
             <Select
@@ -1676,9 +2474,9 @@ export default function ImportBatchPanel({
           )}
           {!loading && !hasBatches && !(customMode && !rangeReady) && (
             <div className="py-12 text-center text-sm text-muted-foreground">
-              {customMode ? 'ไม่พบไฟล์ในช่วงวันที่ที่เลือก' : 'ยังไม่มีการนำเข้าไฟล์'}
+              {customMode ? 'ไม่พบรายการในช่วงวันที่ที่เลือก' : 'ยังไม่มีการนำเข้าไฟล์หรือรูป'}
               <div className="mt-1 text-[11px]">
-                {customMode ? 'ลองขยายช่วงวันที่' : 'ส่งไฟล์ .csv ใน LINE เพื่อเริ่มต้น'}
+                {customMode ? 'ลองขยายช่วงวันที่' : 'ส่งไฟล์ .csv หรือรูปภาพใน LINE เพื่อเริ่มต้น'}
               </div>
             </div>
           )}
@@ -1694,7 +2492,7 @@ export default function ImportBatchPanel({
               )}
             >
               <span className="flex items-center gap-1.5 text-xs font-medium">
-                <Layers className="h-3.5 w-3.5 text-primary" /> ทุกไฟล์ (รวม)
+                <Layers className="h-3.5 w-3.5 text-primary" /> ทุกรายการ (รวม)
               </span>
               <span className="flex items-center gap-1.5">
                 {unreadCount > 0 && (
@@ -1703,7 +2501,7 @@ export default function ImportBatchPanel({
                   </Badge>
                 )}
                 <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
-                  {batches.length} ไฟล์
+                  {batches.length} รายการ
                 </Badge>
               </span>
             </button>
@@ -1746,7 +2544,7 @@ export default function ImportBatchPanel({
         ) : (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4" /> ยังไม่มีไฟล์นำเข้า
+              <Clock className="h-4 w-4" /> ยังไม่มีรายการนำเข้า
             </div>
           </div>
         )}
