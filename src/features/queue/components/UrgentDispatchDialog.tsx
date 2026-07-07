@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
-import { BellRing, Send, X } from 'lucide-react';
+import { AlertTriangle, BellRing, Send, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
 import type { Driver, Order } from '@/data/orderTypes';
+import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
 
 type Props = {
   open: boolean;
   order: Order | null;
   /** คนขับที่เลือก (co-delivery) — index 0 = คนขับหลัก, ที่เหลือ = คนขับร่วม */
   drivers: Driver[];
+  orders: Order[];
   loading: boolean;
   error?: string;
   onCancel: () => void;
@@ -19,6 +22,7 @@ export function UrgentDispatchDialog({
   open,
   order,
   drivers,
+  orders,
   loading,
   error,
   onCancel,
@@ -39,6 +43,18 @@ export function UrgentDispatchDialog({
           .slice(1)
           .map((driver) => driver.name)
           .join(', ')})`;
+  const selectedWorkloads = drivers.map((driver) => ({
+    driver,
+    workload: getDriverWorkloadSummary(driver, orders),
+  }));
+  const driversWithExistingWork = selectedWorkloads.filter(
+    ({ workload }) =>
+      workload.waitingToStart > 0 ||
+      workload.inTransit > 0 ||
+      workload.pendingReview > 0 ||
+      workload.returning > 0 ||
+      workload.plannedForDate > 0,
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
@@ -74,6 +90,25 @@ export function UrgentDispatchDialog({
             <div className="mt-1 font-medium">{order.customer.name}</div>
             <div className="mt-1 text-xs text-muted-foreground">Messenger: {messengerLabel}</div>
           </div>
+          {driversWithExistingWork.length > 0 && (
+            <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+              <div className="flex items-center gap-1.5 font-medium">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Messenger ที่เลือกมีงานค้างอยู่
+              </div>
+              <div className="mt-1 text-[11px] text-warning/90">
+                ยืนยันอีกครั้งว่าต้องการจ่ายงานเพิ่มให้คนนี้
+              </div>
+              <div className="mt-2 space-y-1.5">
+                {driversWithExistingWork.map(({ driver, workload }) => (
+                  <div key={driver.id} className="rounded-md bg-background/70 px-2 py-1.5">
+                    <div className="font-medium text-foreground">{driver.name}</div>
+                    <DriverWorkloadChips workload={workload} className="mt-1" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
             <div className="flex items-start gap-2">
               <BellRing className="mt-0.5 h-4 w-4 shrink-0" />

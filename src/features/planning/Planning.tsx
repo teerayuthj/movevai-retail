@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { DriverAvatar } from '@/components/DriverAvatar';
+import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
 import {
   AlertTriangle,
   CalendarClock,
@@ -53,6 +54,7 @@ import {
   type RoutePreview,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
+import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 import { toast } from 'sonner';
@@ -98,6 +100,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const [operationState, setOperationState] = useState<'idle' | 'saving' | 'publishing'>('idle');
   const [operationError, setOperationError] = useState('');
   const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
+  const [confirmPlanningWorkloadOpen, setConfirmPlanningWorkloadOpen] = useState(false);
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     route: PlanningRoute;
@@ -172,6 +175,21 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const mapSelectedIds = selectedRoute
     ? new Set(selectedRoute.stops.map((stop) => stop.order.id))
     : selectedOrderSet;
+  const plannedDriverWorkloadWarnings = plannedDriverIds
+    .map((driverId) => drivers.find((driver) => driver.id === driverId))
+    .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver))
+    .map((driver) => ({
+      driver,
+      workload: getDriverWorkloadSummary(driver, orders, { plannedDate: planDate }),
+    }))
+    .filter(
+      ({ workload }) =>
+        workload.waitingToStart > 0 ||
+        workload.inTransit > 0 ||
+        workload.pendingReview > 0 ||
+        workload.returning > 0 ||
+        workload.plannedForDate > 0,
+    );
 
   useEffect(() => {
     if (!focusedOrderId) return;
@@ -375,6 +393,14 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     } finally {
       setOperationState('idle');
     }
+  };
+
+  const requestApplyPlanning = () => {
+    if (plannedDriverWorkloadWarnings.length > 0) {
+      setConfirmPlanningWorkloadOpen(true);
+      return;
+    }
+    void applyPlanning();
   };
 
   const confirmCancelSelectedPlans = async (reason: PlanningCancelReason, note?: string) => {
@@ -768,6 +794,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               <DriverPlanningCard
                 key={driver.id}
                 driver={driver}
+                orders={orders}
                 plannedLoad={getPlannedLoadCount(orders, driver.id, selectedDate)}
                 selected={plannedDriverIds.includes(driver.id)}
                 selectedDate={selectedDate}
@@ -786,6 +813,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
         <div className="space-y-4 overflow-auto xl:h-[calc(100vh-12rem)]">
           <PlanSettingsCard
             drivers={drivers}
+            orders={orders}
             selectedCount={selectedOrders.length}
             planDate={planDate}
             onPlanDate={setPlanDate}
@@ -797,7 +825,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
             onReadiness={setReadiness}
             planNote={planNote}
             onPlanNote={setPlanNote}
-            onApply={() => void applyPlanning()}
+            onApply={requestApplyPlanning}
             onCancelPlans={() => setCancelPlansOpen(true)}
             cancelDisabled={selectedPlannedOrders.length === 0}
           />
@@ -914,6 +942,53 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
           onCancel={() => setRouteAction(null)}
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
         />
+      )}
+
+      {confirmPlanningWorkloadOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-md overflow-hidden rounded-xl border bg-background shadow-xl">
+            <div className="border-b px-5 py-4">
+              <h2 className="flex items-center gap-2 text-base font-semibold">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                ยืนยันบันทึกแผน
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Messenger ที่เลือกมีงานค้างอยู่ ตรวจสอบลำดับส่งก่อนบันทึกแผนเพิ่ม
+              </p>
+            </div>
+            <div className="space-y-2 px-5 py-4">
+              {plannedDriverWorkloadWarnings.map(({ driver, workload }) => (
+                <div key={driver.id} className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-sm font-medium">{driver.name}</div>
+                  <DriverWorkloadChips
+                    workload={workload}
+                    plannedLabel="แผนวันนั้น"
+                    className="mt-2"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmPlanningWorkloadOpen(false)}
+              >
+                กลับไปตรวจสอบ
+              </Button>
+              <Button
+                size="sm"
+                disabled={operationState !== 'idle'}
+                onClick={() => {
+                  setConfirmPlanningWorkloadOpen(false);
+                  void applyPlanning();
+                }}
+              >
+                ยืนยันบันทึกแผน
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
 
       {routeAction?.type === 'reassign' && (

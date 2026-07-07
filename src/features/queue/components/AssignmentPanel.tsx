@@ -2,18 +2,38 @@ import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import { DriverSummary, OrderSummary } from '@/components/delivery/DeliveryExecutionShared';
+import {
+  DriverSummary,
+  DriverWorkloadChips,
+  OrderSummary,
+} from '@/components/delivery/DeliveryExecutionShared';
 import type { Driver, Order } from '@/data/orderTypes';
+import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
+import { AlertTriangle } from 'lucide-react';
 
 type AssignmentPanelProps = {
   order: Order | null;
   /** คนขับที่เลือก (co-delivery) — index 0 = คนขับหลัก, ที่เหลือ = คนขับร่วม */
   drivers: Driver[];
+  orders: Order[];
   actions: ReactNode;
 };
 
 /** คอลัมน์ขวา (เดสก์ท็อป) — สรุป order + คนขับที่เลือก + ปุ่มยืนยันมอบหมาย */
-export function AssignmentPanel({ order, drivers, actions }: AssignmentPanelProps) {
+export function AssignmentPanel({ order, drivers, orders, actions }: AssignmentPanelProps) {
+  const selectedWorkloads = drivers.map((driver) => ({
+    driver,
+    workload: getDriverWorkloadSummary(driver, orders),
+  }));
+  const driversWithExistingWork = selectedWorkloads.filter(
+    ({ workload }) =>
+      workload.waitingToStart > 0 ||
+      workload.inTransit > 0 ||
+      workload.pendingReview > 0 ||
+      workload.returning > 0 ||
+      workload.plannedForDate > 0,
+  );
+
   return (
     <Card>
       <CardHeader>
@@ -35,7 +55,7 @@ export function AssignmentPanel({ order, drivers, actions }: AssignmentPanelProp
               </div>
               <div className="mt-1 space-y-2">
                 {drivers.length > 0 ? (
-                  drivers.map((driver, index) => (
+                  selectedWorkloads.map(({ driver, workload }, index) => (
                     <div key={driver.id} className="rounded-lg border p-3">
                       <div className="flex items-center gap-3">
                         <DriverAvatar driver={driver} />
@@ -50,15 +70,36 @@ export function AssignmentPanel({ order, drivers, actions }: AssignmentPanelProp
                             </Badge>
                           </div>
                           <div className="text-xs text-muted-foreground">{driver.phone}</div>
+                          <DriverWorkloadChips workload={workload} className="mt-2" />
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <DriverSummary driver={null} order={order} />
+                  <DriverSummary driver={null} order={order} orders={orders} />
                 )}
               </div>
             </div>
+
+            {driversWithExistingWork.length > 0 && (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  คนขับที่เลือกมีงานค้างอยู่
+                </div>
+                <div className="mt-1 text-[11px] text-warning/90">
+                  ตรวจสอบลำดับส่งก่อนจ่ายงานเพิ่ม
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  {driversWithExistingWork.map(({ driver, workload }) => (
+                    <div key={driver.id} className="rounded-md bg-background/70 px-2 py-1.5">
+                      <div className="font-medium text-foreground">{driver.name}</div>
+                      <DriverWorkloadChips workload={workload} className="mt-1" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {actions}
           </>

@@ -32,7 +32,12 @@ import {
   paymentLabel,
 } from '@/data/orderTypes';
 import { cn } from '@/lib/utils';
-import { deriveDriverDisplayStatus, describeProof } from '@/lib/deliveryExecution';
+import {
+  deriveDriverDisplayStatus,
+  describeProof,
+  getDriverWorkloadSummary,
+  type DriverWorkloadSummary,
+} from '@/lib/deliveryExecution';
 import { formatFastDispatchDueAt, getFastDispatchSla } from '@/lib/fastDispatch';
 import { formatRouteDistance } from '@/lib/routeDistance';
 
@@ -42,11 +47,71 @@ export function VehicleIcon({ v }: { v: Driver['vehicle'] }) {
   return <TruckIcon className="h-3.5 w-3.5" />;
 }
 
+function vehicleLabel(vehicle: Driver['vehicle']) {
+  if (vehicle === 'motorcycle') return 'จักรยานยนต์';
+  if (vehicle === 'van') return 'รถตู้';
+  return 'รถกระบะ';
+}
+
+export function DriverWorkloadChips({
+  workload,
+  plannedLabel = 'แผนวันนี้',
+  emptyLabel = 'ไม่มีงานค้าง',
+  className,
+}: {
+  workload: DriverWorkloadSummary;
+  plannedLabel?: string;
+  emptyLabel?: string;
+  className?: string;
+}) {
+  const hasWorkload =
+    workload.waitingToStart > 0 ||
+    workload.inTransit > 0 ||
+    workload.pendingReview > 0 ||
+    workload.returning > 0 ||
+    workload.plannedForDate > 0;
+
+  if (!hasWorkload) {
+    return <div className={cn('text-[11px] text-muted-foreground', className)}>{emptyLabel}</div>;
+  }
+
+  return (
+    <div className={cn('flex flex-wrap gap-1', className)}>
+      {workload.waitingToStart > 0 && (
+        <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
+          รอเริ่ม {workload.waitingToStart}
+        </Badge>
+      )}
+      {workload.inTransit > 0 && (
+        <Badge variant="info" className="h-5 px-1.5 text-[10px]">
+          กำลังส่ง {workload.inTransit}
+        </Badge>
+      )}
+      {workload.pendingReview > 0 && (
+        <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
+          รอตรวจ {workload.pendingReview}
+        </Badge>
+      )}
+      {workload.returning > 0 && (
+        <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
+          ส่งกลับ {workload.returning}
+        </Badge>
+      )}
+      {workload.plannedForDate > 0 && (
+        <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+          {plannedLabel} {workload.plannedForDate}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 export function DriverCard({
   driver,
   selected,
   onSelect,
   orders,
+  workloadDate,
   coRole,
 }: {
   driver: Driver;
@@ -54,10 +119,20 @@ export function DriverCard({
   onSelect: () => void;
   /** ถ้าส่งมา จะ derive สถานะ "ว่าง/กำลังส่ง" จากงานจริงให้ตรงกับ messenger */
   orders?: Order[];
+  workloadDate?: string;
   /** co-delivery: บทบาทเมื่อเลือกหลายคน — 'primary' = คนขับหลัก, 'secondary' = คนขับร่วม */
   coRole?: 'primary' | 'secondary';
 }) {
   const displayStatus = orders ? deriveDriverDisplayStatus(driver, orders) : driver.status;
+  const workload = orders
+    ? getDriverWorkloadSummary(driver, orders, { plannedDate: workloadDate })
+    : {
+        waitingToStart: driver.activeOrders,
+        inTransit: 0,
+        pendingReview: 0,
+        returning: 0,
+        plannedForDate: 0,
+      };
 
   return (
     <button
@@ -86,8 +161,9 @@ export function DriverCard({
           </div>
           <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <VehicleIcon v={driver.vehicle} />
-            <span>งานที่รับอยู่ {driver.activeOrders}</span>
+            <span>{vehicleLabel(driver.vehicle)}</span>
           </div>
+          <DriverWorkloadChips workload={workload} className="mt-2" />
         </div>
         <Badge
           variant={displayStatus === 'available' ? 'success' : 'muted'}
@@ -301,11 +377,13 @@ export function DriverSummary({
   driver,
   order,
   orders,
+  workloadDate,
 }: {
   driver: Driver | null;
   order?: Order | null;
   /** ถ้าส่งมา จะ derive สถานะ "ว่าง/กำลังส่ง" จากงานจริงให้ตรงกับ messenger */
   orders?: Order[];
+  workloadDate?: string;
 }) {
   if (!driver) {
     return (
@@ -316,6 +394,15 @@ export function DriverSummary({
   }
 
   const displayStatus = orders ? deriveDriverDisplayStatus(driver, orders) : driver.status;
+  const workload = orders
+    ? getDriverWorkloadSummary(driver, orders, { plannedDate: workloadDate })
+    : {
+        waitingToStart: driver.activeOrders,
+        inTransit: 0,
+        pendingReview: 0,
+        returning: 0,
+        plannedForDate: 0,
+      };
 
   return (
     <div className="rounded-lg border p-4">
@@ -337,13 +424,7 @@ export function DriverSummary({
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <VehicleIcon v={driver.vehicle} />
-            <span>
-              {driver.vehicle === 'motorcycle'
-                ? 'จักรยานยนต์'
-                : driver.vehicle === 'van'
-                  ? 'รถตู้'
-                  : 'รถกระบะ'}
-            </span>
+            <span>{vehicleLabel(driver.vehicle)}</span>
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <Phone className="h-3 w-3" />
@@ -354,8 +435,8 @@ export function DriverSummary({
 
       <div className="mt-4 text-sm">
         <div className="rounded-lg bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">งานปัจจุบัน</div>
-          <div className="mt-1 font-medium">{driver.activeOrders}</div>
+          <div className="text-[11px] text-muted-foreground">ภาระงาน messenger</div>
+          <DriverWorkloadChips workload={workload} className="mt-2" />
         </div>
       </div>
 

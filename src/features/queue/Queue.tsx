@@ -364,6 +364,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                 .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver))
             : []
         }
+        orders={orders}
         loading={urgentLoading}
         error={urgentError}
         onCancel={() => {
@@ -715,6 +716,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
           <AssignmentPanel
             order={selectedOrder}
             drivers={selectedDrivers}
+            orders={orders}
             actions={assignmentActions}
           />
           <OrderTimeline
