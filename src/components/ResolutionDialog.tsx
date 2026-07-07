@@ -1,10 +1,15 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 
-type ReasonOption<T extends string> = { value: T; label: string };
+type ReasonOption<T extends string> = {
+  value: T;
+  label: string;
+  leading?: ReactNode;
+  description?: ReactNode;
+};
 
 type Props<R extends string, A extends string = never> = {
   open: boolean;
@@ -13,6 +18,7 @@ type Props<R extends string, A extends string = never> = {
   error?: string;
   reasons: ReasonOption<R>[];
   defaultReason?: R;
+  reasonLabel?: string;
   noteLabel?: string;
   notePlaceholder?: string;
   actions?: {
@@ -34,6 +40,7 @@ export function ResolutionDialog<R extends string, A extends string = never>({
   error,
   reasons,
   defaultReason,
+  reasonLabel = 'เหตุผล',
   noteLabel = 'หมายเหตุ (ไม่บังคับ)',
   notePlaceholder = 'ระบุเพิ่มเติม เช่น ลูกค้าแจ้งเปลี่ยนวัน',
   actions,
@@ -85,7 +92,9 @@ export function ResolutionDialog<R extends string, A extends string = never>({
             </div>
           )}
           <div>
-            <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">เหตุผล</div>
+            <div className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+              {reasonLabel}
+            </div>
             <div className="grid gap-1.5">
               {reasons.map((opt) => {
                 const active = opt.value === reason;
@@ -109,7 +118,15 @@ export function ResolutionDialog<R extends string, A extends string = never>({
                     >
                       {active && <span className="h-1.5 w-1.5 rounded-full bg-background" />}
                     </span>
-                    <span>{opt.label}</span>
+                    {opt.leading}
+                    <span className="min-w-0">
+                      <span className="block truncate">{opt.label}</span>
+                      {opt.description && (
+                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                          {opt.description}
+                        </span>
+                      )}
+                    </span>
                   </button>
                 );
               })}

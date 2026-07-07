@@ -1,5 +1,6 @@
 import type { Order } from '@/data/orderTypes';
 import {
+  getPlanningDateTimeMs,
   getAssignedOrderOverdueMinutes,
   SCHEDULED_DELIVERY_GRACE_MINUTES,
 } from '@/lib/deliveryPlanning';
@@ -7,6 +8,7 @@ import {
 export const SCHEDULED_DELIVERY_REMINDER_MINUTES = 15;
 
 export type MessengerJobTiming =
+  | { phase: 'scheduled'; minutes: number }
   | { phase: 'upcoming'; minutes: number }
   | { phase: 'grace'; minutes: number };
 
@@ -14,8 +16,7 @@ export function getMessengerJobScheduledAt(order: Order): number | null {
   const plan = order.deliveryPlan;
   if (!plan?.plannedDate || !plan.plannedTime) return null;
 
-  const scheduledAt = new Date(`${plan.plannedDate}T${plan.plannedTime}:00+07:00`).getTime();
-  return Number.isNaN(scheduledAt) ? null : scheduledAt;
+  return getPlanningDateTimeMs(plan.plannedDate, plan.plannedTime);
 }
 
 export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJobTiming | null {
@@ -25,6 +26,10 @@ export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJob
   if (scheduledAt == null) return null;
 
   const reminderAt = scheduledAt - SCHEDULED_DELIVERY_REMINDER_MINUTES * 60_000;
+  if (nowMs < reminderAt) {
+    return { phase: 'scheduled', minutes: Math.max(1, Math.ceil((scheduledAt - nowMs) / 60_000)) };
+  }
+
   if (nowMs >= reminderAt && nowMs < scheduledAt) {
     return { phase: 'upcoming', minutes: Math.max(1, Math.ceil((scheduledAt - nowMs) / 60_000)) };
   }

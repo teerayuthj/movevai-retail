@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { DriverAvatar } from '@/components/DriverAvatar';
 import { toast } from 'sonner';
 import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import {
@@ -558,7 +559,13 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
           error={routeActionError}
           reasons={drivers
             .filter((driver) => driver.id !== routeAction.order.assignedDriverId)
-            .map((driver) => ({ value: driver.id, label: driver.name }))}
+            .map((driver) => ({
+              value: driver.id,
+              label: driver.name,
+              leading: <DriverAvatar driver={driver} className="h-9 w-9" />,
+              description: `${driver.phone} · งานที่รับอยู่ ${driver.activeOrders}`,
+            }))}
+          reasonLabel="คนขับใหม่"
           notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
           confirmLabel="ย้ายงาน"
           onCancel={() => setRouteAction(null)}

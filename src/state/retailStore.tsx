@@ -64,8 +64,8 @@ import {
   syncAndAssignOrder,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
+import { MESSENGER_JOB_STATUSES, isMessengerOrderParticipant } from '@/lib/messengerJobs';
 
-const MESSENGER_JOB_STATUSES = ['assigned', 'in_transit', 'pending_confirmation', 'delivered'];
 const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
 
 function replaceOrder(orders: RetailState['orders'], canonical: RetailState['orders'][number]) {
@@ -187,7 +187,7 @@ export function RetailProvider({
         orders: [
           ...current.orders.filter(
             (order) =>
-              order.assignedDriverId !== driverCode ||
+              !isMessengerOrderParticipant(order, driverCode) ||
               !MESSENGER_JOB_STATUSES.includes(order.status),
           ),
           ...remote.orders.map((order) => preservePendingReview(current, order)),

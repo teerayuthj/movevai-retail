@@ -1,11 +1,37 @@
 import type { Order } from '@/data/orderTypes';
 
 export const SCHEDULED_DELIVERY_GRACE_MINUTES = 15;
+const PLANNING_TIME_ZONE = 'Asia/Bangkok';
+const BANGKOK_UTC_OFFSET_MINUTES = 7 * 60;
+
+function getPlanningDateParts(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: PLANNING_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const valueOf = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value);
+
+  return {
+    year: valueOf('year'),
+    month: valueOf('month'),
+    day: valueOf('day'),
+    hour: valueOf('hour'),
+    minute: valueOf('minute'),
+    second: valueOf('second'),
+  };
+}
 
 export function getLocalDateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = `${date.getMonth() + 1}`.padStart(2, '0');
-  const day = `${date.getDate()}`.padStart(2, '0');
+  const { year, month: monthValue, day: dayValue } = getPlanningDateParts(date);
+  const month = `${monthValue}`.padStart(2, '0');
+  const day = `${dayValue}`.padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
@@ -14,25 +40,23 @@ export function getTodayDateKey() {
 }
 
 export function getTomorrowDateKey() {
-  const next = new Date();
-  next.setDate(next.getDate() + 1);
-  return getLocalDateKey(next);
+  const todayStart = getPlanningDateTimeMs(getTodayDateKey(), '00:00');
+  const next = todayStart == null ? Date.now() + 86_400_000 : todayStart + 86_400_000;
+  return getLocalDateKey(new Date(next));
 }
 
 export function formatPlanningDate(dateKey: string, locale = 'th-TH') {
-  return new Date(`${dateKey}T00:00:00`).toLocaleDateString(locale, {
+  return new Date(`${dateKey}T00:00:00+07:00`).toLocaleDateString(locale, {
     dateStyle: 'medium',
+    timeZone: PLANNING_TIME_ZONE,
   });
 }
 
 /** เวลาเริ่มต้นของช่องเวลาจัดส่ง: ปัดขึ้นเป็นชั่วโมงถัดไป (13:20 → 14:00, 13:00 → 13:00) */
 export function getNextHourTime(date = new Date()) {
-  const next = new Date(date);
-  if (next.getMinutes() > 0 || next.getSeconds() > 0 || next.getMilliseconds() > 0) {
-    next.setHours(next.getHours() + 1);
-  }
-  next.setMinutes(0, 0, 0);
-  return `${`${next.getHours()}`.padStart(2, '0')}:00`;
+  const { hour, minute, second } = getPlanningDateParts(date);
+  const nextHour = minute > 0 || second > 0 || date.getMilliseconds() > 0 ? hour + 1 : hour;
+  return `${`${nextHour % 24}`.padStart(2, '0')}:00`;
 }
 
 export function formatPlanningTime(time: string | undefined) {
@@ -43,6 +67,36 @@ export function formatPlanningDateTime(dateKey: string, time?: string, locale = 
   const date = formatPlanningDate(dateKey, locale);
   const formattedTime = formatPlanningTime(time);
   return formattedTime ? `${date} ${formattedTime}` : date;
+}
+
+export function getPlanningDateTimeMs(dateKey: string, time: string) {
+  const dateMatch = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const timeMatch = time.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!dateMatch || !timeMatch) return null;
+
+  const [, yearValue, monthValue, dayValue] = dateMatch;
+  const [, hourValue, minuteValue] = timeMatch;
+  const year = Number(yearValue);
+  const month = Number(monthValue);
+  const day = Number(dayValue);
+  const hour = Number(hourValue);
+  const minute = Number(minuteValue);
+  const scheduled = new Date(
+    Date.UTC(year, month - 1, day, hour, minute - BANGKOK_UTC_OFFSET_MINUTES, 0, 0),
+  );
+  const normalized = getPlanningDateParts(scheduled);
+
+  if (
+    normalized.year !== year ||
+    normalized.month !== month ||
+    normalized.day !== day ||
+    normalized.hour !== hour ||
+    normalized.minute !== minute
+  ) {
+    return null;
+  }
+
+  return scheduled.getTime();
 }
 
 export function formatOverdueDuration(minutes: number) {
@@ -72,9 +126,10 @@ export function getAssignedOrderOverdueMinutes(order: Order, nowMs = Date.now())
 
   if (!plan?.plannedDate || !plan.plannedTime) return null;
 
-  const scheduledAt = new Date(`${plan.plannedDate}T${plan.plannedTime}:00+07:00`).getTime();
+  const scheduledAt = getPlanningDateTimeMs(plan.plannedDate, plan.plannedTime);
+  if (scheduledAt == null) return null;
   const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
-  if (Number.isNaN(scheduledAt) || nowMs < overdueAt) return null;
+  if (nowMs < overdueAt) return null;
   return Math.floor((nowMs - scheduledAt) / 60_000);
 }
 

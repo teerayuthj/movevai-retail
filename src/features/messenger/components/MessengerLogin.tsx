@@ -403,7 +403,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
           <div>
             <h1 className="text-xl font-semibold">ลงทะเบียน Messenger</h1>
             <p className="text-sm text-muted-foreground">
-              กรอกข้อมูลและรอ admin อนุมัติก่อนเริ่มรับงาน
+              กรอกข้อมูลและรอ admin อนุมัติก่อนเริ่มส่งงาน
             </p>
           </div>
 

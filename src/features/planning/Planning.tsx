@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
+import { DriverAvatar } from '@/components/DriverAvatar';
 import { AlertTriangle, CalendarClock, List, MapPin, Route, Search, Users } from 'lucide-react';
 import {
   planningCancelReasonLabel,
@@ -874,7 +875,13 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
           error={routeActionError}
           reasons={drivers
             .filter((driver) => driver.id !== routeAction.route.driver.id)
-            .map((driver) => ({ value: driver.id, label: driver.name }))}
+            .map((driver) => ({
+              value: driver.id,
+              label: driver.name,
+              leading: <DriverAvatar driver={driver} className="h-9 w-9" />,
+              description: `${driver.phone} · งานที่รับอยู่ ${driver.activeOrders}`,
+            }))}
+          reasonLabel="คนขับใหม่"
           notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
           confirmLabel="ย้ายงาน"
           onCancel={() => setRouteAction(null)}

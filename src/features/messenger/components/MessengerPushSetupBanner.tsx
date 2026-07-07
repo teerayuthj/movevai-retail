@@ -30,7 +30,7 @@ export function MessengerPushSetupBanner({
       } else if (result.reason === 'no-vapid-key') {
         setError('ยังไม่ได้ตั้งค่า Push key');
       } else if (result.reason === 'backend-registration-failed') {
-        setError('เชื่อมต่อระบบรับงานไม่สำเร็จ กรุณาลองใหม่');
+        setError('เชื่อมต่อระบบแจ้งเตือนงานใหม่ไม่สำเร็จ กรุณาลองใหม่');
       }
     });
 
@@ -104,7 +104,7 @@ export function MessengerPushSetupBanner({
           )}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-success">เปิดแจ้งเตือนรับงาน</div>
+          <div className="text-sm font-medium text-success">เปิดแจ้งเตือนงานใหม่</div>
           <div className="text-[11px] leading-snug text-success">
             อนุญาตเครื่องนี้ให้รับ Push ของ {messengerCode} แม้ไม่ได้ติดตั้ง PWA
           </div>

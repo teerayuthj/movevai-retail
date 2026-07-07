@@ -244,7 +244,7 @@ export function MessengerOrderMapPage({
               <Marker position={proofPoint} icon={actualDeliveryIcon}>
                 <Popup>
                   <div className="space-y-1 text-[13px]">
-                    <div className="font-semibold">จุดส่งจริงจาก GPS ตอนปิดงาน</div>
+                    <div className="font-semibold">จุดส่งจริงจาก GPS ตอนส่งมอบ</div>
                     <div className="text-muted-foreground">
                       {history?.proofLocation?.label ??
                         formatDateTime(history?.proofLocation?.capturedAt)}

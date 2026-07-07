@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { formatTHB, type DeliveryProofEditorRole, type Order } from '@/data/orderTypes';
+import { type DeliveryProofEditorRole, type Order } from '@/data/orderTypes';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 import {
   canReviseDeliveryProof,
@@ -669,8 +669,8 @@ export function MessengerCloseJobDialog({
               lng: location.lng,
               label:
                 location.accuracy != null
-                  ? `พิกัด GPS ขณะปิดงาน (±${Math.round(location.accuracy)} ม.)`
-                  : 'พิกัด GPS ขณะปิดงาน',
+                  ? `พิกัด GPS ขณะส่งมอบ (±${Math.round(location.accuracy)} ม.)`
+                  : 'พิกัด GPS ขณะส่งมอบ',
             }
           : undefined,
       });
@@ -731,7 +731,7 @@ export function MessengerCloseJobDialog({
                 ? 'แก้ไขหลักฐาน'
                 : editorRole === 'admin'
                   ? 'บันทึกหลักฐาน (admin)'
-                  : 'ปิดงาน (messenger)'}
+                  : 'ยืนยันส่งมอบ'}
             </h2>
             <p
               className={cn(
@@ -739,7 +739,7 @@ export function MessengerCloseJobDialog({
                 signatureMode && 'truncate text-[11px]',
               )}
             >
-              {order.code} · {order.customer.name} · {formatTHB(order.totalValue)}
+              {order.code} · {order.customer.name}
             </p>
           </div>
           <button
@@ -915,10 +915,10 @@ export function MessengerCloseJobDialog({
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  ตรวจหลักฐานก่อนปิดงาน
+                  ตรวจหลักฐานก่อนยืนยันส่งมอบ
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ตรวจว่ารูปส่งมอบและลายเซ็นครบ ก่อนส่งให้ CS/admin ตรวจสอบและยืนยันปิดงาน
+                  ตรวจว่ารูปส่งมอบและลายเซ็นครบ ก่อนส่งให้ CS/admin ตรวจสอบและยืนยันส่งมอบ
                 </p>
               </div>
 
@@ -974,7 +974,7 @@ export function MessengerCloseJobDialog({
               </div>
 
               <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-warning">
-                เมื่อกดยืนยัน รายการจะอยู่ใน “รอตรวจสอบ” ก่อน ยังไม่ปิดเป็นส่งสำเร็จ
+                เมื่อกดยืนยัน รายการจะอยู่ใน “รอตรวจสอบ” ก่อน ยังไม่บันทึกเป็นส่งสำเร็จ
               </div>
               {isRevision && (
                 <div
@@ -1006,7 +1006,7 @@ export function MessengerCloseJobDialog({
           )}
           {missing.length > 0 && !signatureMode && (
             <div className="mb-2 text-[11px] text-warning">
-              ต้องทำก่อนปิด: {missing.join(' · ')}
+              ต้องทำก่อนยืนยัน: {missing.join(' · ')}
             </div>
           )}
           {!revisionAllowed && !signatureMode && (

@@ -7,6 +7,7 @@ import { paymentLabel, statusLabel } from '@/data/orderTypes';
 import {
   AlertCircle,
   Banknote,
+  CalendarClock,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -52,6 +53,7 @@ import { MessengerRouteMap } from './components/MessengerRouteMap';
 import { MessengerOrderMapPage } from './components/MessengerOrderMapPage';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
+import { isMessengerOrderParticipant } from '@/lib/messengerJobs';
 import type { Order } from '@/data/orderTypes';
 import {
   hasMessengerSession,
@@ -86,6 +88,12 @@ function InTransitJobSheet({
   // เวลาเริ่มส่ง = ตัวเลขนิ่ง, เวลานัด = นับถอยหลัง — จงใจไม่โชว์นาฬิกาจับเวลาให้คนขับ
   const startedAtLabel = formatInTransitStartTime(order);
   const countdown = getMessengerAppointmentCountdown(order, nowMs);
+  const plannedTime = order.deliveryPlan?.plannedTime;
+  // เลยเวลานัด = ส้ม (เตือน), ยังไม่ถึง = ฟ้า (ปกติ) — ให้ตรงกับกล่องนัดส่งใน JobCard
+  const apptTone: 'info' | 'warning' = countdown?.phase === 'after' ? 'warning' : 'info';
+  const apptToneText = apptTone === 'warning' ? 'text-warning' : 'text-info';
+  const apptToneSurface =
+    apptTone === 'warning' ? 'border-warning/30 bg-warning/10' : 'border-info/30 bg-info/10';
 
   return (
     // ยก sheet ให้พ้น floating tab bar (ความสูง dock + pb-safe ของ dock + ช่องว่าง)
@@ -133,35 +141,49 @@ function InTransitJobSheet({
                 )}
               </div>
               {order.deliveryPlan?.plannedDate && (
-                <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                  <Badge variant="success" className="h-6 px-2 text-xs">
-                    นัดส่ง {formatPlanningDate(order.deliveryPlan.plannedDate)}
-                    {order.deliveryPlan.plannedTime
-                      ? ` · ${order.deliveryPlan.plannedTime} น.`
-                      : ''}
-                  </Badge>
-                </div>
-              )}
-              {(startedAtLabel || countdown) && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
-                  {startedAtLabel && (
-                    <span className="inline-flex items-center gap-1 text-muted-foreground">
-                      <Clock3 className="h-3 w-3" />
-                      เริ่มส่ง {startedAtLabel} น.
-                    </span>
+                <div
+                  className={cn(
+                    'mt-2 flex items-center gap-2.5 rounded-xl border px-3 py-2',
+                    apptToneSurface,
                   )}
-                  {countdown && (
-                    <span
+                >
+                  <CalendarClock className={cn('h-5 w-5 shrink-0', apptToneText)} />
+                  <div className="min-w-0 flex-1">
+                    <div
                       className={cn(
-                        'inline-flex items-center gap-1 font-medium',
-                        countdown.phase === 'before' ? 'text-info' : 'text-warning',
+                        'text-[10px] font-medium uppercase tracking-normal opacity-80',
+                        apptToneText,
                       )}
                     >
-                      {countdown.phase === 'before'
-                        ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
-                        : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`}
-                    </span>
-                  )}
+                      นัดส่ง
+                    </div>
+                    <div className={cn('text-[13px] font-semibold leading-tight', apptToneText)}>
+                      {formatPlanningDate(order.deliveryPlan.plannedDate)}
+                    </div>
+                    {countdown && (
+                      <div className={cn('mt-0.5 text-[11px] font-medium', apptToneText)}>
+                        {countdown.phase === 'before'
+                          ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
+                          : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className={cn('shrink-0 text-right leading-none', apptToneText)}>
+                    {plannedTime ? (
+                      <>
+                        <span className="text-xl font-semibold">{plannedTime}</span>
+                        <span className="ml-0.5 text-[11px] font-medium">น.</span>
+                      </>
+                    ) : (
+                      <span className="text-xs font-medium">ไม่ระบุเวลา</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {startedAtLabel && (
+                <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Clock3 className="h-3 w-3" />
+                  เริ่มส่ง {startedAtLabel} น.
                 </div>
               )}
             </div>
@@ -186,7 +208,7 @@ function InTransitJobSheet({
             </Button>
             <Button size="sm" className="flex-1 bg-success hover:bg-success/90" onClick={onClose}>
               <CheckCircle2 className="h-4 w-4" />
-              ปิดงาน
+              ยืนยันส่งมอบ
             </Button>
           </div>
 
@@ -197,7 +219,7 @@ function InTransitJobSheet({
                 <span>{order.customer.address}</span>
               </div>
               {order.note && (
-                <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-warning">
+                <div className="text-warning">
                   <div className="flex items-start gap-2">
                     <MessageSquareText className="mt-0.5 h-4 w-4 shrink-0" />
                     <div>
@@ -259,7 +281,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const [messengerCode, setMessengerCode] = useState(resolveMessengerCode);
   const tracking = useMessengerTracking(authenticated);
   // ถ้า backend เริ่ม tracking session ไม่สำเร็จ ยังอ่าน GPS บนอุปกรณ์เพื่อแสดงแผนที่
-  // และแนบพิกัดจริงตอนปิดงานได้ โดยไม่สร้างตำแหน่งจำลอง
+  // และแนบพิกัดจริงตอนส่งมอบได้ โดยไม่สร้างตำแหน่งจำลอง
   // เปิดทั้งแท็บกำลังส่งและแผนที่ในแท็บงานใหม่ — สองที่นี้ใช้ location source ร่วมกัน
   const fallbackLocation = useMessengerLocation(
     authenticated &&
@@ -298,7 +320,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     () =>
       orders.filter(
         (order) =>
-          order.assignedDriverId === messengerCode && MESSENGER_JOB_STATUSES.includes(order.status),
+          isMessengerOrderParticipant(order, messengerCode) &&
+          MESSENGER_JOB_STATUSES.includes(order.status),
       ),
     [orders, messengerCode],
   );
@@ -312,7 +335,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const effectiveMessengerStatus: NonNullable<typeof messenger>['status'] | undefined =
     messenger?.status === 'off_duty'
       ? 'off_duty'
-      : inTransitOrderCount > 0 || hasTestTrackingSession
+      : openCustomerJobCount > 0 || hasTestTrackingSession
         ? 'on_delivery'
         : messenger
           ? 'available'
@@ -422,9 +445,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
           return;
         }
-        const message = error instanceof Error ? error.message : 'เริ่มงานไม่สำเร็จ';
+        const message = error instanceof Error ? error.message : 'เริ่มส่งไม่สำเร็จ';
         setJobsError(message);
-        toast.error(`รับงานไม่สำเร็จ — ${message}`);
+        toast.error(`เริ่มส่งไม่สำเร็จ — ${message}`);
       } finally {
         setStartingJobId(null);
       }
@@ -881,7 +904,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 <div className="rounded-xl border border-warning/20 bg-warning/5 p-3 text-sm font-medium text-warning">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 shrink-0" />
-                    มี {overdueCount} งานถึงเวลารับแล้ว
+                    มี {overdueCount} งานถึงเวลาเริ่มส่งแล้ว
                   </div>
                 </div>
               )}
@@ -889,7 +912,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 <div className="rounded-xl border border-warning/20 bg-warning/5 p-3">
                   <div className="flex items-center gap-2 text-sm font-medium text-warning">
                     <ClipboardList className="h-4 w-4" />
-                    มีงานใหม่รอรับ {counts.assigned} งาน
+                    มีงานใหม่รอเริ่มส่ง {counts.assigned} งาน
                   </div>
                   <Button
                     size="sm"
@@ -897,7 +920,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                     className="mt-2 w-full rounded-full border-warning/25 bg-background text-warning hover:bg-warning/10"
                     onClick={() => setTab('assigned')}
                   >
-                    ไปกดรับงาน
+                    ไปเริ่มส่งงาน
                   </Button>
                 </div>
               )}
@@ -1016,8 +1039,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               if (isMessengerAuthError(error)) return;
               setJobsError(
                 error instanceof Error
-                  ? `ปิดงานสำเร็จ แต่หยุด GPS ไม่สำเร็จ — ${error.message}`
-                  : 'ปิดงานสำเร็จ แต่หยุด GPS ไม่สำเร็จ',
+                  ? `ส่งตรวจสอบสำเร็จ แต่หยุด GPS ไม่สำเร็จ — ${error.message}`
+                  : 'ส่งตรวจสอบสำเร็จ แต่หยุด GPS ไม่สำเร็จ',
               );
             }
           }

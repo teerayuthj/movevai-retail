@@ -6,6 +6,7 @@ import { planningCancelReasonLabel, statusLabel } from '@/data/orderTypes';
 import {
   formatOverdueDuration,
   formatPlanningDate,
+  getPlanningDateTimeMs,
   SCHEDULED_DELIVERY_GRACE_MINUTES,
 } from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
@@ -39,9 +40,10 @@ function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
   if (route.status === 'cancelled' || route.status === 'completed' || !route.plannedTime)
     return null;
 
-  const scheduledAt = route.scheduledFor
-    ? new Date(route.scheduledFor).getTime()
-    : new Date(`${route.plannedDate}T${route.plannedTime}:00+07:00`).getTime();
+  const scheduledAt =
+    getPlanningDateTimeMs(route.plannedDate, route.plannedTime) ??
+    (route.scheduledFor ? new Date(route.scheduledFor).getTime() : null);
+  if (scheduledAt == null) return null;
   const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
   if (Number.isNaN(scheduledAt) || nowMs < overdueAt) return null;
   return Math.floor((nowMs - scheduledAt) / 60_000);

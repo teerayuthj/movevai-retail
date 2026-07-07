@@ -202,7 +202,7 @@ export function MessengerRouteMap({
     roadDistance != null &&
     (straightDistance == null || roadDistance <= straightDistance * 4 + 3_000);
   const remainingDistance = roadDistanceTrustworthy ? roadDistance : straightDistance;
-  // การตัดสินว่า "ถึงบริเวณปลายทาง" ยังใช้ระยะเส้นตรง + ความแม่นยำ GPS (ตรงกับ logic ปิดงานจริง)
+  // การตัดสินว่า "ถึงบริเวณปลายทาง" ยังใช้ระยะเส้นตรง + ความแม่นยำ GPS (ตรงกับ logic ส่งมอบจริง)
   const arrived =
     straightDistance != null &&
     straightDistance <= 200 &&

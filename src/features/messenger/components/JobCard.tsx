@@ -34,8 +34,7 @@ import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { navigationUrl } from '../geocode';
 
 function formatMessengerDueLabel(minutes: number) {
-  if (minutes < 1) return 'ถึงเวลารับงานแล้ว';
-  return formatOverdueDuration(minutes).replace('เลยเวลานัดส่ง ', 'ถึงเวลารับงานแล้ว · ');
+  return formatOverdueDuration(minutes);
 }
 
 export function JobCard({
@@ -70,77 +69,96 @@ export function JobCard({
   const messengerRevisionCount = getDeliveryProofRevisionCount(order, 'messenger');
   const messengerRevisionLimit = deliveryProofRevisionLimits.messenger;
 
+  const plannedTime = order.deliveryPlan?.plannedTime;
+  // สถานะเวลานัด (สี + บรรทัดสรุป) — รวม เลย/ใกล้ถึง/เหลือ ไว้ในกล่องนัดส่งกล่องเดียว
+  const apptStatus: { tone: 'info' | 'warning' | 'danger'; label: string } | null = isOverdue
+    ? { tone: 'danger', label: formatMessengerDueLabel(overdueMinutes) }
+    : timing
+      ? {
+          tone: timing.phase === 'scheduled' ? 'info' : 'warning',
+          label:
+            timing.phase === 'scheduled'
+              ? `เหลืออีก ${formatElapsedDuration(timing.minutes)} ถึงเวลานัด`
+              : timing.phase === 'upcoming'
+                ? `ใกล้ถึงเวลานัด · อีก ${timing.minutes} นาที`
+                : `ถึงเวลานัดแล้ว · อีก ${timing.minutes} นาทีก่อนเลยเวลา`,
+        }
+      : appointmentCountdown
+        ? {
+            tone: appointmentCountdown.phase === 'after' ? 'warning' : 'info',
+            label:
+              appointmentCountdown.phase === 'before'
+                ? `อีก ${formatElapsedDuration(appointmentCountdown.minutes)} ถึงเวลานัด`
+                : `เลยเวลานัด ${formatElapsedDuration(appointmentCountdown.minutes)}`,
+          }
+        : null;
+  const apptTone = apptStatus?.tone ?? 'info';
+  const apptToneText =
+    apptTone === 'danger'
+      ? 'text-destructive'
+      : apptTone === 'warning'
+        ? 'text-warning'
+        : 'text-info';
+  const apptToneSurface =
+    apptTone === 'danger'
+      ? 'border-destructive/30 bg-destructive/10'
+      : apptTone === 'warning'
+        ? 'border-warning/30 bg-warning/10'
+        : 'border-info/30 bg-info/10';
+
   return (
-    <div
-      className={cn(
-        'rounded-2xl border border-border/60 bg-card p-4 shadow-sm',
-        (timing || isOverdue) && 'border-warning/25',
-      )}
-    >
+    <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-xs font-medium">{order.code}</span>
         <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
           <Package className="h-3 w-3" /> พัสดุ
         </Badge>
       </div>
-      {(isOverdue || timing) && (
-        <div className="mt-2 flex flex-wrap items-center gap-1.5">
-          {isOverdue && (
-            <Badge
-              variant="outline"
-              className="gap-1 border-transparent bg-destructive/10 text-destructive"
-            >
-              <Clock3 className="h-3 w-3" />
-              {formatMessengerDueLabel(overdueMinutes)}
-            </Badge>
-          )}
-          {timing && (
-            <Badge
-              variant="outline"
-              className="gap-1 border-transparent bg-warning/10 text-warning"
-            >
-              <Clock3 className="h-3 w-3" />
-              {timing.phase === 'upcoming'
-                ? `อีก ${timing.minutes} นาทีถึงเวลานัดส่ง`
-                : 'ถึงเวลานัดส่งแล้ว · กรุณารับงานทันที'}
-            </Badge>
-          )}
-        </div>
-      )}
       <div className="mt-1 text-sm font-semibold">{order.customer.name}</div>
 
       {order.deliveryPlan?.plannedDate && (
-        <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <CalendarClock className="h-3.5 w-3.5" />
-          <span>
-            นัดส่ง {formatPlanningDate(order.deliveryPlan.plannedDate)} ·{' '}
-            {order.deliveryPlan.plannedTime
-              ? `${order.deliveryPlan.plannedTime} น.`
-              : 'ไม่ระบุเวลา'}
-          </span>
+        <div
+          className={cn(
+            'mt-2 flex items-center gap-2.5 rounded-xl border px-3 py-2',
+            apptToneSurface,
+          )}
+        >
+          <CalendarClock className={cn('h-5 w-5 shrink-0', apptToneText)} />
+          <div className="min-w-0 flex-1">
+            <div
+              className={cn(
+                'text-[10px] font-medium uppercase tracking-normal opacity-80',
+                apptToneText,
+              )}
+            >
+              นัดส่ง
+            </div>
+            <div className={cn('text-[13px] font-semibold leading-tight', apptToneText)}>
+              {formatPlanningDate(order.deliveryPlan.plannedDate)}
+            </div>
+            {apptStatus && (
+              <div className={cn('mt-0.5 text-[11px] font-medium', apptToneText)}>
+                {apptStatus.label}
+              </div>
+            )}
+          </div>
+          <div className={cn('shrink-0 text-right leading-none', apptToneText)}>
+            {plannedTime ? (
+              <>
+                <span className="text-xl font-semibold">{plannedTime}</span>
+                <span className="ml-0.5 text-[11px] font-medium">น.</span>
+              </>
+            ) : (
+              <span className="text-xs font-medium">ไม่ระบุเวลา</span>
+            )}
+          </div>
         </div>
       )}
 
-      {(startedAtLabel || appointmentCountdown) && (
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px]">
-          {startedAtLabel && (
-            <span className="inline-flex items-center gap-1 text-muted-foreground">
-              <Clock3 className="h-3 w-3" />
-              เริ่มส่ง {startedAtLabel} น.
-            </span>
-          )}
-          {appointmentCountdown && (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 font-medium',
-                appointmentCountdown.phase === 'before' ? 'text-info' : 'text-warning',
-              )}
-            >
-              {appointmentCountdown.phase === 'before'
-                ? `อีก ${formatElapsedDuration(appointmentCountdown.minutes)} ถึงเวลานัด`
-                : `เลยเวลานัด ${formatElapsedDuration(appointmentCountdown.minutes)}`}
-            </span>
-          )}
+      {startedAtLabel && (
+        <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
+          <Clock3 className="h-3 w-3" />
+          เริ่มส่ง {startedAtLabel} น.
         </div>
       )}
 
@@ -150,7 +168,7 @@ export function JobCard({
           <span>{order.customer.address}</span>
         </div>
         {order.note && (
-          <div className="rounded-xl border border-warning/15 bg-warning/5 px-3 py-2">
+          <div>
             <div className="flex items-start gap-1.5">
               <MessageSquareText className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
               <div>
@@ -280,18 +298,18 @@ export function JobCard({
             {isFutureJob
               ? 'ยังไม่ถึงวันส่ง'
               : starting
-                ? 'กำลังเริ่ม...'
+                ? 'กำลังเริ่มส่ง...'
                 : isOverdue
-                  ? 'รับงานตอนนี้'
+                  ? 'เริ่มส่งตอนนี้'
                   : isUrgent
-                    ? 'รับทันที'
-                    : 'รับงาน'}
+                    ? 'เริ่มส่งทันที'
+                    : 'เริ่มส่ง'}
           </Button>
         )}
         {order.status === 'in_transit' && (
           <Button size="sm" className="rounded-full px-4" onClick={onClose}>
             <CheckCircle2 className="h-4 w-4" />
-            ปิดงาน
+            ยืนยันส่งมอบ
           </Button>
         )}
         {order.status === 'pending_confirmation' && (
