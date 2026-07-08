@@ -71,6 +71,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     publishUrgentRoute,
   } = useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState('');
   const [query, setQuery] = useState('');
   const [paneView, setPaneView] = useState<'list' | 'map'>('list');
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
@@ -389,16 +390,27 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
             : undefined
         }
         reasons={CANCEL_REASONS}
+        error={cancelError}
         confirmLabel="ยืนยันยกเลิก"
         confirmVariant="destructive"
-        onCancel={() => setCancelTargetId(null)}
-        onConfirm={({ reason, note }) => {
-          if (cancelTargetId) {
-            const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
-            cancelOrder(cancelTargetId, { reason, note });
-            toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
-          }
+        onCancel={() => {
+          setCancelError('');
           setCancelTargetId(null);
+        }}
+        onConfirm={({ reason, note }) => {
+          if (!cancelTargetId) return;
+          const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+          setCancelError('');
+          void cancelOrder(cancelTargetId, { reason, note })
+            .then(() => {
+              toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
+              setCancelTargetId(null);
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              setCancelError(message);
+              toast.error(`ยกเลิกออเดอร์ ${code} ไม่สำเร็จ — ${message}`);
+            });
         }}
       />
 

@@ -47,6 +47,7 @@ export function InboxPage({
 
   const [tab, setTab] = useState<InboxTab>('line_import');
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     return orders.find((order) => INBOX_STATUSES.includes(order.status))?.id ?? null;
   });
@@ -227,16 +228,27 @@ export function InboxPage({
                 : undefined
             }
             reasons={CANCEL_REASONS}
+            error={cancelError}
             confirmLabel="ยืนยันยกเลิก"
             confirmVariant="destructive"
-            onCancel={() => setCancelTargetId(null)}
-            onConfirm={({ reason, note }) => {
-              if (cancelTargetId) {
-                const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
-                cancelOrder(cancelTargetId, { reason, note });
-                toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
-              }
+            onCancel={() => {
+              setCancelError('');
               setCancelTargetId(null);
+            }}
+            onConfirm={({ reason, note }) => {
+              if (!cancelTargetId) return;
+              const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+              setCancelError('');
+              void cancelOrder(cancelTargetId, { reason, note })
+                .then(() => {
+                  toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
+                  setCancelTargetId(null);
+                })
+                .catch((error: unknown) => {
+                  const message = error instanceof Error ? error.message : String(error);
+                  setCancelError(message);
+                  toast.error(`ยกเลิกออเดอร์ ${code} ไม่สำเร็จ — ${message}`);
+                });
             }}
           />
         </>

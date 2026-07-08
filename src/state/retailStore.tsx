@@ -45,6 +45,7 @@ import type {
 } from '@/state/retail/types';
 import {
   approveImportOrders as approveImportOrdersApi,
+  cancelOrder as cancelOrderApi,
   cancelPlanningRoute,
   clearPlanning as clearPlanningApi,
   confirmAppDelivery,
@@ -481,8 +482,14 @@ export function RetailProvider({
   );
 
   const cancelOrder = useCallback(
-    (orderId: string, input: Parameters<RetailStore['cancelOrder']>[1]) => {
-      commit((current) => cancelOrderState(current, orderId, input));
+    async (orderId: string, input: Parameters<RetailStore['cancelOrder']>[1]) => {
+      const canonical = await cancelOrderApi(orderId, input);
+      commit((current) => {
+        // cancelOrderState จัดการผลข้างเคียงฝั่ง local (เช่น driver activeOrders)
+        // แล้วทับตัว order ด้วยข้อมูล canonical จาก backend (resolution + timeline)
+        const cancelled = cancelOrderState(current, orderId, input);
+        return { ...cancelled, orders: replaceOrder(cancelled.orders, canonical) };
+      });
     },
     [commit],
   );
