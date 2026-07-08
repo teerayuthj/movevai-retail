@@ -54,7 +54,7 @@ import {
   type RoutePreview,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
-import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
+import { formatDriverActiveJobs, getDriverWorkloadSummary } from '@/lib/deliveryExecution';
 import { buildInboxOrderEditSearch } from '@/lib/orderSourceLink';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
@@ -1016,7 +1016,7 @@ export function PlanningPage({
               value: driver.id,
               label: driver.name,
               leading: <DriverAvatar driver={driver} className="h-9 w-9" />,
-              description: `${driver.phone} · งานที่รับอยู่ ${driver.activeOrders}`,
+              description: `${driver.phone} · ${formatDriverActiveJobs(driver, orders)}`,
             }))}
           reasonLabel="คนขับใหม่"
           notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"

@@ -98,6 +98,17 @@ export function getDriverWorkloadSummary(
   );
 }
 
+/**
+ * ป้าย "งานที่รับอยู่" ของคนขับ — นับจากออเดอร์จริง (assigned + in_transit)
+ * ห้ามใช้ driver.activeOrders โชว์ผู้ใช้ตรง ๆ เพราะเป็น counter สะสมที่ drift ได้
+ */
+export function formatDriverActiveJobs(driver: Pick<Driver, 'id'>, orders: Order[]): string {
+  const { waitingToStart, inTransit } = getDriverWorkloadSummary(driver, orders);
+  const total = waitingToStart + inTransit;
+  if (total === 0) return 'งานที่รับอยู่ 0';
+  return `งานที่รับอยู่ ${total} (รอเริ่ม ${waitingToStart} · กำลังส่ง ${inTransit})`;
+}
+
 export function getDeliveryTrackingTab(order: Order): DeliveryTrackingTab | null {
   if (
     order.status === 'assigned' &&

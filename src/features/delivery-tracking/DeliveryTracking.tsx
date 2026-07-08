@@ -16,7 +16,7 @@ import {
   failReasonLabel,
 } from '@/data/orderTypes';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
-import { getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
+import { formatDriverActiveJobs, getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
 import {
   canReviseDeliveryProof,
   deliveryProofRevisionLimits,
@@ -563,7 +563,7 @@ export function DeliveryTrackingPage({ locationSearch, onOpenQueue }: DeliveryTr
               value: driver.id,
               label: driver.name,
               leading: <DriverAvatar driver={driver} className="h-9 w-9" />,
-              description: `${driver.phone} · งานที่รับอยู่ ${driver.activeOrders}`,
+              description: `${driver.phone} · ${formatDriverActiveJobs(driver, orders)}`,
             }))}
           reasonLabel="คนขับใหม่"
           notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
