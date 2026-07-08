@@ -6,6 +6,7 @@ import {
   simulateProviderSend,
   type CustomerNotification,
   type NotificationChannel,
+  type NotificationTemplateDrafts,
   type NotificationTemplateKey,
 } from '@/lib/notifications';
 import { DEFAULT_HANDLER, newEventId, nowIso } from '@/state/retail/timeline';
@@ -14,6 +15,8 @@ import type { RetailState } from '@/state/retail/types';
 export type SendCustomerNotificationInput = {
   channel?: NotificationChannel;
   templateKey: NotificationTemplateKey;
+  templateDrafts?: NotificationTemplateDrafts;
+  messageOverrides?: Record<string, string>;
   recordedBy?: Order['handledBy'];
 };
 
@@ -28,7 +31,10 @@ function buildNotificationRecord(
   sentAt: string,
 ): CustomerNotification {
   const channel = resolveChannel(order, input.channel);
-  const { message, trackingUrl } = renderNotificationMessage(order, input.templateKey);
+  const { message, trackingUrl } = renderNotificationMessage(order, input.templateKey, {
+    templateDrafts: input.templateDrafts,
+    messageOverride: input.messageOverrides?.[order.id],
+  });
 
   const base: CustomerNotification = {
     id: newEventId(),

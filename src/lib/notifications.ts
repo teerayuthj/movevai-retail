@@ -76,8 +76,8 @@ export const notificationStatusLabel: Record<NotificationStatus, string> = {
 type TemplateDefinition = {
   key: NotificationTemplateKey;
   label: string;
-  /** สร้างเนื้อความ (ยังไม่รวมลิงก์ tracking — ตัวเรนเดอร์จะต่อท้ายให้) */
-  body: (order: Order) => string;
+  /** ข้อความตั้งต้นที่แก้เป็น template กลางได้ */
+  defaultMessage: string;
 };
 
 function plannedDeliveryText(order: Order): string {
@@ -91,49 +91,50 @@ export const NOTIFICATION_TEMPLATES: TemplateDefinition[] = [
   {
     key: 'order_received',
     label: 'รับคำสั่งซื้อแล้ว',
-    body: (order) =>
-      `เรียนคุณ${order.customer.name} ทาง Ausiris ได้รับคำสั่งซื้อ ${order.code} เรียบร้อยแล้ว ` +
-      `ทีมงานกำลังเตรียมสินค้าให้ครับ/ค่ะ`,
+    defaultMessage:
+      'เรียนคุณ{customerName} ทาง Ausiris ได้รับคำสั่งซื้อ {orderCode} เรียบร้อยแล้ว ' +
+      'ทีมงานกำลังเตรียมสินค้าให้ครับ/ค่ะ\n{trackingUrl}',
   },
   {
     key: 'scheduled',
     label: 'นัดหมายวันจัดส่ง',
-    body: (order) =>
-      `คำสั่งซื้อ ${order.code} นัดหมายจัดส่งวันที่ ${plannedDeliveryText(order)} ` +
-      `ติดตามสถานะแบบเรียลไทม์ได้ที่ลิงก์ด้านล่างครับ/ค่ะ`,
+    defaultMessage:
+      'คำสั่งซื้อ {orderCode} นัดหมายจัดส่งวันที่ {plannedDelivery} ' +
+      'ติดตามสถานะแบบเรียลไทม์ได้ที่ลิงก์ด้านล่างครับ/ค่ะ\n{trackingUrl}',
   },
   {
     key: 'out_for_delivery',
     label: 'พนักงานออกเดินทางแล้ว',
-    body: (order) =>
-      `พนักงานรับสินค้าคำสั่งซื้อ ${order.code} และกำลังเดินทางไปส่งแล้ว ` +
-      `ดูตำแหน่งพนักงานแบบเรียลไทม์ได้ที่ลิงก์ด้านล่างครับ/ค่ะ`,
+    defaultMessage:
+      'พนักงานรับสินค้าคำสั่งซื้อ {orderCode} และกำลังเดินทางไปส่งแล้ว ' +
+      'ดูตำแหน่งพนักงานแบบเรียลไทม์ได้ที่ลิงก์ด้านล่างครับ/ค่ะ\n{trackingUrl}',
   },
   {
     key: 'arriving_soon',
     label: 'ใกล้ถึงแล้ว',
-    body: (order) =>
-      `พนักงานกำลังจะถึงที่หมายสำหรับคำสั่งซื้อ ${order.code} ` +
-      `รบกวนเตรียมรับสินค้าด้วยครับ/ค่ะ ดูตำแหน่งได้ที่ลิงก์ด้านล่าง`,
+    defaultMessage:
+      'พนักงานกำลังจะถึงที่หมายสำหรับคำสั่งซื้อ {orderCode} ' +
+      'รบกวนเตรียมรับสินค้าด้วยครับ/ค่ะ ดูตำแหน่งได้ที่ลิงก์ด้านล่าง\n{trackingUrl}',
   },
   {
     key: 'delivered',
     label: 'จัดส่งสำเร็จ',
-    body: (order) =>
-      `คำสั่งซื้อ ${order.code} จัดส่งสำเร็จเรียบร้อยแล้ว ` +
-      `ขอบคุณที่ใช้บริการ Ausiris ครับ/ค่ะ ดูหลักฐานการส่งมอบได้ที่ลิงก์ด้านล่าง`,
+    defaultMessage:
+      'คำสั่งซื้อ {orderCode} จัดส่งสำเร็จเรียบร้อยแล้ว ' +
+      'ขอบคุณที่ใช้บริการ Ausiris ครับ/ค่ะ ดูหลักฐานการส่งมอบได้ที่ลิงก์ด้านล่าง\n{trackingUrl}',
   },
   {
     key: 'failed',
     label: 'จัดส่งไม่สำเร็จ',
-    body: (order) =>
-      `ทาง Ausiris ไม่สามารถจัดส่งคำสั่งซื้อ ${order.code} ได้ในรอบนี้ ` +
-      `ทีมงานจะติดต่อกลับเพื่อนัดหมายใหม่ ดูรายละเอียดได้ที่ลิงก์ด้านล่างครับ/ค่ะ`,
+    defaultMessage:
+      'ทาง Ausiris ไม่สามารถจัดส่งคำสั่งซื้อ {orderCode} ได้ในรอบนี้ ' +
+      'ทีมงานจะติดต่อกลับเพื่อนัดหมายใหม่ ดูรายละเอียดได้ที่ลิงก์ด้านล่างครับ/ค่ะ\n{trackingUrl}',
   },
   {
     key: 'tracking_link',
     label: 'ส่งลิงก์ติดตาม',
-    body: (order) => `ติดตามสถานะคำสั่งซื้อ ${order.code} ของคุณได้ที่ลิงก์ด้านล่างครับ/ค่ะ`,
+    defaultMessage:
+      'ติดตามสถานะคำสั่งซื้อ {orderCode} ของคุณได้ที่ลิงก์ด้านล่างครับ/ค่ะ\n{trackingUrl}',
   },
 ];
 
@@ -143,6 +144,12 @@ const templateByKey = Object.fromEntries(
 
 export function getTemplateLabel(key: NotificationTemplateKey): string {
   return templateByKey[key]?.label ?? key;
+}
+
+export type NotificationTemplateDrafts = Partial<Record<NotificationTemplateKey, string>>;
+
+export function getDefaultNotificationTemplateMessage(key: NotificationTemplateKey): string {
+  return templateByKey[key]?.defaultMessage ?? templateByKey.tracking_link.defaultMessage;
 }
 
 /** เทมเพลตที่เหมาะกับสถานะปัจจุบันของออเดอร์ — ใช้เป็น default ในหน้า compose */
@@ -211,15 +218,50 @@ export function notifyTriagePriority(triage: NotifyTriage): number {
   }
 }
 
-/** เรนเดอร์ข้อความเต็ม = เนื้อความเทมเพลต + ลิงก์ tracking */
+function renderTemplateText(templateText: string, order: Order, trackingUrl: string): string {
+  return templateText.replace(
+    /\{(orderCode|customerName|plannedDelivery|trackingUrl)\}/g,
+    (_, token) => {
+      switch (token) {
+        case 'orderCode':
+          return order.code;
+        case 'customerName':
+          return order.customer.name;
+        case 'plannedDelivery':
+          return plannedDeliveryText(order);
+        case 'trackingUrl':
+          return trackingUrl;
+        default:
+          return '';
+      }
+    },
+  );
+}
+
+function ensureTrackingUrl(message: string, trackingUrl: string): string {
+  if (message.includes(trackingUrl)) return message;
+  return `${message.trimEnd()}\n${trackingUrl}`.trimStart();
+}
+
+export type RenderNotificationMessageOptions = {
+  origin?: string;
+  templateDrafts?: NotificationTemplateDrafts;
+  messageOverride?: string;
+};
+
+/** เรนเดอร์ข้อความเต็มจาก template กลาง หรือข้อความ override ราย order */
 export function renderNotificationMessage(
   order: Order,
   templateKey: NotificationTemplateKey,
-  origin?: string,
+  options?: RenderNotificationMessageOptions | string,
 ): { message: string; trackingUrl: string } {
+  const normalizedOptions = typeof options === 'string' ? { origin: options } : options;
   const template = templateByKey[templateKey] ?? templateByKey.tracking_link;
-  const trackingUrl = buildCustomerTrackingUrl(order.id, origin);
-  const message = `${template.body(order)}\n${trackingUrl}`;
+  const templateText = normalizedOptions?.templateDrafts?.[templateKey] ?? template.defaultMessage;
+  const trackingUrl = buildCustomerTrackingUrl(order, normalizedOptions?.origin);
+  const message =
+    normalizedOptions?.messageOverride ??
+    ensureTrackingUrl(renderTemplateText(templateText, order, trackingUrl), trackingUrl);
   return { message, trackingUrl };
 }
 

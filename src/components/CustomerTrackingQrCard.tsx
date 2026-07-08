@@ -20,9 +20,14 @@ type CustomerTrackingQrCardProps = {
 export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState(false);
-  // ใช้ order code (ORD-...) ที่ลูกค้ารู้จักใน URL ให้ตรงกับเลขออเดอร์บนหน้า ไม่ใช่ internal id
-  const trackingUrl = useMemo(() => buildCustomerTrackingUrl(order.code), [order.code]);
-  const trackingPath = useMemo(() => getCustomerTrackingPath(order.code), [order.code]);
+  // ลิงก์สั้น /t/:trackingCode เมื่อ backend สุ่มโค้ดให้แล้ว; ออเดอร์เก่าที่ยังไม่มีโค้ด
+  // fallback เป็น /track/{order code} (ORD-...) ที่ลูกค้ารู้จัก — backend resolve ได้ทั้งคู่
+  const trackingRef = useMemo(
+    () => ({ id: order.code, trackingCode: order.trackingCode }),
+    [order.code, order.trackingCode],
+  );
+  const trackingUrl = useMemo(() => buildCustomerTrackingUrl(trackingRef), [trackingRef]);
+  const trackingPath = useMemo(() => getCustomerTrackingPath(trackingRef), [trackingRef]);
   const isNativeApp = Capacitor.isNativePlatform();
   const scheduled = isOrderScheduled(order);
   const plannedDelivery = getPlannedDelivery(order);
@@ -159,8 +164,8 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
         </div>
       )}
       <div className="mt-2 text-[11px] text-muted-foreground">
-        Prototype นี้ใช้ order id ใน URL; production ควรเปลี่ยนเป็น token สุ่มและเพิ่ม OTP
-        ก่อนแสดงข้อมูล sensitive
+        ลิงก์ใช้โค้ดสุ่มสั้น (เดาไม่ได้จากเลขออเดอร์); production ควรเพิ่ม OTP ก่อนแสดงข้อมูล
+        sensitive
       </div>
     </div>
   );

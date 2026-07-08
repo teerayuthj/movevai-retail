@@ -229,6 +229,7 @@ export type OrderActivityEvent = {
 export type Order = {
   id: string;
   code: string;
+  trackingCode?: string; // โค้ดสั้น 8 ตัวสำหรับลิงก์ติดตามลูกค้า (/t/:code) — backend สุ่มให้ตอนสร้าง
   source: OrderSource;
   status: OrderStatus;
   receivedAt: string;

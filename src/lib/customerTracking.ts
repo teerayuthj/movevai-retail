@@ -5,6 +5,9 @@ import type {
   ProofOfDelivery,
 } from '@/data/orderTypes';
 
+// path สั้นสำหรับลิงก์ที่ส่งให้ลูกค้า (SMS/LINE) — ใช้คู่กับ trackingCode 8 ตัว
+// ให้ลิงก์สั้น อ่านง่าย ไม่ดูเป็น scam เท่าลิงก์ที่มี id ยาว 25 ตัว
+const CUSTOMER_TRACKING_SHORT_BASE_PATH = '/t';
 const CUSTOMER_TRACKING_BASE_PATH = '/track';
 // path เดิม — เก็บไว้รองรับลิงก์เก่าที่เคยส่งให้ลูกค้าไปแล้ว (อย่าใช้สร้างลิงก์ใหม่)
 const CUSTOMER_TRACKING_LEGACY_BASE_PATHS = ['/customer-track'];
@@ -20,11 +23,23 @@ const SCHEDULED_STATUSES = new Set<OrderStatus>([
   'returned',
 ]);
 
-export function getCustomerTrackingPath(orderId: string) {
-  return `${CUSTOMER_TRACKING_BASE_PATH}/${encodeURIComponent(orderId)}`;
+/** อ้างอิง order สำหรับสร้างลิงก์ — ส่ง trackingCode มาด้วยเมื่อมี เพื่อให้ได้ลิงก์สั้น */
+export type CustomerTrackingRef = Pick<Order, 'id'> & Partial<Pick<Order, 'trackingCode'>>;
+
+function toTrackingRef(ref: CustomerTrackingRef | string): CustomerTrackingRef {
+  return typeof ref === 'string' ? { id: ref } : ref;
+}
+
+export function getCustomerTrackingPath(ref: CustomerTrackingRef | string) {
+  const { id, trackingCode } = toTrackingRef(ref);
+  if (trackingCode) {
+    return `${CUSTOMER_TRACKING_SHORT_BASE_PATH}/${encodeURIComponent(trackingCode)}`;
+  }
+  return `${CUSTOMER_TRACKING_BASE_PATH}/${encodeURIComponent(id)}`;
 }
 
 const ALL_CUSTOMER_TRACKING_BASE_PATHS = [
+  CUSTOMER_TRACKING_SHORT_BASE_PATH,
   CUSTOMER_TRACKING_BASE_PATH,
   ...CUSTOMER_TRACKING_LEGACY_BASE_PATHS,
 ];
@@ -57,11 +72,11 @@ function getDefaultCustomerTrackingOrigin() {
 }
 
 export function buildCustomerTrackingUrl(
-  orderId: string,
+  ref: CustomerTrackingRef | string,
   origin = getDefaultCustomerTrackingOrigin(),
 ) {
   const normalizedOrigin = normalizeOrigin(origin);
-  return `${normalizedOrigin}${getCustomerTrackingPath(orderId)}`;
+  return `${normalizedOrigin}${getCustomerTrackingPath(ref)}`;
 }
 
 export function maskPhone(phone: string) {
