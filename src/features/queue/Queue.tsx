@@ -15,10 +15,9 @@ import {
   OrderSummary,
   QueueOrderCard,
 } from '@/components/delivery/DeliveryExecutionShared';
-import { type CancelReason, cancelReasonLabel, statusLabel } from '@/data/orderTypes';
+import { type CancelReason, type Order, cancelReasonLabel, statusLabel } from '@/data/orderTypes';
 import { isVisibleInExecutionQueue } from '@/lib/deliveryPlanning';
 import {
-  canDriverTakeOrder,
   getDriverQueueTab,
   planAutoAssignments,
   recommendDriverForOrder,
@@ -29,6 +28,7 @@ import {
   isFastDispatchOrder,
 } from '@/lib/fastDispatch';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
+import { buildInboxOrderEditSearch, hasCsvImportSource } from '@/lib/orderSourceLink';
 import { previewPlanningRoute, type RoutePreview } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';
@@ -44,6 +44,7 @@ import {
   Search,
   Send,
   Sparkles,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { AssignmentPanel } from './components/AssignmentPanel';
 import { UrgentDispatchDialog } from './components/UrgentDispatchDialog';
@@ -56,10 +57,11 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
 
 type QueuePageProps = {
   locationSearch: string;
+  onOpenInbox: (search?: string) => void;
   onOpenTracking: (search?: string) => void;
 };
 
-export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
+export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: QueuePageProps) {
   const {
     orders,
     drivers,
@@ -69,6 +71,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     publishUrgentRoute,
   } = useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState('');
   const [query, setQuery] = useState('');
   const [paneView, setPaneView] = useState<'list' | 'map'>('list');
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
@@ -179,10 +182,11 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     );
   }, [recommendedDriverId, selectedOrder]);
 
-  const canAssign =
+  const canUrgentDispatch =
     selectedOrder?.status === 'ready' &&
-    selectedDrivers.length > 0 &&
-    selectedDrivers.every((driver) => canDriverTakeOrder(selectedOrder, driver));
+    selectedDriverIds.length > 0 &&
+    selectedDrivers.length === selectedDriverIds.length &&
+    selectedDrivers.every((driver) => driver.status !== 'off_duty');
 
   const handleStartRoute = (orderIds: string[], selectedOrderForFocus?: string) => {
     orderIds.forEach((orderId) => startDelivery(orderId));
@@ -238,6 +242,10 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
     onOpenTracking(`?tab=overdue&order=${encodeURIComponent(selectedOrder.id)}`);
   };
 
+  const openOrderCsvEdit = (order: Order) => {
+    onOpenInbox(buildInboxOrderEditSearch(order));
+  };
+
   const selectedOrderSet = useMemo(
     () => new Set(selectedOrderId ? [selectedOrderId] : []),
     [selectedOrderId],
@@ -278,7 +286,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
         <div className="space-y-2">
           <Button
             className="w-full"
-            disabled={!canAssign}
+            disabled={!canUrgentDispatch}
             onClick={() => {
               if (!selectedOrder || selectedDriverIds.length === 0) return;
               setUrgentError('');
@@ -364,6 +372,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                 .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver))
             : []
         }
+        orders={orders}
         loading={urgentLoading}
         error={urgentError}
         onCancel={() => {
@@ -381,16 +390,27 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
             : undefined
         }
         reasons={CANCEL_REASONS}
+        error={cancelError}
         confirmLabel="ยืนยันยกเลิก"
         confirmVariant="destructive"
-        onCancel={() => setCancelTargetId(null)}
-        onConfirm={({ reason, note }) => {
-          if (cancelTargetId) {
-            const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
-            cancelOrder(cancelTargetId, { reason, note });
-            toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
-          }
+        onCancel={() => {
+          setCancelError('');
           setCancelTargetId(null);
+        }}
+        onConfirm={({ reason, note }) => {
+          if (!cancelTargetId) return;
+          const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+          setCancelError('');
+          void cancelOrder(cancelTargetId, { reason, note })
+            .then(() => {
+              toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
+              setCancelTargetId(null);
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              setCancelError(message);
+              toast.error(`ยกเลิกออเดอร์ ${code} ไม่สำเร็จ — ${message}`);
+            });
         }}
       />
 
@@ -567,7 +587,7 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
             ) : (
               <div className="h-full space-y-2 overflow-auto pr-1">
                 {filteredOrders.map((order, index) => (
-                  <div key={order.id} className="relative">
+                  <div key={order.id}>
                     <QueueOrderCard
                       order={order}
                       selected={selectedOrderId === order.id}
@@ -577,22 +597,37 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                       }}
                       statusText={statusLabel[order.status]}
                       rank={index + 1}
+                      actions={
+                        <>
+                          {hasCsvImportSource(order) && (
+                            <button
+                              type="button"
+                              className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-warning/30 bg-background px-2.5 text-xs font-medium text-warning transition hover:bg-warning/10"
+                              aria-label={`แก้ไขข้อมูลจาก CSV ของ ${order.code}`}
+                              title="แก้ไขข้อมูลจาก CSV"
+                              onClick={() => openOrderCsvEdit(order)}
+                            >
+                              <FileSpreadsheet className="h-4 w-4" />
+                              แก้ CSV
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-info transition hover:bg-info/10"
+                            aria-label={`ดูแผนที่ของ ${order.code}`}
+                            title="ดูแผนที่"
+                            onClick={() => {
+                              setSelectedOrderId(order.id);
+                              setMobileDetailOpen(false);
+                              setPaneView('map');
+                            }}
+                          >
+                            <MapPin className="h-4 w-4" />
+                            ดูแผนที่
+                          </button>
+                        </>
+                      }
                     />
-                    <button
-                      type="button"
-                      className="absolute right-3 top-12 inline-flex h-8 items-center justify-center gap-1.5 rounded-full border bg-background/95 px-2.5 text-xs font-medium text-info shadow-sm transition hover:bg-info/10"
-                      aria-label={`ดูแผนที่ของ ${order.code}`}
-                      title="ดูแผนที่"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setSelectedOrderId(order.id);
-                        setMobileDetailOpen(false);
-                        setPaneView('map');
-                      }}
-                    >
-                      <MapPin className="h-4 w-4" />
-                      ดูแผนที่
-                    </button>
                   </div>
                 ))}
                 {filteredOrders.length === 0 && <EmptyState />}
@@ -683,19 +718,12 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
                   </div>
                 </div>
 
+                {/* ปุ่มส่งทันทีของ order ที่พร้อมจ่าย อยู่ที่แผง "ยืนยันการมอบหมาย" ด้านล่างแล้ว
+                    (assignmentActions) — ไม่ต้องมีปุ่มซ้ำในการ์ด simulator */}
                 {selectedOrder?.status === 'ready' && (
-                  <Button
-                    className="w-full"
-                    disabled={!canAssign}
-                    onClick={() => {
-                      if (!selectedOrder || selectedDriverIds.length === 0) return;
-                      setUrgentError('');
-                      setUrgentTarget({ orderId: selectedOrder.id, driverIds: selectedDriverIds });
-                    }}
-                  >
-                    <Send className="h-4 w-4" />
-                    สร้าง Route ส่งทันทีจาก simulator
-                  </Button>
+                  <div className="rounded-lg border border-dashed bg-background/70 p-3 text-center text-xs text-muted-foreground">
+                    เลือกคนขับด้านล่าง แล้วกด “ส่งทันที” ที่แผงยืนยันการมอบหมาย
+                  </div>
                 )}
 
                 {selectedOrder?.status === 'assigned' && (
@@ -722,6 +750,8 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
           <AssignmentPanel
             order={selectedOrder}
             drivers={selectedDrivers}
+            orders={orders}
+            onEditOrderSource={(order) => openOrderCsvEdit(order)}
             actions={assignmentActions}
           />
           <OrderTimeline
@@ -743,6 +773,17 @@ export function QueuePage({ locationSearch, onOpenTracking }: QueuePageProps) {
         {selectedOrder && (
           <>
             <OrderSummary order={selectedOrder} />
+            {hasCsvImportSource(selectedOrder) && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full border-warning/30 text-warning hover:bg-warning/10 hover:text-warning"
+                onClick={() => openOrderCsvEdit(selectedOrder)}
+              >
+                <FileSpreadsheet className="h-4 w-4" />
+                แก้ไขข้อมูลจาก CSV
+              </Button>
+            )}
             {selectedOrder.status === 'ready' && (
               <div>
                 <div className="mb-2 text-[11px] font-medium text-muted-foreground">

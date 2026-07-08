@@ -2,12 +2,20 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Select } from '@/components/ui/select';
-import { dispatchReadinessLabel, type DispatchReadiness, type Driver } from '@/data/orderTypes';
+import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
+import {
+  dispatchReadinessLabel,
+  type DispatchReadiness,
+  type Driver,
+  type Order,
+} from '@/data/orderTypes';
+import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
 import { cn } from '@/lib/utils';
-import { CalendarClock, Check, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Check, XCircle } from 'lucide-react';
 
 type PlanSettingsCardProps = {
   drivers: Driver[];
+  orders: Order[];
   selectedCount: number;
   planDate: string;
   onPlanDate: (value: string) => void;
@@ -26,6 +34,7 @@ type PlanSettingsCardProps = {
 
 export function PlanSettingsCard({
   drivers,
+  orders,
   selectedCount,
   planDate,
   onPlanDate,
@@ -42,6 +51,21 @@ export function PlanSettingsCard({
   cancelDisabled,
 }: PlanSettingsCardProps) {
   const selectedDriverSet = new Set(plannedDriverIds);
+  const selectedDriverWorkloads = plannedDriverIds
+    .map((driverId) => drivers.find((driver) => driver.id === driverId))
+    .filter((driver): driver is Driver => Boolean(driver))
+    .map((driver) => ({
+      driver,
+      workload: getDriverWorkloadSummary(driver, orders, { plannedDate: planDate }),
+    }));
+  const selectedDriversWithExistingWork = selectedDriverWorkloads.filter(
+    ({ workload }) =>
+      workload.waitingToStart > 0 ||
+      workload.inTransit > 0 ||
+      workload.pendingReview > 0 ||
+      workload.returning > 0 ||
+      workload.plannedForDate > 0,
+  );
 
   const toggleDriver = (driverId: string) => {
     onPlannedDriverIds(
@@ -109,16 +133,17 @@ export function PlanSettingsCard({
               </Button>
             )}
           </div>
-          <div className="grid max-h-52 gap-2 overflow-auto rounded-md border bg-background p-2">
+          <div className="app-scroll grid max-h-64 gap-2 overflow-auto rounded-md border bg-background p-2 pr-3">
             {drivers.map((driver) => {
               const selected = selectedDriverSet.has(driver.id);
+              const workload = getDriverWorkloadSummary(driver, orders, { plannedDate: planDate });
               return (
                 <button
                   key={driver.id}
                   type="button"
                   onClick={() => toggleDriver(driver.id)}
                   className={cn(
-                    'flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                    'flex min-h-20 items-start gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors',
                     selected
                       ? 'border-primary bg-primary/5 text-primary'
                       : 'border-transparent hover:bg-muted',
@@ -127,17 +152,22 @@ export function PlanSettingsCard({
                 >
                   <span
                     className={cn(
-                      'flex h-4 w-4 shrink-0 items-center justify-center rounded border',
+                      'mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border',
                       selected ? 'border-primary bg-primary text-primary-foreground' : 'bg-card',
                     )}
                   >
                     {selected && <Check className="h-3 w-3" />}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-medium">{driver.name}</span>
-                    <span className="block truncate text-[11px] text-muted-foreground">
+                  <span className="grid min-w-0 flex-1 gap-1">
+                    <span className="block truncate font-medium leading-5">{driver.name}</span>
+                    <span className="block truncate text-[11px] leading-4 text-muted-foreground">
                       {driver.phone}
                     </span>
+                    <DriverWorkloadChips
+                      workload={workload}
+                      plannedLabel="แผนวันนั้น"
+                      className="min-h-5 gap-x-1 gap-y-1"
+                    />
                   </span>
                 </button>
               );
@@ -147,6 +177,30 @@ export function PlanSettingsCard({
             เลือกได้มากกว่า 1 คน ระบบจะกระจายรายการที่เลือกเป็น Route แยกตาม Messenger
           </p>
         </div>
+
+        {selectedDriversWithExistingWork.length > 0 && (
+          <div className="rounded-lg border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
+            <div className="flex items-center gap-1.5 font-medium">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Messenger ที่เลือกมีงานค้างอยู่
+            </div>
+            <div className="mt-1 text-[11px] text-warning/90">
+              ตรวจสอบลำดับส่งก่อนบันทึกแผนหรือ Publish รอบส่ง
+            </div>
+            <div className="mt-2 space-y-1.5">
+              {selectedDriversWithExistingWork.map(({ driver, workload }) => (
+                <div key={driver.id} className="rounded-md bg-background/70 px-2 py-1.5">
+                  <div className="font-medium text-foreground">{driver.name}</div>
+                  <DriverWorkloadChips
+                    workload={workload}
+                    plannedLabel="แผนวันนั้น"
+                    className="mt-1"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-2">
           <label className="text-[11px] font-medium text-muted-foreground">ความพร้อมสินค้า</label>

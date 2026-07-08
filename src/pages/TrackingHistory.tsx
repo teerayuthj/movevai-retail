@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Select } from '@/components/ui/select';
 import { useRetailStore } from '@/state/retailStore';
 import {
   fetchMessengerTrackingHistory,
   fetchTrackingSessions,
+  type MessengerDestination,
+  type MessengerProofLocation,
   type MessengerTrackingHistory,
   type MessengerTrackingSessionSummary,
 } from '@/lib/retailApi';
@@ -99,12 +101,33 @@ function formatTime(value?: string | null) {
     : '—';
 }
 
-function formatDuration(startedAt: string, endedAt?: string | null) {
+function minutesBetween(startedAt: string, endedAt?: string | null) {
   const end = endedAt ? new Date(endedAt).getTime() : Date.now();
-  const mins = Math.max(0, Math.round((end - new Date(startedAt).getTime()) / 60_000));
+  return Math.max(0, Math.round((end - new Date(startedAt).getTime()) / 60_000));
+}
+
+function formatMinutes(mins: number) {
   if (mins < 60) return `${mins} นาที`;
   return `${Math.floor(mins / 60)} ชม. ${mins % 60} นาที`;
 }
+
+function formatDuration(startedAt: string, endedAt?: string | null) {
+  return formatMinutes(minutesBetween(startedAt, endedAt));
+}
+
+// system code จาก backend — นอกเหนือจากนี้คือข้อความอิสระที่ messenger พิมพ์เองตอนกดจบ
+const END_REASON_LABELS: Record<string, string> = {
+  route_completed: 'ส่งครบทุกจุด (ระบบปิดให้อัตโนมัติ)',
+  superseded_by_new_route: 'ระบบปิดให้อัตโนมัติตอนเริ่ม Route ถัดไป',
+  no_active_delivery_jobs: 'แอป Messenger ปิดให้อัตโนมัติ (ไม่มีงานค้างแล้ว)',
+};
+
+const STOP_STATUS_LABELS: Record<string, string> = {
+  delivered: 'ส่งแล้ว',
+  pending: 'ยังไม่ส่ง',
+  failed: 'ส่งไม่สำเร็จ',
+  skipped: 'ข้าม',
+};
 
 function sessionTitle(session: { route: { code: string } | null; label: string | null }) {
   return session.route?.code ?? session.label ?? 'Test Route';
@@ -228,6 +251,45 @@ export function TrackingHistoryPage() {
     [driverCode, drivers],
   );
 
+  // ช่วงเวลาที่มีสัญญาณ GPS จริง (จุดแรก→จุดสุดท้าย) — backend ส่ง points เรียงตามเวลาแล้ว
+  // ใช้แทนช่วงเวลา session เมื่อ session ถูกเปิดค้างไว้ (เช่นโดนปิดอัตโนมัติข้ามวัน)
+  const gpsSpan = useMemo(() => {
+    const points = selected?.points ?? [];
+    if (points.length < 2) return null;
+    return { start: points[0].recordedAt, end: points[points.length - 1].recordedAt };
+  }, [selected]);
+
+  const stops = useMemo(() => {
+    const destinations = selected?.destinations ?? [];
+    const proofs = selected?.proofLocations ?? [];
+    const proofFor = (destination: MessengerDestination): MessengerProofLocation | null =>
+      proofs.find(
+        (proof) =>
+          (destination.orderId != null && proof.orderId === destination.orderId) ||
+          (destination.orderId == null &&
+            destination.sequence != null &&
+            proof.sequence === destination.sequence),
+      ) ?? null;
+    return [...destinations]
+      .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0))
+      .map((destination) => ({ destination, proof: proofFor(destination) }));
+  }, [selected]);
+
+  const deliveredCount = useMemo(
+    () => stops.filter((stop) => stop.destination.status === 'delivered').length,
+    [stops],
+  );
+
+  const durationStats = useMemo(() => {
+    if (!selectedSummary) return null;
+    const sessionMins = minutesBetween(selectedSummary.startedAt, selectedSummary.endedAt);
+    const gpsMins = gpsSpan ? minutesBetween(gpsSpan.start, gpsSpan.end) : null;
+    // session เปิดค้างนานกว่าช่วงที่มี GPS จริงเกิน 15 นาที = เวลารวมของ session เชื่อไม่ได้
+    // (เช่นลืมกดจบแล้วระบบปิดให้ข้ามวัน) — ให้ยึดช่วงที่มีสัญญาณ GPS แทน
+    const stale = gpsMins != null && sessionMins - gpsMins > 15;
+    return { sessionMins, gpsMins, stale };
+  }, [selectedSummary, gpsSpan]);
+
   return (
     <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-4">
       <div>
@@ -242,14 +304,13 @@ export function TrackingHistoryPage() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           ถึงวันที่
-          <Input
-            type="date"
+          <DatePicker
             value={date}
-            onChange={(event) => {
-              setFilters((current) => ({ ...current, date: event.target.value }));
+            onChange={(value) => {
+              setFilters((current) => ({ ...current, date: value }));
               setSelectedId(null);
             }}
-            className="h-9 w-44"
+            className="w-44"
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -394,28 +455,50 @@ export function TrackingHistoryPage() {
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {[
+              {(() => {
+                const stats: { label: string; value: string; hint?: string }[] = [
                   {
                     label: 'เริ่ม–จบ',
                     value: `${formatTime(selectedSummary.startedAt)}–${formatTime(selectedSummary.endedAt)}`,
                   },
-                  {
-                    label: 'ใช้เวลา',
-                    value: formatDuration(selectedSummary.startedAt, selectedSummary.endedAt),
-                  },
+                  durationStats?.stale && durationStats.gpsMins != null
+                    ? {
+                        label: 'ใช้เวลา (ช่วงมี GPS)',
+                        value: formatMinutes(durationStats.gpsMins),
+                        hint: `session เปิดอยู่ ${formatMinutes(durationStats.sessionMins)}`,
+                      }
+                    : {
+                        label: 'ใช้เวลา',
+                        value: formatDuration(selectedSummary.startedAt, selectedSummary.endedAt),
+                      },
                   {
                     label: 'ระยะทาง',
                     value: `${(selectedSummary.distanceMeters / 1000).toFixed(2)} กม.`,
                   },
                   { label: 'จุด GPS', value: `${selectedSummary.pointCount} จุด` },
-                ].map((stat) => (
-                  <div key={stat.label} className="rounded-lg border bg-muted/20 p-2">
-                    <div className="text-[11px] text-muted-foreground">{stat.label}</div>
-                    <div className="text-sm font-medium tabular-nums">{stat.value}</div>
+                  ...(stops.length > 0
+                    ? [{ label: 'ส่งสำเร็จ', value: `${deliveredCount}/${stops.length} จุด` }]
+                    : []),
+                ];
+                return (
+                  <div
+                    className={cn(
+                      'grid grid-cols-2 gap-2',
+                      stats.length === 5 ? 'sm:grid-cols-5' : 'sm:grid-cols-4',
+                    )}
+                  >
+                    {stats.map((stat) => (
+                      <div key={stat.label} className="rounded-lg border bg-muted/20 p-2">
+                        <div className="text-[11px] text-muted-foreground">{stat.label}</div>
+                        <div className="text-sm font-medium tabular-nums">{stat.value}</div>
+                        {stat.hint && (
+                          <div className="text-[11px] text-muted-foreground">{stat.hint}</div>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
 
               {selectedSummary.offRouteCount > 0 && (
                 <div className="flex items-center gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2 text-xs text-warning">
@@ -423,9 +506,20 @@ export function TrackingHistoryPage() {
                   หลุดเส้นทาง {selectedSummary.offRouteCount} ครั้ง
                 </div>
               )}
+              {durationStats?.stale && (
+                <div className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-2 text-xs text-warning">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>
+                    Session นี้เปิดค้างไว้นานกว่าช่วงที่มีสัญญาณ GPS จริง
+                    (น่าจะไม่ได้กดจบตอนเลิกงานแล้วระบบปิดให้ภายหลัง) — ช่อง &ldquo;ใช้เวลา&rdquo;
+                    จึงแสดงเฉพาะช่วงที่มีสัญญาณ GPS
+                  </span>
+                </div>
+              )}
               {selectedSummary.endReason && (
                 <div className="rounded-lg border bg-muted/20 p-2 text-xs text-muted-foreground">
-                  เหตุผลที่จบ Route: {selectedSummary.endReason}
+                  เหตุผลที่จบ Route:{' '}
+                  {END_REASON_LABELS[selectedSummary.endReason] ?? selectedSummary.endReason}
                 </div>
               )}
 
@@ -435,6 +529,62 @@ export function TrackingHistoryPage() {
                 </div>
               ) : (
                 <TrackingReplayMap session={selected} />
+              )}
+
+              {stops.length > 0 && (
+                <div className="overflow-hidden rounded-lg border">
+                  <div className="border-b bg-muted/20 px-3 py-2 text-xs font-medium text-muted-foreground">
+                    จุดส่งในรอบนี้ · ส่งสำเร็จ {deliveredCount}/{stops.length}
+                  </div>
+                  <ul className="divide-y">
+                    {stops.map(({ destination, proof }) => {
+                      const delivered = destination.status === 'delivered';
+                      const statusLabel = destination.status
+                        ? (STOP_STATUS_LABELS[destination.status] ?? destination.status)
+                        : '—';
+                      return (
+                        <li
+                          key={destination.orderId ?? `seq-${destination.sequence}`}
+                          className="flex items-start gap-3 px-3 py-2 text-sm"
+                        >
+                          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium tabular-nums text-muted-foreground">
+                            {destination.sequence ?? '·'}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium">
+                              {destination.label ?? 'ไม่ระบุชื่อลูกค้า'}
+                            </div>
+                            {destination.address && (
+                              <div className="truncate text-xs text-muted-foreground">
+                                {destination.address}
+                              </div>
+                            )}
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <span
+                              className={cn(
+                                'rounded-full px-2 py-0.5 text-[11px]',
+                                delivered
+                                  ? 'bg-success/10 text-success'
+                                  : 'bg-muted text-muted-foreground',
+                              )}
+                            >
+                              {statusLabel}
+                            </span>
+                            {proof?.capturedAt && (
+                              <div className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+                                ปิดงาน {formatTime(proof.capturedAt)}
+                                {proof.accuracy != null
+                                  ? ` · ±${Math.round(proof.accuracy)} ม.`
+                                  : ''}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
               )}
             </CardContent>
           )}

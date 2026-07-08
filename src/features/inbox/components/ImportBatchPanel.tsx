@@ -7,6 +7,7 @@ import {
   XCircle,
   Loader2,
   Clock,
+  Route,
   Pencil,
   Coins,
   Copy,
@@ -24,6 +25,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Send,
   Split,
   Trash2,
 } from 'lucide-react';
@@ -34,6 +36,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -48,6 +51,7 @@ import {
   addOrderActivity,
   parseAddress,
   fetchAddressSubdistricts,
+  syncAppOrder,
   type ImportBatch,
   type ImportBatchDetail,
   type ImportBatchRow,
@@ -62,9 +66,11 @@ import { cn } from '@/lib/utils';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import {
   buildNoteWithRequestedDelivery,
+  formatRequestedDelivery,
   getRequestedDeliveryDraft,
   parseDeliveryFromText,
 } from '@/features/inbox/utils/orderSchedule';
+import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import {
   EMPTY_THAI_ADDRESS,
   composeThaiAddress,
@@ -153,6 +159,7 @@ function BatchListItem({
   const senderName = batch.lineSenderDisplayName?.trim();
   const senderId = batch.lineSenderUserId?.trim();
   const senderLabel = senderName || (senderId ? `LINE ${senderId.slice(0, 8)}...` : null);
+  const isProcessing = batch.status === 'PENDING' || batch.status === 'PROCESSING';
 
   return (
     <div
@@ -175,10 +182,17 @@ function BatchListItem({
               {batch.fileName}
             </span>
           </div>
-          {unread && (
-            <Badge variant="info" className="h-5 shrink-0 px-1.5 text-[10px]">
-              รายการใหม่
+          {isProcessing ? (
+            <Badge variant="info" className="h-5 shrink-0 gap-1 px-1.5 text-[10px]">
+              <Loader2 className="h-2.5 w-2.5 animate-spin" />
+              กำลังนำเข้า
             </Badge>
+          ) : (
+            unread && (
+              <Badge variant="info" className="h-5 shrink-0 px-1.5 text-[10px]">
+                รายการใหม่
+              </Badge>
+            )
           )}
         </div>
 
@@ -210,6 +224,37 @@ function BatchListItem({
             })}
           </span>
         </div>
+
+        {isProcessing && (
+          <div className="mt-2 space-y-1.5">
+            <div className="flex items-center gap-1.5 text-[11px] text-info">
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+              <span>
+                {batch.status === 'PENDING' ? 'รอเข้าคิวประมวลผล…' : 'กำลังอ่านข้อมูลจากไฟล์…'}
+              </span>
+              {batch.totalRows > 0 && (
+                <span className="text-muted-foreground">
+                  {batch.importedRows}/{batch.totalRows} แถว
+                </span>
+              )}
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-info/15">
+              <div
+                className={cn(
+                  'h-full rounded-full bg-info transition-all',
+                  batch.totalRows > 0 ? '' : 'w-1/3 animate-pulse',
+                )}
+                style={
+                  batch.totalRows > 0
+                    ? {
+                        width: `${Math.min(100, Math.round((batch.importedRows / batch.totalRows) * 100))}%`,
+                      }
+                    : undefined
+                }
+              />
+            </div>
+          </div>
+        )}
 
         {(batch.status === 'DONE' || batch.status === 'ERROR') && (
           <div className="mt-2 flex items-center gap-3 text-[11px]">
@@ -465,6 +510,51 @@ function rowKindForOrder(order: Order | undefined): RowKind {
   return 'approved';
 }
 
+function hasPublishedDeliveryJob(order: Order | undefined) {
+  return (
+    !!order &&
+    (order.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
+    (order.deliveryRoute ||
+      order.deliveryPlan?.releaseState === 'released' ||
+      order.assignedDriverId ||
+      [
+        'assigned',
+        'in_transit',
+        'pending_confirmation',
+        'delivered',
+        'failed',
+        'returning',
+        'returned',
+      ].includes(order.status))
+  );
+}
+
+function canOpenFastDispatch(card: CardVM, order: Order | undefined) {
+  // แสดง "ส่งทันที" คู่กับ "จัดรอบส่ง" เสมอ ตราบใดที่ยังไม่มีคิวส่งมอบจริง —
+  // order ที่จัดรอบไว้แล้ว (releaseState 'planned') ก็ยังกดส่งทันทีได้ (จะถอดออกจากรอบให้ก่อน)
+  return (
+    !!card.orderId &&
+    card.kind !== 'error' &&
+    card.kind !== 'rejected' &&
+    !hasPublishedDeliveryJob(order)
+  );
+}
+
+function canOpenPlanning(card: CardVM, order: Order | undefined) {
+  return (
+    !!card.orderId &&
+    card.kind !== 'error' &&
+    card.kind !== 'rejected' &&
+    !hasPublishedDeliveryJob(order)
+  );
+}
+
+function getDeliveryQueueBadge(order: Order | undefined) {
+  if (hasPublishedDeliveryJob(order)) return 'มีคิวส่งมอบแล้ว';
+  if (order && isUnreleasedPlannedOrder(order)) return 'อยู่ใน Planning แล้ว';
+  return null;
+}
+
 function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, Order>): RowVM {
   const ocrOnly = isOcrOnlyRaw(row.rawData);
   if (row.status === 'ERROR' || !row.orderId) {
@@ -596,6 +686,19 @@ function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
     items: itemDraftsFromRow(row, order, ocrOnly),
     addr: EMPTY_THAI_ADDRESS,
   };
+}
+
+function getRowRequestedDelivery(row: RowVM, order: Order | undefined) {
+  if (order) return getRequestedDeliveryDraft(order);
+  return parseDeliveryFromText(
+    [
+      rawField(row.rawData, 'deliveryDate', 'delivery_date', 'scheduledDate', 'นัดส่ง', 'วันส่ง'),
+      rawField(row.rawData, 'deliveryTime', 'delivery_time', 'scheduledTime', 'เวลา', 'เวลาส่ง'),
+      rawField(row.rawData, 'note', 'หมายเหตุ'),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
 }
 
 function displayOcrText(row: RowVM) {
@@ -847,18 +950,30 @@ const REJECT_REASONS: ImportRejectReason[] = [
 function BatchWorkspace({
   scope,
   batches,
+  focusedOrderId,
+  editOnOpen,
   onFastDispatchOrder,
+  onPlanningOrder,
   onDownloadBatch,
   downloadingBatchId,
 }: {
   scope: string; // batchId | 'all'
   batches: ImportBatch[];
+  focusedOrderId?: string | null;
+  editOnOpen?: boolean;
   onFastDispatchOrder?: (orderId: string) => void;
+  onPlanningOrder?: (orderId: string) => void;
   onDownloadBatch: (batch: Pick<ImportBatch, 'id' | 'fileName'>) => void;
   downloadingBatchId: string | null;
 }) {
-  const { orders, approveImportOrders, rejectImportOrders, restoreImportOrders, syncFromBackend } =
-    useRetailStore();
+  const {
+    orders,
+    approveImportOrders,
+    rejectImportOrders,
+    restoreImportOrders,
+    clearPlannedOrders,
+    syncFromBackend,
+  } = useRetailStore();
   const [details, setDetails] = useState<ImportBatchDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('review');
@@ -881,16 +996,47 @@ function BatchWorkspace({
     fileName: string;
     rowIndex: number;
   } | null>(null);
+  const autoOpenedOrderRef = useRef<string | null>(null);
 
+  const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
   const targetBatchIds = useMemo(
     () => (scope === ALL_SCOPE ? batches.map((b) => b.id) : [scope]),
     [scope, batches],
   );
 
+  // batch ที่ยังประมวลผลอยู่ในสโคปนี้ — driver ของ processing state + refetch เมื่อ backend อ่านเสร็จ
+  const processingBatches = useMemo(
+    () =>
+      targetBatchIds
+        .map((id) => batchById.get(id))
+        .filter(
+          (b): b is ImportBatch => !!b && (b.status === 'PENDING' || b.status === 'PROCESSING'),
+        ),
+    [targetBatchIds, batchById],
+  );
+
+  // signature เปลี่ยนเฉพาะเมื่อ batch ที่เกี่ยวข้องมี progress ขยับ (status/แถวนำเข้า) →
+  // ให้ refetch rows ใหม่อัตโนมัติตอน PENDING/PROCESSING → DONE โดยไม่ต้องกด refresh
+  const batchStatusKey = useMemo(
+    () =>
+      targetBatchIds
+        .map((id) => {
+          const b = batchById.get(id);
+          return b ? `${id}:${b.status}:${b.importedRows}:${b.errorRows}` : id;
+        })
+        .join('|'),
+    [targetBatchIds, batchById],
+  );
+
+  // โหลดครั้งแรกให้ขึ้น spinner เต็มพาเนล; refetch เบื้องหลัง (poll → DONE) ไม่ต้อง flash
+  const initialLoadRef = useRef(false);
+
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setSelected(new Set());
+    if (!initialLoadRef.current) {
+      setLoading(true);
+      setSelected(new Set());
+    }
     Promise.all(targetBatchIds.map((id) => fetchImportBatch(id)))
       .then((res) => {
         if (!cancelled) setDetails(res);
@@ -900,12 +1046,17 @@ function BatchWorkspace({
         if (!cancelled) toast.error('โหลดรายการนำเข้าไม่สำเร็จ');
       })
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          initialLoadRef.current = true;
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [targetBatchIds]);
+    // targetBatchIds ถูกจับผ่าน batchStatusKey แล้ว (id อยู่ใน key)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batchStatusKey]);
 
   const ordersById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
 
@@ -919,6 +1070,16 @@ function BatchWorkspace({
 
   // 1 card = 1 draft order — CSV ที่มี orderNo เดียวกันหลายแถว (หรือถูก merge แล้ว) รวมเป็น card เดียว
   const cards = useMemo(() => buildCards(rows), [rows]);
+
+  useEffect(() => {
+    if (!focusedOrderId || !editOnOpen) return;
+    if (autoOpenedOrderRef.current === focusedOrderId) return;
+    const targetCard = cards.find((card) => card.orderId === focusedOrderId);
+    const targetRow = targetCard?.rows.find((row) => row.orderId === focusedOrderId);
+    if (!targetRow) return;
+    startEditRow(targetRow);
+    autoOpenedOrderRef.current = focusedOrderId;
+  }, [cards, editOnOpen, focusedOrderId]);
 
   const stats = useMemo(() => {
     let review = 0;
@@ -1030,10 +1191,43 @@ function BatchWorkspace({
     );
   };
 
+  const ensureInternalDriverReady = async (orderId: string, opts?: { clearPlan?: boolean }) => {
+    // order ที่จัดรอบไว้แล้วต้องถอดออกจากรอบก่อน ไม่งั้นจะไม่โผล่ในคิว "ส่งทันที"
+    // (execution queue กรอง order ที่ releaseState 'planned' ออก)
+    if (opts?.clearPlan) {
+      await clearPlannedOrders([orderId]);
+    }
+    await approveImportOrders([orderId], 'internal_driver');
+    const order = ordersById.get(orderId);
+    if (!order) return;
+
+    await syncAppOrder({
+      ...order,
+      status: 'ready',
+      confidence: Math.max(order.confidence, 90),
+      dispatchReadiness: order.dispatchReadiness ?? 'ready',
+      shippingMethod: 'internal_driver',
+      // ล้าง plan ในเพย์โหลดด้วย เพราะ ordersById ใน closure อาจยังไม่รีเฟรชหลัง clear
+      ...(opts?.clearPlan ? { deliveryPlan: undefined } : {}),
+    });
+    await syncFromBackend();
+  };
+
   const approveAndOpenFastDispatch = (orderId: string) => {
-    void runAction('อนุมัติและเปิด Fast Dispatch', async () => {
-      await approveImportOrders([orderId], 'internal_driver');
-      onFastDispatchOrder?.(orderId);
+    const wasPlanned = isUnreleasedPlannedOrder(ordersById.get(orderId) ?? ({} as Order));
+    void runAction(
+      wasPlanned ? 'ถอดออกจากรอบ แล้วเปิดหน้าส่งทันที' : 'เปิดหน้าส่งทันที',
+      async () => {
+        await ensureInternalDriverReady(orderId, { clearPlan: wasPlanned });
+        onFastDispatchOrder?.(orderId);
+      },
+    );
+  };
+
+  const approveAndOpenPlanning = (orderId: string) => {
+    void runAction('เปิดหน้าจัดรอบส่ง', async () => {
+      await ensureInternalDriverReady(orderId);
+      onPlanningOrder?.(orderId);
     });
   };
 
@@ -1234,6 +1428,8 @@ function BatchWorkspace({
         totalValue: String(toNonNegativeNumber(editDraft.totalValue)),
         payment: normalizePaymentMethod(editDraft.payment),
         note: editDraft.note.trim(),
+        deliveryDate: afterDelivery.date,
+        deliveryTime: afterDelivery.time,
         [SOURCE_MISSING_FIELDS_COLUMN]: nextMissingFields.join(','),
         [SOURCE_EXTRACTION_CONFIDENCE_COLUMN]:
           nextMissingFields.length === 0
@@ -1274,20 +1470,29 @@ function BatchWorkspace({
         payment: normalizePaymentMethod(editDraft.payment),
         note: buildNoteWithRequestedDelivery(editDraft.note.trim(), afterDelivery).trim() || null,
       });
+      // บันทึก activity log เป็น audit trail เสริม — ไม่ควร block การบันทึกข้อมูลหลัก
+      // (บาง backend ยังไม่มี route /orders/:id/activity → 404 "Cannot POST" ก็ยังต้อง save สำเร็จ)
       if (changeRows.length > 0) {
-        await addOrderActivity(editingRow.orderId, {
-          type: 'order_details_updated',
-          actor: {
-            kind: 'operator',
-            handler: existingOrder?.handledBy ?? {
-              name: 'พนักงาน Ausiris',
-              department: 'Import Review',
+        try {
+          await addOrderActivity(editingRow.orderId, {
+            type: 'order_details_updated',
+            actor: {
+              kind: 'operator',
+              handler: existingOrder?.handledBy ?? {
+                name: 'พนักงาน Ausiris',
+                department: 'Import Review',
+              },
             },
-          },
-          summary: 'แก้ไขวันนัด / จำนวนสินค้า',
-          details: `${editingRow.fileName} · แถวที่ ${editingRow.rowIndex + 1}`,
-          changes: changeRows,
-        });
+            summary: 'แก้ไขวันนัด / จำนวนสินค้า',
+            details: `${editingRow.fileName} · แถวที่ ${editingRow.rowIndex + 1}`,
+            changes: changeRows,
+          });
+        } catch (activityError) {
+          console.warn(
+            'บันทึก activity log ไม่สำเร็จ (ข้าม ไม่กระทบการบันทึกข้อมูล)',
+            activityError,
+          );
+        }
       }
       await Promise.all([reloadDetails(), syncFromBackend()]);
       toast.success('บันทึกข้อมูลจาก LINE import แล้ว');
@@ -1319,7 +1524,6 @@ function BatchWorkspace({
       ? null
       : details[0].lineSenderDisplayName?.trim() ||
         (details[0].lineSenderUserId ? `LINE ${details[0].lineSenderUserId.slice(0, 8)}...` : null);
-  const editingOrder = editingRow?.orderId ? ordersById.get(editingRow.orderId) : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -1389,6 +1593,32 @@ function BatchWorkspace({
           )}
         </div>
       </div>
+
+      {/* กำลังนำเข้า — batch ยังประมวลผลอยู่ใน backend; รายการจะเด้งเข้ามาเองเมื่อเสร็จ (auto-poll) */}
+      {processingBatches.length > 0 && (
+        <div className="mt-3 flex items-center gap-3 rounded-lg border border-info/40 bg-info/5 px-3 py-2.5">
+          <Loader2 className="h-4 w-4 shrink-0 animate-spin text-info" />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-medium text-info">
+              {scope === ALL_SCOPE
+                ? `กำลังนำเข้า ${processingBatches.length} ไฟล์จาก LINE…`
+                : 'กำลังอ่านข้อมูลจากไฟล์นี้…'}
+            </div>
+            <div className="mt-0.5 text-[11px] text-muted-foreground">
+              ระบบกำลังแปลงไฟล์เป็นออเดอร์ — รายการจะปรากฏที่นี่อัตโนมัติเมื่อเสร็จ ไม่ต้องรีเฟรช
+            </div>
+          </div>
+          {(() => {
+            const totalRows = processingBatches.reduce((sum, b) => sum + b.totalRows, 0);
+            const importedRows = processingBatches.reduce((sum, b) => sum + b.importedRows, 0);
+            return totalRows > 0 ? (
+              <span className="shrink-0 text-xs font-medium tabular-nums text-info">
+                {importedRows}/{totalRows} แถว
+              </span>
+            ) : null;
+          })()}
+        </div>
+      )}
 
       {/* status tabs */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -1476,7 +1706,17 @@ function BatchWorkspace({
 
         {visibleCards.length === 0 && (
           <div className="px-3 py-10 text-center">
-            <TabEmptyState tab={tab} stats={stats} onJump={selectTab} />
+            {processingBatches.length > 0 ? (
+              <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                <Loader2 className="h-6 w-6 animate-spin text-info" />
+                <div className="text-sm">กำลังประมวลผลไฟล์นำเข้า…</div>
+                <div className="text-[11px]">
+                  ออเดอร์จะแสดงที่นี่อัตโนมัติเมื่อระบบอ่านข้อมูลเสร็จ
+                </div>
+              </div>
+            ) : (
+              <TabEmptyState tab={tab} stats={stats} onJump={selectTab} />
+            )}
           </div>
         )}
 
@@ -1486,6 +1726,10 @@ function BatchWorkspace({
           const selectable = card.kind === 'review' && !!card.orderId && !!order;
           const checked = !!card.orderId && selected.has(card.orderId);
           const editable = !!card.orderId && card.kind !== 'error';
+          const showFastDispatchAction = !!card.orderId && canOpenFastDispatch(card, order);
+          const showPlanningAction = !!card.orderId && canOpenPlanning(card, order);
+          const plannedAlready = !!order && isUnreleasedPlannedOrder(order);
+          const deliveryQueueBadge = getDeliveryQueueBadge(order);
           const rowLabel =
             card.rows.length === 1
               ? `แถว ${r.rowIndex + 1}`
@@ -1495,6 +1739,10 @@ function BatchWorkspace({
             skuCount > 0
               ? `${skuCount.toLocaleString('th-TH')} SKU · ${totalQty.toLocaleString('th-TH')} ชิ้น`
               : r.item;
+          const requestedDelivery = getRowRequestedDelivery(r, order);
+          const requestedDeliveryText = requestedDelivery.date
+            ? formatRequestedDelivery(requestedDelivery)
+            : null;
 
           return (
             <div
@@ -1517,6 +1765,12 @@ function BatchWorkspace({
                       className="h-3.5 w-3.5 disabled:opacity-30"
                     />
                     <RowStatusBadge kind={card.kind} />
+                    {deliveryQueueBadge && (
+                      <Badge variant="success" className="h-5 gap-1 px-1.5 text-[10px]">
+                        <Route className="h-3 w-3" />
+                        {deliveryQueueBadge}
+                      </Badge>
+                    )}
                     {card.rows.length > 1 && (
                       <Badge variant="info" className="h-5 gap-1 px-1.5 text-[10px]">
                         <Layers className="h-3 w-3" />
@@ -1557,6 +1811,16 @@ function BatchWorkspace({
                     )}
                   </div>
 
+                  {requestedDeliveryText && (
+                    <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-info/30 bg-info/5 px-2.5 py-1 text-xs text-info">
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                      <span className="shrink-0 font-medium">นัดส่ง</span>
+                      <span className="min-w-0 truncate text-foreground">
+                        {requestedDeliveryText}
+                      </span>
+                    </div>
+                  )}
+
                   {order ? (
                     <OrderItemPreviewList order={order} />
                   ) : (
@@ -1580,12 +1844,67 @@ function BatchWorkspace({
                   {/* ปุ่มเรียงเป็น grid 2 คอลัมน์ขนาดเท่ากัน (จำนวนคี่ → ปุ่มสุดท้ายเต็มแถว)
                       เรียงตามความสำคัญ: อนุมัติ/Fast Dispatch ก่อน, ปฏิเสธไว้ท้ายสุด */}
                   <div className="grid grid-cols-2 gap-1.5 [&>*:last-child:nth-child(odd)]:col-span-2">
+                    {showFastDispatchAction && onFastDispatchOrder && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => approveAndOpenFastDispatch(card.orderId!)}
+                            className={cn(
+                              CARD_ACTION_CLASS,
+                              'border-primary bg-primary/5 text-primary hover:bg-primary/10',
+                            )}
+                          >
+                            <Send className="h-3 w-3" />
+                            ส่งทันที
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="end" className="max-w-[240px]">
+                          <p className="font-semibold">
+                            {plannedAlready
+                              ? 'ถอดออกจากรอบ แล้วส่งทันที'
+                              : 'อนุมัติแล้วไปหน้าส่งทันที'}
+                          </p>
+                          <p className="mt-0.5 font-normal leading-snug text-background/80">
+                            {plannedAlready
+                              ? 'order นี้ถูกจัดรอบไว้แล้ว — กดเพื่อถอดออกจากรอบ แล้วเปิดหน้า “ส่งทันที” เลือกคนขับมอบงานให้ Messenger ทันที'
+                              : 'เปิดหน้า “ส่งทันที” พร้อมโฟกัส order นี้ให้เลย — เลือกคนขับแล้วมอบงานให้ Messenger ได้ทันที'}
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
+                    {showPlanningAction && onPlanningOrder && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => approveAndOpenPlanning(card.orderId!)}
+                            className={cn(
+                              CARD_ACTION_CLASS,
+                              'border-info/50 bg-info/5 text-info hover:bg-info/10',
+                            )}
+                          >
+                            <CalendarDays className="h-3 w-3" />
+                            จัดรอบส่ง
+                          </button>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" align="end" className="max-w-[240px]">
+                          <p className="font-semibold">อนุมัติแล้วไปหน้า Planning</p>
+                          <p className="mt-0.5 font-normal leading-snug text-background/80">
+                            เปิดหน้า Planning พร้อมโฟกัส order นี้ในลิสต์ “รอจัดรอบ” —
+                            เลือกวัน/เวลา/คนขับ แล้วบันทึกเพื่อมอบงานให้ Messenger
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    )}
                     {card.kind === 'review' && card.orderId && (
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() =>
-                          runAction('อนุมัติเข้าคิว 1 รายการ', () =>
+                          runAction('อนุมัติ 1 รายการ', () =>
                             approveImportOrders([card.orderId!], method),
                           )
                         }
@@ -1597,30 +1916,6 @@ function BatchWorkspace({
                         <CheckCircle2 className="h-3 w-3" />
                         อนุมัติ
                       </button>
-                    )}
-                    {card.kind === 'review' && card.orderId && onFastDispatchOrder && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => approveAndOpenFastDispatch(card.orderId!)}
-                            className={cn(
-                              CARD_ACTION_CLASS,
-                              'border-primary/40 text-primary hover:bg-primary/5',
-                            )}
-                          >
-                            Fast Dispatch
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="end" className="max-w-[240px]">
-                          <p className="font-semibold">ส่งด่วน 1 วัน</p>
-                          <p className="mt-0.5 font-normal leading-snug text-background/80">
-                            อนุมัติแล้วดันเข้าคิวส่งด่วนทันที ข้ามขั้นวางแผนรอบ — dispatcher
-                            ยังกดยืนยัน Route เอง
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
                     )}
                     {editable && (
                       <button
@@ -1820,11 +2115,11 @@ function BatchWorkspace({
             </label>
             <label className="space-y-1 text-xs">
               <span className="text-muted-foreground">วันนัดส่ง</span>
-              <input
-                type="date"
+              <DatePicker
+                size="sm"
                 value={editDraft.deliveryDate}
-                onChange={(e) => setEditDraft({ ...editDraft, deliveryDate: e.target.value })}
-                className="h-8 w-full rounded-md border bg-background px-3"
+                onChange={(value) => setEditDraft({ ...editDraft, deliveryDate: value })}
+                className="w-full"
               />
             </label>
             <label className="space-y-1 text-xs">
@@ -2150,9 +2445,13 @@ function BatchWorkspace({
 }
 
 export default function ImportBatchPanel({
+  locationSearch,
   onFastDispatchOrder,
+  onPlanningOrder,
 }: {
+  locationSearch?: string;
   onFastDispatchOrder?: (orderId: string) => void;
+  onPlanningOrder?: (orderId: string) => void;
 }) {
   const [batches, setBatches] = useState<ImportBatch[]>([]);
   const [selectedId, setSelectedId] = useState<string>(ALL_SCOPE);
@@ -2167,6 +2466,10 @@ export default function ImportBatchPanel({
   const [downloadingBatchId, setDownloadingBatchId] = useState<string | null>(null);
   const [listCollapsed, setListCollapsed] = useState(() => readStoredListCollapsed());
   const listRef = useRef<HTMLDivElement>(null);
+  const params = useMemo(() => new URLSearchParams(locationSearch ?? ''), [locationSearch]);
+  const focusedBatchId = params.get('batch');
+  const focusedOrderId = params.get('order');
+  const editOnOpen = params.get('edit') === '1';
   // กันยิงซ้ำระหว่างกำลังโหลดหน้าใหม่ (ref อ่านได้ทันทีไม่ต้องรอ re-render)
   const loadingRef = useRef(false);
   const pageRef = useRef(1);
@@ -2278,6 +2581,49 @@ export default function ImportBatchPanel({
     reload();
   }, [reload]);
 
+  // จำนวน batch ปัจจุบัน (อ่านใน poll callback ที่ต้อง stable identity)
+  const batchCountRef = useRef(0);
+  useEffect(() => {
+    batchCountRef.current = batches.length;
+  }, [batches.length]);
+
+  // refresh เบื้องหลังแบบเงียบ ๆ — ดึงหน้าแรกมา merge ทับของเดิม (อัปเดตสถานะ batch ที่กำลังประมวลผล
+  // + เติมไฟล์ใหม่ที่เพิ่งเข้ามาจาก LINE) โดยไม่รีเซ็ตหน้าที่ infinite-scroll โหลดไว้แล้ว
+  const pollRefresh = useCallback(() => {
+    if (loadingRef.current || !windowParams) return;
+    fetchImportBatches({ page: 1, limit: BATCH_PAGE_SIZE, ...windowParams })
+      .then((res) => {
+        setBatches((prev) => {
+          if (prev.length === 0) return res.batches;
+          const incomingById = new Map(res.batches.map((b) => [b.id, b]));
+          const seen = new Set(prev.map((b) => b.id));
+          const merged = prev.map((b) => incomingById.get(b.id) ?? b);
+          const fresh = res.batches.filter((b) => !seen.has(b.id));
+          return fresh.length > 0 ? [...fresh, ...merged] : merged;
+        });
+        setTotal(res.total);
+        if (batchCountRef.current === 0) setHasMore(res.hasMore);
+      })
+      .catch(() => {
+        // เงียบ — เป็น background poll ไม่ต้องรบกวนผู้ใช้ด้วย toast
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowKey]);
+
+  const inProgressCount = batches.filter(
+    (b) => b.status === 'PENDING' || b.status === 'PROCESSING',
+  ).length;
+
+  // มี batch กำลังประมวลผล → poll ถี่เพื่อโชว์ความคืบหน้าแบบเรียลไทม์;
+  // ปกติ → poll ห่างเพื่อรับไฟล์/รูปใหม่จาก LINE เข้ามาเองโดยไม่ต้องกด refresh
+  useEffect(() => {
+    if (!windowParams) return;
+    const intervalMs = inProgressCount > 0 ? 3000 : 20000;
+    const timer = window.setInterval(pollRefresh, intervalMs);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inProgressCount > 0, windowKey, pollRefresh]);
+
   // เลื่อน scrollbar ลงใกล้สุด → โหลดหน้าถัดไป
   const handleScroll = useCallback(() => {
     const el = listRef.current;
@@ -2296,6 +2642,13 @@ export default function ImportBatchPanel({
   const unreadCount = batches.filter((batch) => !readBatchIds.has(batch.id)).length;
   const workspaceKey =
     selectedId === ALL_SCOPE ? `all:${batches.map((b) => b.id).join(',')}` : selectedId;
+
+  useEffect(() => {
+    if (!focusedBatchId) return;
+    if (!batches.some((batch) => batch.id === focusedBatchId)) return;
+    markBatchRead(focusedBatchId);
+    setSelectedId(focusedBatchId);
+  }, [batches, focusedBatchId]);
 
   if (listCollapsed) {
     return (
@@ -2334,7 +2687,10 @@ export default function ImportBatchPanel({
               key={workspaceKey}
               scope={selectedId}
               batches={batches}
+              focusedOrderId={selectedId === focusedBatchId ? focusedOrderId : null}
+              editOnOpen={selectedId === focusedBatchId && editOnOpen}
               onFastDispatchOrder={onFastDispatchOrder}
+              onPlanningOrder={onPlanningOrder}
               onDownloadBatch={(batch) => void exportBatchCsv(batch)}
               downloadingBatchId={downloadingBatchId}
             />
@@ -2355,7 +2711,15 @@ export default function ImportBatchPanel({
       <Card className="flex h-[calc(100vh-16rem)] flex-col">
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium">ไฟล์/รูปนำเข้าจาก LINE</span>
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="text-sm font-medium">ไฟล์/รูปนำเข้าจาก LINE</span>
+              {inProgressCount > 0 && (
+                <Badge variant="info" className="h-5 shrink-0 gap-1 px-1.5 text-[10px]">
+                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  นำเข้า {inProgressCount}
+                </Badge>
+              )}
+            </div>
             <div className="flex items-center gap-1">
               <Button
                 variant="ghost"
@@ -2537,7 +2901,10 @@ export default function ImportBatchPanel({
             key={workspaceKey}
             scope={selectedId}
             batches={batches}
+            focusedOrderId={selectedId === focusedBatchId ? focusedOrderId : null}
+            editOnOpen={selectedId === focusedBatchId && editOnOpen}
             onFastDispatchOrder={onFastDispatchOrder}
+            onPlanningOrder={onPlanningOrder}
             onDownloadBatch={(batch) => void exportBatchCsv(batch)}
             downloadingBatchId={downloadingBatchId}
           />

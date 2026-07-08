@@ -229,7 +229,7 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
           type: 'delivery_started',
           at: nowIso(),
           actor: messengerActor,
-          summary: driver ? `messenger รับงาน — ${driver.name}` : 'messenger รับงานและเริ่มจัดส่ง',
+          summary: driver ? `messenger เริ่มส่ง — ${driver.name}` : 'messenger เริ่มส่งงาน',
         },
       );
     }),
@@ -242,9 +242,9 @@ export function startDeliveryState(current: RetailState, orderId: string): Retai
 }
 
 /**
- * messenger ปิดงาน: บันทึกหลักฐาน (POD) แล้ว
- * - ทุกงานต้องเข้ารอตรวจสอบก่อน เพื่อให้ CS/admin ยืนยันหลักฐานก่อนปิดจริง
- * - โหลดงานของคนขับยังถูกถือไว้จนกว่า CS/admin จะยืนยันปิดงาน
+ * messenger ส่งมอบ: บันทึกหลักฐาน (POD) แล้ว
+ * - ทุกงานต้องเข้ารอตรวจสอบก่อน เพื่อให้ CS/admin ยืนยันหลักฐานก่อนส่งสำเร็จจริง
+ * - โหลดงานของคนขับยังถูกถือไว้จนกว่า CS/admin จะยืนยันส่งสำเร็จ
  */
 export function submitDeliveryState(
   current: RetailState,
@@ -325,7 +325,7 @@ export function submitDeliveryState(
   };
 }
 
-/** CS ยืนยันหลักฐาน → ปิดงานเป็น delivered และคืนโหลดงานคนขับ */
+/** CS ยืนยันหลักฐาน → delivered และคืนโหลดงานคนขับ */
 export function confirmDeliveryState(
   current: RetailState,
   orderId: string,
@@ -348,7 +348,7 @@ export function confirmDeliveryState(
           type: 'delivery_confirmed',
           at,
           actor: operatorActor(recordedBy),
-          summary: 'CS ยืนยันปิดงาน — ส่งสำเร็จ',
+          summary: 'CS ยืนยันหลักฐาน — ส่งสำเร็จ',
           details: input?.note ? `หมายเหตุ: ${input.note}` : undefined,
         },
       );

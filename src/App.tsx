@@ -134,11 +134,16 @@ export default function App() {
           {page === 'overview' && <OverviewPage />}
           {page === 'script_transform' && <ScriptTransformPage />}
           {page === 'inbox' && (
-            <InboxPage onOpenQueue={(search) => navigateToPage('queue', { search })} />
+            <InboxPage
+              locationSearch={locationSearch}
+              onOpenQueue={(search) => navigateToPage('queue', { search })}
+              onOpenPlanning={(search) => navigateToPage('planning', { search })}
+            />
           )}
           {page === 'queue' && (
             <QueuePage
               locationSearch={locationSearch}
+              onOpenInbox={(search) => navigateToPage('inbox', { search })}
               onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
             />
           )}
@@ -150,7 +155,12 @@ export default function App() {
           )}
           {page === 'tracking_history' && <TrackingHistoryPage />}
           {page === 'notifications' && <NotificationsPage />}
-          {page === 'planning' && <PlanningPage locationSearch={locationSearch} />}
+          {page === 'planning' && (
+            <PlanningPage
+              locationSearch={locationSearch}
+              onOpenInbox={(search) => navigateToPage('inbox', { search })}
+            />
+          )}
           {page === 'postal' && <PostalQueuePage />}
           {page === 'drivers' && <DriversPage />}
           {page === 'customers' && <CustomersPage locationSearch={locationSearch} />}

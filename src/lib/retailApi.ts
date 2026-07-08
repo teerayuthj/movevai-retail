@@ -1,6 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import type {
+  CancelReason,
   Driver,
+  Handler,
   Order,
   OrderActivityActor,
   OrderActivityEvent,
@@ -395,6 +397,7 @@ function serializeOrderForBackend(order: Order) {
     requiresIdCheck: order.requiresIdCheck,
     insured: order.insured,
     shippingMethod: order.shippingMethod,
+    metadataJson: order.metadataJson,
   };
 }
 
@@ -787,6 +790,18 @@ export async function syncAndAssignOrder(order: Order, driverCode: string) {
     method: 'POST',
     body: JSON.stringify({ order: serializeOrderForBackend(order), driverCode }),
   });
+  return normalizeOrder(result);
+}
+
+// ยกเลิกออเดอร์ก่อนออกเดินทาง — backend ปฏิเสธ (409) ถ้าออเดอร์อยู่บน Route active หรือปิดงานแล้ว
+export async function cancelOrder(
+  orderId: string,
+  input: { reason: CancelReason; note?: string; recordedBy?: Handler },
+) {
+  const result = await request<ApiOrder>(
+    `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/cancel`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
   return normalizeOrder(result);
 }
 

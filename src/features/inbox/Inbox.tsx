@@ -27,7 +27,15 @@ const CANCEL_REASONS: { value: CancelReason; label: string }[] = (
 
 type InboxTab = 'manual_import' | 'line_import' | 'orders';
 
-export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => void }) {
+export function InboxPage({
+  locationSearch,
+  onOpenQueue,
+  onOpenPlanning,
+}: {
+  locationSearch?: string;
+  onOpenQueue?: (search?: string) => void;
+  onOpenPlanning?: (search?: string) => void;
+}) {
   const {
     orders,
     confirmOrder,
@@ -39,12 +47,17 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
 
   const [tab, setTab] = useState<InboxTab>('line_import');
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(() => {
     return orders.find((order) => INBOX_STATUSES.includes(order.status))?.id ?? null;
   });
   const [filter, setFilter] = useState<InboxFilter>('all');
   const [query, setQuery] = useState('');
   const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+  const params = new URLSearchParams(locationSearch ?? '');
+  const focusedOrderId = params.get('order');
+  const requestedTab = params.get('tab');
+  const editOnOpen = params.get('edit') === '1';
 
   const { inboxOrders, filteredOrders, filterCounts, inboxValue } = useOrderFiltering(
     orders,
@@ -63,10 +76,19 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
   };
 
   useEffect(() => {
+    if (focusedOrderId && orders.some((order) => order.id === focusedOrderId)) {
+      setTab(requestedTab === 'orders' ? 'orders' : 'line_import');
+      setFilter('all');
+      setQuery('');
+      setSelectedId(focusedOrderId);
+      setMobileDetailOpen(false);
+      return;
+    }
+
     if (!selectedId || !inboxOrders.some((order) => order.id === selectedId)) {
       setSelectedId(inboxOrders[0]?.id ?? null);
     }
-  }, [inboxOrders, selectedId]);
+  }, [focusedOrderId, inboxOrders, orders, requestedTab, selectedId]);
 
   return (
     <div className="space-y-4">
@@ -132,9 +154,11 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
         <ManualImportPanel onOpenOrder={openManualOrder} />
       ) : tab === 'line_import' ? (
         <ImportBatchPanel
+          locationSearch={locationSearch}
           onFastDispatchOrder={(orderId) =>
             onOpenQueue?.(`?tab=ready&order=${encodeURIComponent(orderId)}&mode=fast`)
           }
+          onPlanningOrder={(orderId) => onOpenPlanning?.(`?order=${encodeURIComponent(orderId)}`)}
         />
       ) : (
         <>
@@ -157,6 +181,9 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
               {selected ? (
                 <OrderDetail
                   order={selected}
+                  editOnOpenKey={
+                    editOnOpen && focusedOrderId === selected.id ? locationSearch : undefined
+                  }
                   onConfirm={confirmOrder}
                   onSaveCustomer={updateOrderCustomer}
                   onSaveDetails={updateOrderDetails}
@@ -180,6 +207,9 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
             {selected && (
               <OrderDetail
                 order={selected}
+                editOnOpenKey={
+                  editOnOpen && focusedOrderId === selected.id ? locationSearch : undefined
+                }
                 onConfirm={confirmOrder}
                 onSaveCustomer={updateOrderCustomer}
                 onSaveDetails={updateOrderDetails}
@@ -198,16 +228,27 @@ export function InboxPage({ onOpenQueue }: { onOpenQueue?: (search?: string) => 
                 : undefined
             }
             reasons={CANCEL_REASONS}
+            error={cancelError}
             confirmLabel="ยืนยันยกเลิก"
             confirmVariant="destructive"
-            onCancel={() => setCancelTargetId(null)}
-            onConfirm={({ reason, note }) => {
-              if (cancelTargetId) {
-                const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
-                cancelOrder(cancelTargetId, { reason, note });
-                toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
-              }
+            onCancel={() => {
+              setCancelError('');
               setCancelTargetId(null);
+            }}
+            onConfirm={({ reason, note }) => {
+              if (!cancelTargetId) return;
+              const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+              setCancelError('');
+              void cancelOrder(cancelTargetId, { reason, note })
+                .then(() => {
+                  toast.success(`ยกเลิกออเดอร์ ${code} แล้ว`);
+                  setCancelTargetId(null);
+                })
+                .catch((error: unknown) => {
+                  const message = error instanceof Error ? error.message : String(error);
+                  setCancelError(message);
+                  toast.error(`ยกเลิกออเดอร์ ${code} ไม่สำเร็จ — ${message}`);
+                });
             }}
           />
         </>

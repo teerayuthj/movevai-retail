@@ -1,13 +1,15 @@
 import { Badge } from '@/components/ui/badge';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import type { Driver } from '@/data/orderTypes';
+import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
+import type { Driver, Order } from '@/data/orderTypes';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
+import { deriveDriverDisplayStatus, getDriverWorkloadSummary } from '@/lib/deliveryExecution';
 import { cn } from '@/lib/utils';
 import { AlertTriangle } from 'lucide-react';
-import { formatDriverStatus } from '../utils/planningHelpers';
 
 type DriverPlanningCardProps = {
   driver: Driver;
+  orders: Order[];
   plannedLoad: number;
   selected: boolean;
   selectedDate: string;
@@ -16,12 +18,20 @@ type DriverPlanningCardProps = {
 
 export function DriverPlanningCard({
   driver,
+  orders,
   plannedLoad,
   selected,
   selectedDate,
   onSelect,
 }: DriverPlanningCardProps) {
-  const status = formatDriverStatus(driver);
+  const displayStatus = deriveDriverDisplayStatus(driver, orders);
+  const status =
+    displayStatus === 'available'
+      ? { label: 'ว่าง', variant: 'success' as const }
+      : displayStatus === 'on_delivery'
+        ? { label: 'กำลังส่ง', variant: 'muted' as const }
+        : { label: 'หยุด', variant: 'warning' as const };
+  const workload = getDriverWorkloadSummary(driver, orders, { plannedDate: selectedDate });
 
   return (
     <button
@@ -57,9 +67,15 @@ export function DriverPlanningCard({
           <span className="font-semibold tabular-nums">{plannedLoad}</span>
         </div>
         <div className="flex items-center justify-between text-muted-foreground">
-          <span>งาน active วันนี้</span>
-          <span className="font-medium tabular-nums">{driver.activeOrders}</span>
+          <span>ภาระงาน messenger</span>
+          <span className="font-medium tabular-nums">
+            {workload.waitingToStart +
+              workload.inTransit +
+              workload.pendingReview +
+              workload.returning}
+          </span>
         </div>
+        <DriverWorkloadChips workload={workload} plannedLabel="แผนวันนั้น" />
       </div>
     </button>
   );

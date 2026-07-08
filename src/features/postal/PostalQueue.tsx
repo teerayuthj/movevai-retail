@@ -58,6 +58,7 @@ export function PostalQueuePage() {
     markReturned,
   } = useRetailStore();
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState('');
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
 
   const postalOrders = useMemo(
@@ -370,16 +371,27 @@ export function PostalQueuePage() {
             : undefined
         }
         reasons={CANCEL_REASONS}
+        error={cancelError}
         confirmLabel="ยืนยันยกเลิก"
         confirmVariant="destructive"
-        onCancel={() => setCancelTargetId(null)}
-        onConfirm={({ reason, note }) => {
-          if (cancelTargetId) {
-            const code = orders.find((o) => o.id === cancelTargetId)?.code ?? '';
-            cancelOrder(cancelTargetId, { reason, note });
-            toast.success(`ยกเลิกออเดอร์ไปรษณีย์ ${code} แล้ว`);
-          }
+        onCancel={() => {
+          setCancelError('');
           setCancelTargetId(null);
+        }}
+        onConfirm={({ reason, note }) => {
+          if (!cancelTargetId) return;
+          const code = orders.find((o) => o.id === cancelTargetId)?.code ?? '';
+          setCancelError('');
+          void cancelOrder(cancelTargetId, { reason, note })
+            .then(() => {
+              toast.success(`ยกเลิกออเดอร์ไปรษณีย์ ${code} แล้ว`);
+              setCancelTargetId(null);
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              setCancelError(message);
+              toast.error(`ยกเลิกออเดอร์ ${code} ไม่สำเร็จ — ${message}`);
+            });
         }}
       />
 

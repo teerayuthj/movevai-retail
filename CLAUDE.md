@@ -19,10 +19,10 @@ Repo เดียว แต่แยกเป็น 3 surface ผ่าน multi
 | ------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **admin**     | `index.html` → `src/main.tsx` → `App.tsx`   | **web-only** — ทุกหน้าใน sidebar (overview, order-inbox, driver-queue, planning, tracking, drivers, …)                                                            |
 | **messenger** | `messenger.html` → `src/main-messenger.tsx` | **mobile app จริง** — Capacitor native bundle boot entry นี้ (mode capacitor build เฉพาะ entry นี้แล้ว copy ทับ `dist/index.html`); บน web เข้าผ่าน `/messenger*` |
-| **customer**  | `customer.html` → `src/main-customer.tsx`   | web ผ่าน `/track*`, `/customer-track*`; ใน native เข้าถึงได้ผ่าน lazy chunk ใน messenger entry (deep link `/track/...`)                                           |
+| **customer**  | `customer.html` → `src/main-customer.tsx`   | web ผ่าน `/t/*` (ลิงก์สั้น trackingCode), `/track*`, `/customer-track*`; ใน native เข้าถึงได้ผ่าน lazy chunk ใน messenger entry (deep link `/track/...`)          |
 
-- dev: middleware `surfaceEntryRouting()` ใน `vite.config.ts` rewrite `/track*`→customer.html, `/messenger*`→messenger.html ให้อัตโนมัติ
-- **prod hosting ต้องตั้ง rewrite เอง**: `/track*` + `/customer-track*` → `/customer.html`, `/messenger*` → `/messenger.html`, ที่เหลือ → `/index.html`
+- dev: middleware `surfaceEntryRouting()` ใน `vite.config.ts` rewrite `/t/*`+`/track*`→customer.html, `/messenger*`→messenger.html ให้อัตโนมัติ
+- **prod hosting ต้องตั้ง rewrite เอง**: `/t/*` + `/track*` + `/customer-track*` → `/customer.html`, `/messenger*` → `/messenger.html`, ที่เหลือ → `/index.html`
 - service worker / PWA manifest / native shell / push ผูกกับ messenger entry เท่านั้น — ห้ามลากกลับเข้า `src/main.tsx` (admin)
 
 ## Layout — เวลา implement หาที่นี่

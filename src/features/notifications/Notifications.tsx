@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowUpRight,
   BellRing,
@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   FileSearch,
+  Layers,
   MessageCircle,
   RotateCcw,
   Search,
@@ -35,6 +36,7 @@ import {
   type CustomerNotification,
   type NotificationChannel,
   type NotificationStatus,
+  type NotificationTemplateDrafts,
   type NotificationTemplateKey,
   type NotifyTriage,
 } from '@/lib/notifications';
@@ -42,6 +44,7 @@ import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';
 import { toast } from 'sonner';
 import { NotificationDetailDrawer } from '@/features/notifications/NotificationDetailDrawer';
+import { TemplateManagerDialog } from '@/features/notifications/TemplateManagerDialog';
 
 // ออเดอร์ที่ยังไม่เดินเข้า flow แจ้งลูกค้า (ยกเลิกไปแล้ว) ไม่ต้องโชว์
 const HIDDEN_STATUSES = new Set<Order['status']>(['cancelled']);
@@ -85,6 +88,37 @@ type ListFilter = 'todo' | 'new' | 'all';
 type HistoryFilter = 'all' | NotificationStatus;
 
 const HISTORY_PAGE_SIZE = 25;
+const TEMPLATE_DRAFTS_STORAGE_KEY = 'movevai-retail:notification-template-drafts:v1';
+
+function loadTemplateDrafts(): NotificationTemplateDrafts {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(TEMPLATE_DRAFTS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as NotificationTemplateDrafts;
+    const validKeys = new Set(NOTIFICATION_TEMPLATES.map((template) => template.key));
+
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        ([key, value]) =>
+          validKeys.has(key as NotificationTemplateKey) && typeof value === 'string',
+      ),
+    ) as NotificationTemplateDrafts;
+  } catch {
+    return {};
+  }
+}
+
+function persistTemplateDrafts(drafts: NotificationTemplateDrafts) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(TEMPLATE_DRAFTS_STORAGE_KEY, JSON.stringify(drafts));
+  } catch {
+    // localStorage อาจถูกปิดหรือเต็ม — ยังใช้ state ในหน่วยความจำต่อได้
+  }
+}
 
 /** ข้อความเหตุผลที่ออเดอร์ยังต้องแจ้งลูกค้า (โชว์ในแต่ละแถว) */
 function triageReason(triage: NotifyTriage): string {
@@ -170,6 +204,12 @@ export function NotificationsPage() {
   const [historyQuery, setHistoryQuery] = useState('');
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>('all');
   const [historyPage, setHistoryPage] = useState(1);
+  const [templateDrafts, setTemplateDrafts] =
+    useState<NotificationTemplateDrafts>(loadTemplateDrafts);
+  const [orderMessageDraft, setOrderMessageDraft] = useState('');
+  const [templateManagerKey, setTemplateManagerKey] = useState<NotificationTemplateKey | null>(
+    null,
+  );
 
   const filteredOrders = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -201,11 +241,22 @@ export function NotificationsPage() {
   const activeChannel = channel ?? defaultBatchChannel;
   const activeTemplate =
     templateKey ?? (primaryOrder ? suggestTemplateForStatus(primaryOrder.status) : 'tracking_link');
+  const activeTemplateCustomized = Object.prototype.hasOwnProperty.call(
+    templateDrafts,
+    activeTemplate,
+  );
 
   const preview = useMemo(
-    () => (primaryOrder ? renderNotificationMessage(primaryOrder, activeTemplate) : null),
-    [primaryOrder, activeTemplate],
+    () =>
+      primaryOrder
+        ? renderNotificationMessage(primaryOrder, activeTemplate, { templateDrafts })
+        : null,
+    [primaryOrder, activeTemplate, templateDrafts],
   );
+
+  useEffect(() => {
+    setOrderMessageDraft(preview?.message ?? '');
+  }, [preview?.message]);
 
   const latestByOrder = useMemo(() => latestNotificationsByOrder(notifications), [notifications]);
 
@@ -375,14 +426,41 @@ export function NotificationsPage() {
     resetComposeDefaults();
   }
 
+  function updateTemplateDraft(key: NotificationTemplateKey, value: string) {
+    setTemplateDrafts((current) => {
+      const next = { ...current, [key]: value };
+      persistTemplateDrafts(next);
+      return next;
+    });
+  }
+
+  function resetTemplateDraft(key: NotificationTemplateKey) {
+    setTemplateDrafts((current) => {
+      const next = { ...current };
+      delete next[key];
+      persistTemplateDrafts(next);
+      return next;
+    });
+    toast.success(`คืนค่าเทมเพลต ${getTemplateLabel(key)} แล้ว`);
+  }
+
   function handleSend() {
     if (selectedOrders.length === 0) return;
+    const messageOverrides =
+      selectedOrders.length === 1 &&
+      primaryOrder &&
+      preview &&
+      orderMessageDraft !== preview.message
+        ? { [primaryOrder.id]: orderMessageDraft }
+        : undefined;
 
     const sentCount = sendCustomerNotifications(
       selectedOrders.map((order) => order.id),
       {
         channel: activeChannel,
         templateKey: activeTemplate,
+        templateDrafts,
+        messageOverrides,
       },
     );
 
@@ -403,6 +481,7 @@ export function NotificationsPage() {
     const sentCount = sendCustomerNotifications(sampleIds, {
       channel: 'sms',
       templateKey: 'tracking_link',
+      templateDrafts,
     });
 
     if (sentCount > 0) {
@@ -498,7 +577,7 @@ export function NotificationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <span className="flex size-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
           <BellRing className="size-5" />
         </span>
@@ -508,6 +587,16 @@ export function NotificationsPage() {
             ส่งลิงก์ติดตามและอัปเดตสถานะให้ลูกค้าผ่าน LINE / SMS — กดส่งเองทุกครั้ง
           </p>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => setTemplateManagerKey(activeTemplate)}
+          className="ml-auto gap-1.5"
+        >
+          <Layers className="size-4" />
+          จัดการเทมเพลตกลาง
+        </Button>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
@@ -691,28 +780,90 @@ export function NotificationsPage() {
                 <div className="space-y-2">
                   <p className="text-sm font-medium">เทมเพลต</p>
                   <div className="flex flex-wrap gap-2">
-                    {NOTIFICATION_TEMPLATES.map((template) => (
-                      <Button
-                        key={template.key}
-                        type="button"
-                        variant={activeTemplate === template.key ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setTemplateKey(template.key)}
-                      >
-                        {template.label}
-                      </Button>
-                    ))}
+                    {NOTIFICATION_TEMPLATES.map((template) => {
+                      const customized = Object.prototype.hasOwnProperty.call(
+                        templateDrafts,
+                        template.key,
+                      );
+                      return (
+                        <Button
+                          key={template.key}
+                          type="button"
+                          variant={activeTemplate === template.key ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => setTemplateKey(template.key)}
+                          className="gap-1.5"
+                        >
+                          {template.label}
+                          {customized && (
+                            <span
+                              className="size-1.5 rounded-full bg-warning"
+                              title="เทมเพลตกลางถูกแก้ไขแล้ว"
+                            />
+                          )}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                    <p className="text-xs text-muted-foreground">
+                      ใช้เทมเพลตกลาง:{' '}
+                      <span className="font-medium text-foreground">
+                        {getTemplateLabel(activeTemplate)}
+                      </span>
+                      {activeTemplateCustomized && (
+                        <Badge variant="warning" className="ml-1.5 px-1.5 py-0 text-[10px]">
+                          แก้ไขแล้ว
+                        </Badge>
+                      )}
+                    </p>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTemplateManagerKey(activeTemplate)}
+                      className="gap-1.5 text-primary"
+                    >
+                      <Layers className="size-4" />
+                      แก้เทมเพลตกลาง (มีผลทุกออเดอร์)
+                    </Button>
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">
-                    ตัวอย่างข้อความ{selectedOrders.length > 1 ? ' (รายการแรก)' : ''}
-                  </p>
-                  <div className="whitespace-pre-wrap rounded-lg border bg-background p-3 text-sm">
-                    {preview?.message}
+                {selectedOrders.length === 1 ? (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium">ข้อความที่จะส่งออเดอร์นี้</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setOrderMessageDraft(preview?.message ?? '')}
+                        disabled={!preview || orderMessageDraft === preview.message}
+                        className="gap-1.5"
+                      >
+                        <RotateCcw className="size-4" />
+                        รีเซ็ตตามเทมเพลตกลาง
+                      </Button>
+                    </div>
+                    <textarea
+                      value={orderMessageDraft}
+                      onChange={(event) => setOrderMessageDraft(event.target.value)}
+                      rows={6}
+                      className="min-h-36 w-full resize-y rounded-md border bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      แก้ตรงนี้มีผลเฉพาะออเดอร์นี้ครั้งนี้ — ไม่กระทบเทมเพลตกลาง
+                    </p>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">ตัวอย่างข้อความ (รายการแรก)</p>
+                    <div className="whitespace-pre-wrap rounded-lg border bg-background p-3 text-sm">
+                      {preview?.message}
+                    </div>
+                  </div>
+                )}
 
                 <Button type="button" onClick={handleSend} className="w-full gap-2">
                   <Send className="size-4" />
@@ -1103,6 +1254,16 @@ export function NotificationsPage() {
         canResend={!!inspectNotification && orderById.has(inspectNotification.orderId)}
         onClose={() => setInspectId(null)}
         onResend={handleResendFromDrawer}
+      />
+
+      <TemplateManagerDialog
+        open={templateManagerKey !== null}
+        initialTemplateKey={templateManagerKey ?? undefined}
+        drafts={templateDrafts}
+        sampleOrder={primaryOrder ?? eligibleOrders[0] ?? null}
+        onChangeDraft={updateTemplateDraft}
+        onResetDraft={resetTemplateDraft}
+        onClose={() => setTemplateManagerKey(null)}
       />
     </div>
   );

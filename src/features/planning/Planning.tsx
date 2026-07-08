@@ -5,7 +5,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
-import { AlertTriangle, CalendarClock, List, MapPin, Route, Search, Users } from 'lucide-react';
+import { DriverAvatar } from '@/components/DriverAvatar';
+import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
+import {
+  AlertTriangle,
+  CalendarClock,
+  Inbox,
+  List,
+  MapPin,
+  Route,
+  Search,
+  Users,
+} from 'lucide-react';
 import {
   planningCancelReasonLabel,
   type DispatchReadiness,
@@ -22,6 +33,7 @@ import {
   getTodayDateKey,
   getTomorrowDateKey,
   isUnreleasedPlannedOrder,
+  isUnscheduledPlanningOrder,
 } from '@/lib/deliveryPlanning';
 import { useRetailStore } from '@/state/retailStore';
 import { PlanningOrderCard } from './components/PlanningOrderCard';
@@ -42,6 +54,8 @@ import {
   type RoutePreview,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
+import { formatDriverActiveJobs, getDriverWorkloadSummary } from '@/lib/deliveryExecution';
+import { buildInboxOrderEditSearch } from '@/lib/orderSourceLink';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
 import { toast } from 'sonner';
@@ -60,7 +74,13 @@ function uniqueDriverIds(orders: Order[]) {
   );
 }
 
-export function PlanningPage({ locationSearch }: { locationSearch: string }) {
+export function PlanningPage({
+  locationSearch,
+  onOpenInbox,
+}: {
+  locationSearch: string;
+  onOpenInbox: (search?: string) => void;
+}) {
   const {
     orders,
     drivers,
@@ -87,6 +107,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const [operationState, setOperationState] = useState<'idle' | 'saving' | 'publishing'>('idle');
   const [operationError, setOperationError] = useState('');
   const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
+  const [confirmPlanningWorkloadOpen, setConfirmPlanningWorkloadOpen] = useState(false);
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     route: PlanningRoute;
@@ -120,8 +141,16 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const visibleOrders = plannedForSelectedDate.filter((order) =>
     matchesPlanningQuery(order, drivers, query),
   );
+  // งานที่อนุมัติจาก Inbox แล้วแต่ยังไม่ถูกจัดรอบ (ไม่มีวันส่ง) — โผล่ในลิสต์ "รอจัดรอบ"
+  // แยกจากวันที่เลือก เพราะยังไม่ผูกกับวันใด จนกว่าจะบันทึกแผน
+  const unscheduledOrders = planningEligibleOrders
+    .filter((order) => isUnscheduledPlanningOrder(order))
+    .filter((order) => matchesPlanningQuery(order, drivers, query))
+    .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime());
   const selectedOrderSet = new Set(selectedOrderIds);
-  const selectedOrders = visibleOrders.filter((order) => selectedOrderSet.has(order.id));
+  // เลือกได้ทั้งงานที่จัดรอบไว้วันนี้ + งานที่รอจัดรอบ (order เดียวอยู่ได้ที่เดียวเท่านั้น)
+  const selectablePool = [...visibleOrders, ...unscheduledOrders];
+  const selectedOrders = selectablePool.filter((order) => selectedOrderSet.has(order.id));
   const selectedOrderSnapshot = selectedOrders
     .map(
       (order) =>
@@ -153,14 +182,30 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
   const mapSelectedIds = selectedRoute
     ? new Set(selectedRoute.stops.map((stop) => stop.order.id))
     : selectedOrderSet;
+  const plannedDriverWorkloadWarnings = plannedDriverIds
+    .map((driverId) => drivers.find((driver) => driver.id === driverId))
+    .filter((driver): driver is NonNullable<typeof driver> => Boolean(driver))
+    .map((driver) => ({
+      driver,
+      workload: getDriverWorkloadSummary(driver, orders, { plannedDate: planDate }),
+    }))
+    .filter(
+      ({ workload }) =>
+        workload.waitingToStart > 0 ||
+        workload.inTransit > 0 ||
+        workload.pendingReview > 0 ||
+        workload.returning > 0 ||
+        workload.plannedForDate > 0,
+    );
 
   useEffect(() => {
     if (!focusedOrderId) return;
-    const focusedOrder = orders.find(
-      (order) => order.id === focusedOrderId && isUnreleasedPlannedOrder(order),
-    );
-    if (!focusedOrder?.deliveryPlan) return;
-    setSelectedDate(focusedOrder.deliveryPlan.plannedDate);
+    // โฟกัส order ที่ส่งมาจาก Inbox — รองรับทั้งงานที่จัดรอบไว้แล้ว และงานที่เพิ่งอนุมัติ (รอจัดรอบ)
+    const focusedOrder = orders.find((order) => order.id === focusedOrderId && canPlanOrder(order));
+    if (!focusedOrder) return;
+    if (isUnreleasedPlannedOrder(focusedOrder) && focusedOrder.deliveryPlan) {
+      setSelectedDate(focusedOrder.deliveryPlan.plannedDate);
+    }
     setSelectedOrderIds([focusedOrder.id]);
   }, [focusedOrderId, orders]);
 
@@ -294,6 +339,10 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     setPaneView('map');
   };
 
+  const openOrderCsvEdit = (order: Order) => {
+    onOpenInbox(buildInboxOrderEditSearch(order));
+  };
+
   const addAllVisible = () => {
     setSelectedRouteId(null);
     setSelectedOrderIds((current) => {
@@ -355,6 +404,14 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
     } finally {
       setOperationState('idle');
     }
+  };
+
+  const requestApplyPlanning = () => {
+    if (plannedDriverWorkloadWarnings.length > 0) {
+      setConfirmPlanningWorkloadOpen(true);
+      return;
+    }
+    void applyPlanning();
   };
 
   const confirmCancelSelectedPlans = async (reason: PlanningCancelReason, note?: string) => {
@@ -492,8 +549,8 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_320px_380px]">
-        <Card className="overflow-hidden xl:h-[calc(100vh-12rem)]">
-          <CardHeader className="pb-3">
+        <Card className="overflow-hidden xl:flex xl:h-[calc(100vh-12rem)] xl:flex-col">
+          <CardHeader className="pb-3 xl:shrink-0">
             <div className="flex flex-col gap-3">
               <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -614,7 +671,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               )}
             </div>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 xl:h-[calc(100%-10.5rem)]">
+          <CardContent className="flex flex-col gap-3 xl:min-h-0 xl:flex-1">
             {paneView === 'map' ? (
               <section
                 className="flex min-h-0 flex-1 flex-col"
@@ -682,6 +739,37 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               </section>
             ) : (
               <div className="min-h-0 flex-1 space-y-3 overflow-auto pr-1">
+                {unscheduledOrders.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-xl border border-info/30 bg-info/5 px-3 py-2">
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-info">
+                        <Inbox className="h-3.5 w-3.5" />
+                        รอจัดรอบ · {unscheduledOrders.length} งาน
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        อนุมัติจาก Order Inbox แล้ว — เลือกเพื่อกำหนดวัน/เวลา/คนขับ
+                      </span>
+                    </div>
+                    {unscheduledOrders.map((order) => (
+                      <PlanningOrderCard
+                        key={order.id}
+                        order={order}
+                        drivers={drivers}
+                        selected={selectedOrderSet.has(order.id)}
+                        onSelect={() => selectOrder(order.id)}
+                        onToggleGroup={() => toggleOrderInGroup(order.id)}
+                        onViewMap={() => viewOrderOnMap(order.id)}
+                        onEditSource={() => openOrderCsvEdit(order)}
+                      />
+                    ))}
+                    {visibleOrders.length > 0 && (
+                      <div className="flex items-center gap-2 pt-1 text-[11px] font-medium text-muted-foreground">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        จัดรอบไว้แล้ว · {formatPlanningDate(selectedDate)}
+                      </div>
+                    )}
+                  </div>
+                )}
                 {visibleOrders.map((order) => (
                   <PlanningOrderCard
                     key={order.id}
@@ -691,9 +779,10 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
                     onSelect={() => selectOrder(order.id)}
                     onToggleGroup={() => toggleOrderInGroup(order.id)}
                     onViewMap={() => viewOrderOnMap(order.id)}
+                    onEditSource={() => openOrderCsvEdit(order)}
                   />
                 ))}
-                {visibleOrders.length === 0 && (
+                {visibleOrders.length === 0 && unscheduledOrders.length === 0 && (
                   <div className="rounded-xl border border-dashed bg-muted/20 px-4 py-12 text-center text-sm text-muted-foreground">
                     <CalendarClock className="mx-auto mb-2 h-8 w-8 text-muted-foreground/70" />
                     {plannedForSelectedDate.length > 0
@@ -718,6 +807,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
               <DriverPlanningCard
                 key={driver.id}
                 driver={driver}
+                orders={orders}
                 plannedLoad={getPlannedLoadCount(orders, driver.id, selectedDate)}
                 selected={plannedDriverIds.includes(driver.id)}
                 selectedDate={selectedDate}
@@ -736,6 +826,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
         <div className="space-y-4 overflow-auto xl:h-[calc(100vh-12rem)]">
           <PlanSettingsCard
             drivers={drivers}
+            orders={orders}
             selectedCount={selectedOrders.length}
             planDate={planDate}
             onPlanDate={setPlanDate}
@@ -747,7 +838,7 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
             onReadiness={setReadiness}
             planNote={planNote}
             onPlanNote={setPlanNote}
-            onApply={() => void applyPlanning()}
+            onApply={requestApplyPlanning}
             onCancelPlans={() => setCancelPlansOpen(true)}
             cancelDisabled={selectedPlannedOrders.length === 0}
           />
@@ -866,6 +957,53 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
         />
       )}
 
+      {confirmPlanningWorkloadOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-md overflow-hidden rounded-xl border bg-background shadow-xl">
+            <div className="border-b px-5 py-4">
+              <h2 className="flex items-center gap-2 text-base font-semibold">
+                <AlertTriangle className="h-4 w-4 text-warning" />
+                ยืนยันบันทึกแผน
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Messenger ที่เลือกมีงานค้างอยู่ ตรวจสอบลำดับส่งก่อนบันทึกแผนเพิ่ม
+              </p>
+            </div>
+            <div className="space-y-2 px-5 py-4">
+              {plannedDriverWorkloadWarnings.map(({ driver, workload }) => (
+                <div key={driver.id} className="rounded-lg border bg-muted/20 p-3">
+                  <div className="text-sm font-medium">{driver.name}</div>
+                  <DriverWorkloadChips
+                    workload={workload}
+                    plannedLabel="แผนวันนั้น"
+                    className="mt-2"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmPlanningWorkloadOpen(false)}
+              >
+                กลับไปตรวจสอบ
+              </Button>
+              <Button
+                size="sm"
+                disabled={operationState !== 'idle'}
+                onClick={() => {
+                  setConfirmPlanningWorkloadOpen(false);
+                  void applyPlanning();
+                }}
+              >
+                ยืนยันบันทึกแผน
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {routeAction?.type === 'reassign' && (
         <ResolutionDialog
           open
@@ -874,7 +1012,13 @@ export function PlanningPage({ locationSearch }: { locationSearch: string }) {
           error={routeActionError}
           reasons={drivers
             .filter((driver) => driver.id !== routeAction.route.driver.id)
-            .map((driver) => ({ value: driver.id, label: driver.name }))}
+            .map((driver) => ({
+              value: driver.id,
+              label: driver.name,
+              leading: <DriverAvatar driver={driver} className="h-9 w-9" />,
+              description: `${driver.phone} · ${formatDriverActiveJobs(driver, orders)}`,
+            }))}
+          reasonLabel="คนขับใหม่"
           notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
           confirmLabel="ย้ายงาน"
           onCancel={() => setRouteAction(null)}

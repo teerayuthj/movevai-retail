@@ -1,4 +1,7 @@
 import type { Order } from '@/data/orderTypes';
+import { getRequestedDeliveryDraft } from '@/features/inbox/utils/orderSchedule';
+import { formatElapsedDuration } from '@/lib/deliveryExecution';
+import { getPlanningDateTimeMs } from '@/lib/deliveryPlanning';
 
 export type FastDispatchSla = {
   urgent: boolean;
@@ -8,7 +11,19 @@ export type FastDispatchSla = {
   remainingMs: number;
   state: 'ok' | 'warning' | 'overdue';
   confidence: 'explicit' | 'inferred';
+  /** เป้าหมายอิงจากอะไร — วันนัดส่งจริง (appointment) หรือ SLA รับเข้า + 1 วัน (received) */
+  basis: 'appointment' | 'received';
 };
+
+// เป้าหมายเวลาส่ง = วันนัดส่งจริงที่ตั้งไว้ตอน import (ถ้ามี) — ถ้าไม่ระบุเวลา ใช้ปลายวันของวันนัด
+function resolveAppointmentDueAt(order: Order): Date | null {
+  const { date, time } = getRequestedDeliveryDraft(order);
+  if (!date) return null;
+  const scheduledMs = getPlanningDateTimeMs(date, time || '23:59');
+  if (scheduledMs == null) return null;
+  const dt = new Date(scheduledMs);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
 
 const FAST_DISPATCH_PATTERNS = [
   /ด่วน/i,
@@ -37,9 +52,14 @@ export function isFastDispatchOrder(order: Order) {
 export function getFastDispatchSla(order: Order, now = new Date()): FastDispatchSla {
   const receivedAt = new Date(order.receivedAt);
   const baseTime = Number.isNaN(receivedAt.getTime()) ? now : receivedAt;
-  const dueAt = new Date(baseTime.getTime() + 24 * 60 * 60 * 1000);
+  // เป้าหมายหลัก = วันนัดส่งจริง (นัดส่ง) ที่ตั้งไว้ตอน import — ตรงกับที่โชว์ในหน้า Inbox/Planning
+  // ถ้าไม่มีวันนัด ค่อย fallback เป็น SLA ด่วนแบบเดิม (รับเข้า + 1 วัน)
+  const appointmentDueAt = resolveAppointmentDueAt(order);
+  const basis: FastDispatchSla['basis'] = appointmentDueAt ? 'appointment' : 'received';
+  const dueAt = appointmentDueAt ?? new Date(baseTime.getTime() + 24 * 60 * 60 * 1000);
   const remainingMs = dueAt.getTime() - now.getTime();
-  const remainingHours = Math.ceil(Math.abs(remainingMs) / 3_600_000);
+  const remainingMinutes = Math.max(1, Math.ceil(Math.abs(remainingMs) / 60_000));
+  const remainingLabel = formatElapsedDuration(remainingMinutes);
   const urgent = isFastDispatchOrder(order);
   const state: FastDispatchSla['state'] =
     remainingMs < 0 ? 'overdue' : remainingMs <= 4 * 3_600_000 ? 'warning' : 'ok';
@@ -53,24 +73,32 @@ export function getFastDispatchSla(order: Order, now = new Date()): FastDispatch
       remainingMs,
       state,
       confidence: 'inferred',
+      basis,
     };
   }
 
+  const detail =
+    basis === 'appointment'
+      ? remainingMs < 0
+        ? `เกินเวลานัดแล้ว ${remainingLabel}`
+        : `ต้องถึงก่อนเวลานัดอีก ${remainingLabel}`
+      : remainingMs < 0
+        ? `เกิน SLA แล้ว ${remainingLabel}`
+        : `ต้องถึงก่อนครบ 1 วันอีก ${remainingLabel}`;
+
   return {
     urgent,
-    label: 'ส่งด่วน 1 วัน',
-    detail:
-      remainingMs < 0
-        ? `เกิน SLA แล้ว ${remainingHours} ชม.`
-        : `เหลือ ${remainingHours} ชม. ก่อนครบ 1 วัน`,
+    label: basis === 'appointment' ? 'ส่งด่วน · ตามวันนัด' : 'ส่งด่วน 1 วัน',
+    detail,
     dueAt: dueAt.toISOString(),
     remainingMs,
     state,
-    confidence: /ด่วน|1\s*วัน|หนึ่งวัน|same\s*day|next\s*day|urgent|express/i.test(
-      textForSlaDetection(order),
-    )
-      ? 'explicit'
-      : 'inferred',
+    confidence:
+      basis === 'appointment' ||
+      /ด่วน|1\s*วัน|หนึ่งวัน|same\s*day|next\s*day|urgent|express/i.test(textForSlaDetection(order))
+        ? 'explicit'
+        : 'inferred',
+    basis,
   };
 }
 

@@ -57,12 +57,13 @@ function readLocalEnv() {
 }
 
 // dev-only: surface "ลูกค้า" (customer.html) และ "messenger" (messenger.html) มี entry แยก
-// แต่ใช้ path เดิม (/track*, /messenger*) — rewrite ให้ vite เสิร์ฟ entry ที่ถูกต้องแทน index.html (admin)
+// แต่ใช้ path เดิม (/t*, /track*, /messenger*) — rewrite ให้ vite เสิร์ฟ entry ที่ถูกต้องแทน index.html (admin)
 // production: ต้องตั้ง rewrite เดียวกันที่ hosting layer:
-//   /track* + /customer-track* → /customer.html, /messenger* → /messenger.html, ที่เหลือ → /index.html
+//   /t/* + /track* + /customer-track* → /customer.html, /messenger* → /messenger.html, ที่เหลือ → /index.html
 function surfaceEntryRouting() {
   const entryByPrefix: Array<{ prefixes: string[]; entry: string }> = [
-    { prefixes: ['/track', '/customer-track'], entry: '/customer.html' },
+    // '/t' = ลิงก์ติดตามแบบสั้น (/t/:trackingCode) ที่ส่งให้ลูกค้าทาง SMS/LINE
+    { prefixes: ['/t', '/track', '/customer-track'], entry: '/customer.html' },
     { prefixes: ['/messenger'], entry: '/messenger.html' },
   ];
 

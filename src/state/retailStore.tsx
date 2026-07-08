@@ -45,6 +45,7 @@ import type {
 } from '@/state/retail/types';
 import {
   approveImportOrders as approveImportOrdersApi,
+  cancelOrder as cancelOrderApi,
   cancelPlanningRoute,
   clearPlanning as clearPlanningApi,
   confirmAppDelivery,
@@ -64,8 +65,8 @@ import {
   syncAndAssignOrder,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
+import { MESSENGER_JOB_STATUSES, isMessengerOrderParticipant } from '@/lib/messengerJobs';
 
-const MESSENGER_JOB_STATUSES = ['assigned', 'in_transit', 'pending_confirmation', 'delivered'];
 const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
 
 function replaceOrder(orders: RetailState['orders'], canonical: RetailState['orders'][number]) {
@@ -187,7 +188,7 @@ export function RetailProvider({
         orders: [
           ...current.orders.filter(
             (order) =>
-              order.assignedDriverId !== driverCode ||
+              !isMessengerOrderParticipant(order, driverCode) ||
               !MESSENGER_JOB_STATUSES.includes(order.status),
           ),
           ...remote.orders.map((order) => preservePendingReview(current, order)),
@@ -481,8 +482,14 @@ export function RetailProvider({
   );
 
   const cancelOrder = useCallback(
-    (orderId: string, input: Parameters<RetailStore['cancelOrder']>[1]) => {
-      commit((current) => cancelOrderState(current, orderId, input));
+    async (orderId: string, input: Parameters<RetailStore['cancelOrder']>[1]) => {
+      const canonical = await cancelOrderApi(orderId, input);
+      commit((current) => {
+        // cancelOrderState จัดการผลข้างเคียงฝั่ง local (เช่น driver activeOrders)
+        // แล้วทับตัว order ด้วยข้อมูล canonical จาก backend (resolution + timeline)
+        const cancelled = cancelOrderState(current, orderId, input);
+        return { ...cancelled, orders: replaceOrder(cancelled.orders, canonical) };
+      });
     },
     [commit],
   );

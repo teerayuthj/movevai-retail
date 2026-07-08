@@ -1,6 +1,10 @@
 import type { Driver, Order, ProofOfDelivery } from '@/data/orderTypes';
 import { formatTHB } from '@/data/orderTypes';
-import { getAssignedOrderOverdueMinutes, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import {
+  getAssignedOrderOverdueMinutes,
+  getTodayDateKey,
+  isUnreleasedPlannedOrder,
+} from '@/lib/deliveryPlanning';
 
 export type DriverQueueTab = 'ready' | 'assigned';
 export type DeliveryTrackingTab =
@@ -40,9 +44,69 @@ export function getDriverQueueTab(order: Order): DriverQueueTab | null {
 export function deriveDriverDisplayStatus(driver: Driver, orders: Order[]): Driver['status'] {
   if (driver.status === 'off_duty') return 'off_duty';
   const activelyDelivering = orders.some(
-    (order) => order.assignedDriverId === driver.id && order.status === 'in_transit',
+    (order) => isDriverAssignedToOrder(order, driver.id) && order.status === 'in_transit',
   );
   return activelyDelivering ? 'on_delivery' : 'available';
+}
+
+export type DriverWorkloadSummary = {
+  waitingToStart: number;
+  inTransit: number;
+  pendingReview: number;
+  returning: number;
+  plannedForDate: number;
+};
+
+export function isDriverAssignedToOrder(order: Order, driverId: string) {
+  return order.assignedDriverId === driverId || (order.coDriverIds ?? []).includes(driverId);
+}
+
+export function getDriverWorkloadSummary(
+  driver: Pick<Driver, 'id'>,
+  orders: Order[],
+  options: { plannedDate?: string } = {},
+): DriverWorkloadSummary {
+  const plannedDate = options.plannedDate ?? getTodayDateKey();
+
+  return orders.reduce<DriverWorkloadSummary>(
+    (summary, order) => {
+      const assignedToDriver = isDriverAssignedToOrder(order, driver.id);
+      if (assignedToDriver) {
+        if (order.status === 'assigned') summary.waitingToStart += 1;
+        if (order.status === 'in_transit') summary.inTransit += 1;
+        if (order.status === 'pending_confirmation') summary.pendingReview += 1;
+        if (order.status === 'returning') summary.returning += 1;
+      }
+
+      if (
+        order.deliveryPlan?.releaseState === 'planned' &&
+        order.deliveryPlan.plannedDriverId === driver.id &&
+        order.deliveryPlan.plannedDate === plannedDate
+      ) {
+        summary.plannedForDate += 1;
+      }
+
+      return summary;
+    },
+    {
+      waitingToStart: 0,
+      inTransit: 0,
+      pendingReview: 0,
+      returning: 0,
+      plannedForDate: 0,
+    },
+  );
+}
+
+/**
+ * ป้าย "งานที่รับอยู่" ของคนขับ — นับจากออเดอร์จริง (assigned + in_transit)
+ * ห้ามใช้ driver.activeOrders โชว์ผู้ใช้ตรง ๆ เพราะเป็น counter สะสมที่ drift ได้
+ */
+export function formatDriverActiveJobs(driver: Pick<Driver, 'id'>, orders: Order[]): string {
+  const { waitingToStart, inTransit } = getDriverWorkloadSummary(driver, orders);
+  const total = waitingToStart + inTransit;
+  if (total === 0) return 'งานที่รับอยู่ 0';
+  return `งานที่รับอยู่ ${total} (รอเริ่ม ${waitingToStart} · กำลังส่ง ${inTransit})`;
 }
 
 export function getDeliveryTrackingTab(order: Order): DeliveryTrackingTab | null {

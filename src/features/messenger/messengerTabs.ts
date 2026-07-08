@@ -1,6 +1,6 @@
 // Source of truth ของ messenger tab — ผูก tab กับ order status และ URL segment
 // แต่ละ tab = filter ของ order.status ตัวเดียว (UI/logic เหมือนกัน ต่างแค่ status)
-import type { OrderStatus } from '@/data/orderTypes';
+import { MESSENGER_JOB_STATUSES } from '@/lib/messengerJobs';
 
 export type MessengerTab = 'assigned' | 'in_transit' | 'pending_confirmation' | 'delivered';
 
@@ -19,7 +19,7 @@ export const MESSENGER_TABS: MessengerTabDef[] = [
 ];
 
 /** order status ที่ messenger เห็นได้ (ตรงกับ tab ทั้งหมด) */
-export const MESSENGER_JOB_STATUSES: OrderStatus[] = MESSENGER_TABS.map((tab) => tab.key);
+export { MESSENGER_JOB_STATUSES };
 
 export const MESSENGER_BASE_PATH = '/messenger';
 
