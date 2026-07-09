@@ -324,6 +324,36 @@ export function OrderSummary({ order }: { order: Order }) {
       </div>
       <div className="mt-1 text-sm">{order.customer.name}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">{order.customer.address}</div>
+      {order.items.length > 0 && (
+        <div className="mt-2 space-y-1.5 border-t pt-2">
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <Package className="h-3 w-3" />
+            สินค้าที่จัดส่ง
+          </div>
+          <ul className="space-y-1.5">
+            {order.items.map((item, i) => (
+              <li
+                key={`${item.sku ?? 'item'}-${i}`}
+                className="flex items-start justify-between gap-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-medium text-foreground">{item.name}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    {[item.weight, item.purity].filter(Boolean).join(' · ')}
+                    {item.note ? ` · ${item.note}` : ''}
+                  </div>
+                </div>
+                <div className="shrink-0 text-right tabular-nums">
+                  <div className="text-muted-foreground">× {item.qty}</div>
+                  <div className="font-medium text-foreground">
+                    {formatTHB(item.unitPrice * item.qty)}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="mt-2 flex items-center justify-between border-t pt-2">
         <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
         <span className="text-sm font-semibold tabular-nums text-warning">

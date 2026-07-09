@@ -523,6 +523,72 @@ export function fetchCustomer(customerId: string) {
 
 export type DeliveryTrackingCounts = Record<DeliveryTrackingTab, number>;
 
+export type DeliveryReportStatus = 'all' | 'delivered' | 'failed' | 'returned';
+
+export type DeliveryReportItem = {
+  order: Order;
+  driver: Driver | null;
+  route: {
+    id?: string | null;
+    code?: string | null;
+    plannedDate?: string | null;
+    plannedTime?: string | null;
+  } | null;
+  proof: Order['proofOfDelivery'];
+  proofHistory?: Order['proofHistory'];
+  resolution?: Order['resolution'];
+  timestamps: {
+    receivedAt?: string | null;
+    plannedAt?: string | null;
+    inTransitAt?: string | null;
+    submittedAt?: string | null;
+    closedAt?: string | null;
+  };
+};
+
+type ApiDeliveryReportItem = Omit<DeliveryReportItem, 'order' | 'driver'> & {
+  order: ApiOrder;
+  driver: ApiDriver | null;
+};
+
+export type DeliveryReportPage = {
+  items: DeliveryReportItem[];
+  total: number;
+  take: number;
+  skip: number;
+};
+
+export async function fetchDeliveryReport(params: {
+  dateFrom: string;
+  dateTo: string;
+  status: DeliveryReportStatus;
+  driverCode?: string;
+  query?: string;
+  take: number;
+  skip: number;
+}) {
+  const search = new URLSearchParams({
+    dateFrom: params.dateFrom,
+    dateTo: params.dateTo,
+    status: params.status,
+    take: String(params.take),
+    skip: String(params.skip),
+  });
+  if (params.driverCode) search.set('driverCode', params.driverCode);
+  if (params.query?.trim()) search.set('q', params.query.trim());
+  const result = await request<
+    Omit<DeliveryReportPage, 'items'> & { items: ApiDeliveryReportItem[] }
+  >(`${APP_API_BASE}/reports/deliveries?${search.toString()}`);
+  return {
+    ...result,
+    items: result.items.map((item) => ({
+      ...item,
+      order: normalizeOrder(item.order),
+      driver: item.driver ? normalizeDriver(item.driver) : null,
+    })),
+  };
+}
+
 export async function fetchDeliveryTrackingOrders(params: {
   tab: DeliveryTrackingTab;
   query?: string;

@@ -1,16 +1,18 @@
 import { useState } from 'react';
+import { toast } from 'sonner';
 import {
   ArrowRight,
   Ban,
   Bot,
+  CalendarClock,
   CheckCircle2,
   ChevronDown,
   ClipboardCheck,
   Clock,
-  Cog,
   FileSpreadsheet,
   Inbox,
   Mailbox,
+  Merge,
   PackageCheck,
   Pencil,
   RefreshCcw,
@@ -18,9 +20,11 @@ import {
   Send,
   ShieldCheck,
   Sparkles,
+  Split,
   Truck as TruckIcon,
   UserCog,
   XCircle,
+  Zap,
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -56,6 +60,9 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   postal_batch_exported: { Icon: FileSpreadsheet, tone: 'info' },
   postal_tracking_saved: { Icon: ClipboardCheck, tone: 'neutral' },
   postal_handed_over: { Icon: Mailbox, tone: 'info' },
+  order_import_edited: { Icon: Pencil, tone: 'neutral' },
+  order_import_merged: { Icon: Merge, tone: 'info' },
+  order_import_split: { Icon: Split, tone: 'neutral' },
   order_cancelled: { Icon: Ban, tone: 'danger' },
   order_rejected: { Icon: XCircle, tone: 'danger' },
   order_restored: { Icon: RefreshCcw, tone: 'info' },
@@ -69,7 +76,7 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   delivery_plan_released: { Icon: CheckCircle2, tone: 'success' },
   delivery_route_cancelled: { Icon: Ban, tone: 'danger' },
   delivery_route_reassigned: { Icon: UserCog, tone: 'warning' },
-  delivery_urgent_route_published: { Icon: Route, tone: 'danger' },
+  delivery_urgent_route_published: { Icon: Zap, tone: 'danger' },
 };
 
 const FALLBACK_ICON_CONFIG: IconConfig = { Icon: Clock, tone: 'muted' };
@@ -83,24 +90,245 @@ const TONE_CLASSES: Record<IconConfig['tone'], string> = {
   muted: 'bg-muted text-muted-foreground ring-muted',
 };
 
+// ---------------------------------------------------------------------------
+// การนำเสนอ event: แปลง summary/details ดิบจาก backend เป็นหัวข้อสั้น + chip
+// ถ้า parse format ไม่ติด ต้อง fallback ไปโชว์ summary/details เต็มเสมอ
+// ---------------------------------------------------------------------------
+
+type EventChip = {
+  Icon?: typeof Inbox;
+  label: string;
+  mono?: boolean;
+  fullText?: string;
+  copyable?: boolean;
+};
+
+type PresentedEvent = {
+  title: string;
+  subtitle?: string;
+  chips?: EventChip[];
+  reason?: string;
+  detailsText?: string;
+};
+
+// RT-20260707-D-02-mra9re2q → ส่วนกลางคือรหัสคนขับ/รอบ (D-02) ที่หน้างานใช้เรียกกัน
+const ROUTE_SHORT_RE = /^RT-\d{8}-(.+?)-[a-z0-9]+$/i;
+
+function routeChip(code: string): EventChip {
+  const short = ROUTE_SHORT_RE.exec(code)?.[1] ?? code;
+  return { Icon: Route, label: `รอบ ${short}`, mono: true, fullText: code, copyable: true };
+}
+
+function formatPlannedDate(dateText: string, timeText?: string): string {
+  const date = new Date(`${dateText}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return [dateText, timeText].filter(Boolean).join(' ');
+  const label = date.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  return timeText ? `${label} ${timeText}` : label;
+}
+
+function presentEvent(event: OrderActivityEvent): PresentedEvent {
+  const { type, summary, details } = event;
+
+  if (type === 'delivery_urgent_route_published' || type === 'delivery_plan_released') {
+    const match = /^(?:ส่งด่วน|เผยแพร่) Route (\S+) ให้ ([^()]+?)(?:\s*\(ร่วมกับ (.+)\))?$/.exec(
+      summary,
+    );
+    if (match) {
+      const [, code, driver, coDrivers] = match;
+      const planned = details
+        ? /วันที่ส่ง:\s*(\S+)(?:\s+(\S+))?\s*· ลำดับ:\s*(\d+)/.exec(details)
+        : null;
+      const chips: EventChip[] = [];
+      if (planned) {
+        chips.push({
+          Icon: CalendarClock,
+          label: `นัดส่ง ${formatPlannedDate(planned[1], planned[2])}`,
+        });
+      }
+      chips.push(routeChip(code));
+      if (planned) chips.push({ label: `ลำดับที่ ${planned[3]}` });
+      return {
+        title:
+          type === 'delivery_urgent_route_published' ? 'ส่งด่วนให้คนขับ' : 'เผยแพร่รอบส่งให้คนขับ',
+        subtitle: coDrivers ? `${driver.trim()} · ร่วมกับ ${coDrivers}` : driver.trim(),
+        chips,
+        detailsText: planned ? undefined : details,
+      };
+    }
+  }
+
+  if (type === 'delivery_route_cancelled') {
+    const match = /^ยกเลิก Route (\S+) \((.+)\)$/.exec(summary);
+    if (match) {
+      return {
+        title: 'ยกเลิกรอบส่ง',
+        subtitle: match[2],
+        chips: [routeChip(match[1])],
+        reason: details,
+      };
+    }
+    return { title: 'ยกเลิกรอบส่ง', subtitle: summary, reason: details };
+  }
+
+  if (type === 'delivery_route_reassigned') {
+    const code = /Route (\S+)/.exec(summary)?.[1];
+    return {
+      title: 'เปลี่ยนคนขับรอบส่ง',
+      subtitle: details,
+      chips: code ? [routeChip(code)] : undefined,
+    };
+  }
+
+  if (type === 'order_import_edited' || type === 'order_details_updated') {
+    const match = details ? /^ไฟล์ (.+) แถวที่ (\d+)$/.exec(details) : null;
+    if (match) {
+      return { title: 'แก้ไขข้อมูลออเดอร์', subtitle: `LINE import · แถวที่ ${match[2]}` };
+    }
+    return { title: summary, detailsText: details };
+  }
+
+  if (type === 'order_received') {
+    const fromFile = /^นำเข้าออเดอร์จากไฟล์ (.+?)(?: แถวที่ (\d+))?$/.exec(summary);
+    if (fromFile) {
+      const chips: EventChip[] = [
+        { Icon: FileSpreadsheet, label: fromFile[1], mono: true, fullText: fromFile[1] },
+      ];
+      if (fromFile[2]) chips.push({ label: `แถวที่ ${fromFile[2]}` });
+      return { title: 'นำเข้าออเดอร์จาก LINE', subtitle: details, chips };
+    }
+    const fromOcr = /^นำเข้าออเดอร์จาก OCR รูป (.+)$/.exec(summary);
+    if (fromOcr) {
+      return {
+        title: 'นำเข้าออเดอร์จาก OCR รูป',
+        subtitle: details,
+        chips: [{ Icon: FileSpreadsheet, label: fromOcr[1], mono: true, fullText: fromOcr[1] }],
+      };
+    }
+    return { title: summary, detailsText: details };
+  }
+
+  if (type === 'order_confirmed') {
+    const channel = details ? /^ช่องทาง: (.+)$/.exec(details) : null;
+    return {
+      title: summary,
+      chips: channel ? [{ Icon: TruckIcon, label: channel[1] }] : undefined,
+      detailsText: channel ? undefined : details,
+    };
+  }
+
+  if (type === 'order_cancelled' || type === 'order_rejected') {
+    const isReason = details?.startsWith('เหตุผล');
+    return {
+      title: summary,
+      reason: isReason ? details : undefined,
+      detailsText: isReason ? undefined : details,
+    };
+  }
+
+  if (type === 'driver_assigned') {
+    const match = /^มอบหมาย \S+ ให้ (.+)$/.exec(summary);
+    if (match) return { title: 'มอบหมายคนขับ', subtitle: match[1], detailsText: details };
+    return { title: summary, detailsText: details };
+  }
+
+  if (type === 'order_import_merged' || type === 'order_import_split') {
+    return { title: summary, subtitle: details };
+  }
+
+  return { title: summary, detailsText: details };
+}
+
+// ---------------------------------------------------------------------------
+// ยุบ event แก้ไขซ้ำที่ติดกัน (เช่นแก้จาก LINE import รัว ๆ) เหลือแถวเดียวกดกางดูได้
+// ---------------------------------------------------------------------------
+
+const GROUPABLE_TYPES: OrderActivityEventType[] = ['order_import_edited', 'order_details_updated'];
+
+type TimelineEntry =
+  | { kind: 'single'; event: OrderActivityEvent }
+  | { kind: 'group'; events: OrderActivityEvent[] };
+
+function groupEvents(events: OrderActivityEvent[]): TimelineEntry[] {
+  const entries: TimelineEntry[] = [];
+  for (const event of events) {
+    const previous = entries[entries.length - 1];
+    if (previous && GROUPABLE_TYPES.includes(event.type)) {
+      const head = previous.kind === 'group' ? previous.events[0] : previous.event;
+      if (
+        head.type === event.type &&
+        head.summary === event.summary &&
+        (head.details ?? '') === (event.details ?? '')
+      ) {
+        if (previous.kind === 'group') {
+          previous.events.push(event);
+        } else {
+          entries[entries.length - 1] = { kind: 'group', events: [previous.event, event] };
+        }
+        continue;
+      }
+    }
+    entries.push({ kind: 'single', event });
+  }
+  return entries;
+}
+
+// ---------------------------------------------------------------------------
+
 function formatActor(actor: OrderActivityActor): string {
   if (actor.kind === 'system') return actor.label;
   return `${actor.handler.name} · ${actor.handler.department}`;
 }
 
-function ActorIcon({ actor }: { actor: OrderActivityActor }) {
-  if (actor.kind === 'system') {
-    return <Cog className="h-3 w-3" />;
-  }
-  return null;
+function formatTime(at: string): string {
+  return new Date(at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 }
 
-function formatTimestamp(at: string): string {
+function dayLabel(at: string): string {
   const date = new Date(at);
-  return date.toLocaleString('th', {
-    dateStyle: 'short',
-    timeStyle: 'short',
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86_400_000);
+  const formatted = date.toLocaleDateString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
   });
+  if (diffDays === 0) return `วันนี้ · ${formatted}`;
+  if (diffDays === 1) return `เมื่อวาน · ${formatted}`;
+  return formatted;
+}
+
+function ChipBadge({ chip }: { chip: EventChip }) {
+  const className = cn(
+    'inline-flex max-w-full items-center gap-1 rounded-full border bg-muted/40 px-2 py-0.5 text-[11px] text-muted-foreground',
+    chip.mono && 'font-mono text-[10.5px]',
+  );
+  const content = (
+    <>
+      {chip.Icon && <chip.Icon className="h-3 w-3 shrink-0" />}
+      <span className="truncate">{chip.label}</span>
+    </>
+  );
+  if (chip.copyable && chip.fullText) {
+    const fullText = chip.fullText;
+    return (
+      <button
+        type="button"
+        title={`${fullText} — กดเพื่อคัดลอก`}
+        onClick={() => {
+          void navigator.clipboard.writeText(fullText);
+          toast.success('คัดลอกโค้ดรอบส่งแล้ว', { description: fullText });
+        }}
+        className={cn(className, 'cursor-pointer transition-colors hover:bg-muted')}
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <span className={className} title={chip.fullText}>
+      {content}
+    </span>
+  );
 }
 
 function ChangeRow({ change }: { change: OrderActivityChange }) {
@@ -118,10 +346,59 @@ function ChangeRow({ change }: { change: OrderActivityChange }) {
   );
 }
 
-function TimelineItem({ event, isLast }: { event: OrderActivityEvent; isLast: boolean }) {
+function EventBody({ event, presented }: { event: OrderActivityEvent; presented: PresentedEvent }) {
+  return (
+    <>
+      {event.actor.kind === 'operator' && (
+        <div className="mt-0.5 text-[11px] text-muted-foreground">{formatActor(event.actor)}</div>
+      )}
+      {presented.subtitle && (
+        <div className="mt-0.5 text-xs text-muted-foreground">{presented.subtitle}</div>
+      )}
+      {presented.chips && presented.chips.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          {presented.chips.map((chip, idx) => (
+            <ChipBadge key={idx} chip={chip} />
+          ))}
+        </div>
+      )}
+      {presented.reason && (
+        <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-destructive/10 px-2.5 py-1 text-[11px] font-medium text-destructive">
+          {presented.reason}
+        </div>
+      )}
+      {presented.detailsText && (
+        <div className="mt-1 text-[11px] text-muted-foreground">{presented.detailsText}</div>
+      )}
+      {event.changes && event.changes.length > 0 && (
+        <div className="mt-1.5 space-y-1">
+          {event.changes.map((change, idx) => (
+            <ChangeRow key={`${change.field}-${idx}`} change={change} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function TimelineIcon({ type }: { type: OrderActivityEventType }) {
   // API อาจเพิ่ม activity type ใหม่ก่อน frontend deploy — timeline ต้องไม่ทำให้ทั้งหน้าล่ม
-  const config = ICON_BY_TYPE[event.type] ?? FALLBACK_ICON_CONFIG;
+  const config = ICON_BY_TYPE[type] ?? FALLBACK_ICON_CONFIG;
   const Icon = config.Icon;
+  return (
+    <span
+      className={cn(
+        'relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1',
+        TONE_CLASSES[config.tone],
+      )}
+    >
+      <Icon className="h-4 w-4" />
+    </span>
+  );
+}
+
+function TimelineItem({ event, isLast }: { event: OrderActivityEvent; isLast: boolean }) {
+  const presented = presentEvent(event);
   return (
     <li className="relative flex gap-3 pb-4 last:pb-0">
       {!isLast && (
@@ -130,33 +407,80 @@ function TimelineItem({ event, isLast }: { event: OrderActivityEvent; isLast: bo
           className="absolute left-[15px] top-8 h-[calc(100%-1.5rem)] w-px bg-border"
         />
       )}
-      <span
-        className={cn(
-          'relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1',
-          TONE_CLASSES[config.tone],
-        )}
-      >
-        <Icon className="h-4 w-4" />
-      </span>
+      <TimelineIcon type={event.type} />
       <div className="min-w-0 flex-1 pt-0.5">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <span className="text-sm font-medium leading-snug">{event.summary}</span>
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Clock className="h-3 w-3" />
-            {formatTimestamp(event.at)}
+        <div className="flex items-baseline gap-2">
+          <span className="min-w-0 text-sm font-medium leading-snug">{presented.title}</span>
+          <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+            {formatTime(event.at)}
           </span>
         </div>
-        <div className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-          <ActorIcon actor={event.actor} />
-          {formatActor(event.actor)}
-        </div>
-        {event.details && (
-          <div className="mt-1 text-[11px] text-muted-foreground">{event.details}</div>
+        <EventBody event={event} presented={presented} />
+      </div>
+    </li>
+  );
+}
+
+function TimelineGroupItem({
+  events,
+  isLast,
+}: {
+  events: OrderActivityEvent[]; // เรียงใหม่ → เก่า
+  isLast: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const newest = events[0];
+  const oldest = events[events.length - 1];
+  const presented = presentEvent(newest);
+  return (
+    <li className="relative flex gap-3 pb-4 last:pb-0">
+      {!isLast && (
+        <span
+          aria-hidden
+          className="absolute left-[15px] top-8 h-[calc(100%-1.5rem)] w-px bg-border"
+        />
+      )}
+      <TimelineIcon type={newest.type} />
+      <div className="min-w-0 flex-1 pt-0.5">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((current) => !current)}
+          className="flex w-full items-baseline gap-2 text-left"
+        >
+          <span className="min-w-0 text-sm font-medium leading-snug">
+            {presented.title}{' '}
+            <span className="font-normal text-muted-foreground">· {events.length} ครั้ง</span>
+          </span>
+          <span className="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+            {formatTime(oldest.at)} – {formatTime(newest.at)}
+            <ChevronDown className={cn('h-3 w-3 transition-transform', open && 'rotate-180')} />
+          </span>
+        </button>
+        {presented.subtitle && (
+          <div className="mt-0.5 text-xs text-muted-foreground">{presented.subtitle}</div>
         )}
-        {event.changes && event.changes.length > 0 && (
-          <div className="mt-1.5 space-y-1">
-            {event.changes.map((change, idx) => (
-              <ChangeRow key={`${change.field}-${idx}`} change={change} />
+        {open && (
+          <div className="mt-2 space-y-2 border-l-2 border-border pl-3">
+            {events.map((event, idx) => (
+              <div key={event.id}>
+                <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
+                  <span>แก้ไขครั้งที่ {events.length - idx}</span>
+                  <span className="ml-auto shrink-0 text-[11px]">{formatTime(event.at)}</span>
+                </div>
+                {event.actor.kind === 'operator' && (
+                  <div className="text-[11px] text-muted-foreground">
+                    {formatActor(event.actor)}
+                  </div>
+                )}
+                {event.changes && event.changes.length > 0 && (
+                  <div className="mt-1 space-y-1">
+                    {event.changes.map((change, changeIdx) => (
+                      <ChangeRow key={`${change.field}-${changeIdx}`} change={change} />
+                    ))}
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}
@@ -205,6 +529,19 @@ export function OrderTimeline({
     .slice()
     .sort((a, b) => b.at.localeCompare(a.at));
 
+  const entries = groupEvents(events);
+  const sections: { label: string; entries: TimelineEntry[] }[] = [];
+  for (const entry of entries) {
+    const at = entry.kind === 'single' ? entry.event.at : entry.events[0].at;
+    const label = dayLabel(at);
+    const lastSection = sections[sections.length - 1];
+    if (lastSection && lastSection.label === label) {
+      lastSection.entries.push(entry);
+    } else {
+      sections.push({ label, entries: [entry] });
+    }
+  }
+
   return (
     <Card className={className}>
       <CardHeader className={compact ? 'pb-3' : undefined}>
@@ -238,11 +575,35 @@ export function OrderTimeline({
               {emptyHint}
             </div>
           ) : (
-            <ul className="relative">
-              {events.map((event, idx) => (
-                <TimelineItem key={event.id} event={event} isLast={idx === events.length - 1} />
+            <div className="space-y-3">
+              {sections.map((section) => (
+                <div key={section.label}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="text-[11px] font-medium text-muted-foreground">
+                      {section.label}
+                    </span>
+                    <span aria-hidden className="h-px flex-1 bg-border" />
+                  </div>
+                  <ul className="relative">
+                    {section.entries.map((entry, idx) =>
+                      entry.kind === 'single' ? (
+                        <TimelineItem
+                          key={entry.event.id}
+                          event={entry.event}
+                          isLast={idx === section.entries.length - 1}
+                        />
+                      ) : (
+                        <TimelineGroupItem
+                          key={entry.events[0].id}
+                          events={entry.events}
+                          isLast={idx === section.entries.length - 1}
+                        />
+                      ),
+                    )}
+                  </ul>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </CardContent>
       )}
