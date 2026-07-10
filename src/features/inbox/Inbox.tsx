@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Coins, FileSpreadsheet, MessageSquareText } from 'lucide-react';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
@@ -38,12 +38,22 @@ export function InboxPage({
 }) {
   const {
     orders,
-    confirmOrder,
+    approveImportOrders,
     updateOrderCustomer,
     updateOrderDetails,
     setShippingMethod,
     cancelOrder,
   } = useRetailStore();
+
+  // ยืนยันผ่าน backend เสมอ — เลข MV-ORD ออกครั้งแรกตอนอนุมัติ (draft จาก LINE ยังไม่มีเลข)
+  const confirmOrder = useCallback(
+    (orderId: string, shippingMethod: Parameters<typeof approveImportOrders>[1]) => {
+      void approveImportOrders([orderId], shippingMethod).catch((error: unknown) => {
+        toast.error(error instanceof Error ? error.message : 'อนุมัติออเดอร์ไม่สำเร็จ');
+      });
+    },
+    [approveImportOrders],
+  );
 
   const [tab, setTab] = useState<InboxTab>('line_import');
   const [cancelTargetId, setCancelTargetId] = useState<string | null>(null);

@@ -63,7 +63,7 @@ type ApiOrder = Order & {
   assignedDriver?: ApiDriver;
   coDriverCodes?: string[];
 };
-type ApiOrderWire = Omit<ApiOrder, 'orderNo'> & { orderNo?: string };
+type ApiOrderWire = Omit<ApiOrder, 'orderNo'> & { orderNo?: string | null };
 
 export type DriverApprovalStatus = NonNullable<Driver['approvalStatus']>;
 
@@ -334,8 +334,8 @@ function normalizeDriver(driver: ApiDriver): Driver {
 function normalizeOrder(order: ApiOrderWire): Order {
   return {
     ...order,
-    // รองรับ backend/client เก่าระหว่าง rollout โดยไม่ปล่อยเลขว่างขึ้น UI
-    orderNo: order.orderNo ?? order.code,
+    // draft LINE import ยังไม่มีเลข (null) — ห้าม fallback เป็น code เพราะช่องเลขต้องว่างจนกว่าจะอนุมัติ
+    orderNo: order.orderNo ?? null,
     assignedDriverId: order.assignedDriver?.code,
     coDriverIds: order.coDriverCodes,
     proofOfDelivery: order.proofOfDelivery

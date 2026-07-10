@@ -216,7 +216,7 @@ export function NotificationsPage() {
     if (!q) return eligibleOrders;
     return eligibleOrders.filter(
       (order) =>
-        order.orderNo.toLowerCase().includes(q) ||
+        order.orderNo?.toLowerCase().includes(q) ||
         order.code.toLowerCase().includes(q) ||
         order.customer.name.toLowerCase().includes(q) ||
         order.customer.phone.includes(q),

@@ -605,7 +605,7 @@ export function MessengerCloseJobDialog({
 
     writeCloseJobDraft({
       orderId: order.id,
-      orderCode: order.orderNo,
+      orderCode: order.orderNo ?? order.code,
       editorRole,
       photos,
       signatureDataUrl,

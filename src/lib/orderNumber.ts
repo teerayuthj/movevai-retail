@@ -12,5 +12,5 @@ export function normalizeOrderNumberInput(value: string): string {
 
 export function matchesOrderReference(order: Order, value: string): boolean {
   const query = normalizeOrderNumberInput(value).toUpperCase();
-  return order.orderNo.toUpperCase() === query || order.code.toUpperCase() === query;
+  return order.orderNo?.toUpperCase() === query || order.code.toUpperCase() === query;
 }

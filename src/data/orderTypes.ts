@@ -231,8 +231,9 @@ export type OrderActivityEvent = {
 
 export type Order = {
   id: string;
-  /** เลขออเดอร์กลางที่ทุก surface แสดงเหมือนกัน เช่น MV-ORD-000042 */
-  orderNo: string;
+  /** เลขออเดอร์กลางที่ทุก surface แสดงเหมือนกัน เช่น MV-ORD-000042 —
+   * null = draft จาก LINE ที่ยังไม่ผ่านการอนุมัติ (เลขเกิดตอน admin อนุมัติ) */
+  orderNo: string | null;
   /** legacy client/import reference — เก็บไว้ค้นย้อนหลังระหว่าง migration */
   code: string;
   trackingCode?: string; // โค้ดสั้น 8 ตัวสำหรับลิงก์ติดตามลูกค้า (/t/:code) — backend สุ่มให้ตอนสร้าง

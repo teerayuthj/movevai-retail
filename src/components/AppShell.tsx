@@ -115,7 +115,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
     if (['new', 'parsing', 'needs_review', 'ready'].includes(order.status)) {
       if (order.shippingMethod === 'thai_post' && order.status === 'ready') {
         onChangePage('postal', {
-          search: `?q=${encodeURIComponent(order.orderNo)}&${orderSearch}`,
+          search: `?q=${encodeURIComponent(order.orderNo ?? order.code)}&${orderSearch}`,
         });
         return;
       }

@@ -39,7 +39,7 @@ function buildNotificationRecord(
   const base: CustomerNotification = {
     id: newEventId(),
     orderId: order.id,
-    orderCode: order.orderNo,
+    orderCode: order.orderNo ?? order.code,
     customerName: order.customer.name,
     recipient: recipientForChannel(order, channel),
     channel,

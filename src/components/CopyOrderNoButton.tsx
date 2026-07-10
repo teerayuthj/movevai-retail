@@ -5,7 +5,8 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 type CopyOrderNoButtonProps = {
-  orderNo: string;
+  /** null/undefined = draft ที่ยังไม่ออกเลข — ไม่ render ปุ่ม */
+  orderNo: string | null | undefined;
   className?: string;
 };
 
@@ -16,10 +17,12 @@ type CopyOrderNoButtonProps = {
  */
 export function CopyOrderNoButton({ orderNo, className }: CopyOrderNoButtonProps) {
   const [copied, setCopied] = useState(false);
+  if (!orderNo) return null;
+  const issuedOrderNo = orderNo;
 
   async function copy() {
     try {
-      await navigator.clipboard?.writeText(orderNo);
+      await navigator.clipboard?.writeText(issuedOrderNo);
       setCopied(true);
       toast.success(`คัดลอกเลขออเดอร์ ${orderNo} แล้ว`);
       window.setTimeout(() => setCopied(false), 1800);

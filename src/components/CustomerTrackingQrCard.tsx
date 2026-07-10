@@ -23,7 +23,7 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
   // ลิงก์สั้น /t/:trackingCode เมื่อ backend สุ่มโค้ดให้แล้ว; ออเดอร์เก่าที่ยังไม่มีโค้ด
   // fallback เป็น /track/{orderNo} (MV-ORD-...) ที่ลูกค้ารู้จัก — backend resolve ได้ทั้งคู่
   const trackingRef = useMemo(
-    () => ({ id: order.orderNo, trackingCode: order.trackingCode }),
+    () => ({ id: order.orderNo ?? order.id, trackingCode: order.trackingCode }),
     [order.orderNo, order.trackingCode],
   );
   const trackingUrl = useMemo(() => buildCustomerTrackingUrl(trackingRef), [trackingRef]);

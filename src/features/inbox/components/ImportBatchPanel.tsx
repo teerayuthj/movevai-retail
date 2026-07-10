@@ -25,6 +25,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Search,
   Send,
   Split,
   Trash2,
@@ -37,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -63,6 +65,8 @@ import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from 
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';
+import { normalizeOrderNumberInput } from '@/lib/orderNumber';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import {
   buildNoteWithRequestedDelivery,
@@ -984,6 +988,7 @@ function BatchWorkspace({
     setTab(next);
   };
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
   const [method, setMethod] = useState<ShippingMethod>('internal_driver');
   const [reason, setReason] = useState<ImportRejectReason | ''>('');
   const [busy, setBusy] = useState(false);
@@ -1121,13 +1126,37 @@ function BatchWorkspace({
     return cards.filter((c) => c.kind === 'rejected');
   }, [cards, tab]);
 
-  // เลือกได้เฉพาะออเดอร์ที่ยังรอตรวจ (มี order อยู่ใน store)
+  // ค้นหาในแท็บปัจจุบัน — รองรับเลขออเดอร์ (MV-ORD-000042 / mvord42), legacy code (IMP-...),
+  // ชื่อ/เบอร์/ที่อยู่ลูกค้า และชื่อไฟล์ต้นทาง
+  const searchedCards = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return visibleCards;
+    const qOrderNo = normalizeOrderNumberInput(search).toLowerCase();
+    return visibleCards.filter((card) => {
+      const order = card.orderId ? ordersById.get(card.orderId) : undefined;
+      const haystack = [
+        order?.orderNo,
+        order?.code,
+        order?.customer.phone,
+        card.primary.name,
+        card.primary.address,
+        card.primary.item,
+        card.primary.fileName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q) || (qOrderNo !== q && haystack.includes(qOrderNo));
+    });
+  }, [visibleCards, search, ordersById]);
+
+  // เลือกได้เฉพาะออเดอร์ที่ยังรอตรวจ (มี order อยู่ใน store) — จำกัดตามผลค้นหาที่เห็นอยู่
   const selectableIds = useMemo(
     () =>
-      visibleCards
+      searchedCards
         .filter((c) => c.kind === 'review' && c.orderId && ordersById.has(c.orderId))
         .map((c) => c.orderId!),
-    [visibleCards, ordersById],
+    [searchedCards, ordersById],
   );
 
   // รอตรวจทั้งหมดในสโคปนี้ (ไม่ผูกกับแท็บที่เปิดอยู่) — ใช้กับปุ่ม "อนุมัติทั้งหมด"
@@ -1687,8 +1716,8 @@ function BatchWorkspace({
           editingRow && 'max-h-72 flex-none',
         )}
       >
-        <div className="sticky top-0 z-10 -mx-2 -mt-2 flex items-center justify-between gap-2 border-b bg-muted/90 px-3 py-2 text-xs backdrop-blur">
-          <label className="flex items-center gap-2 text-muted-foreground">
+        <div className="sticky top-0 z-10 -mx-2 -mt-2 flex flex-wrap items-center gap-2 border-b bg-muted/90 px-3 py-2 text-xs backdrop-blur">
+          <label className="flex shrink-0 items-center gap-2 text-muted-foreground">
             <input
               type="checkbox"
               aria-label="เลือกทั้งหมดที่รอตรวจ"
@@ -1699,14 +1728,31 @@ function BatchWorkspace({
             />
             เลือกออเดอร์รอตรวจ
           </label>
-          <span className="text-muted-foreground">
-            {visibleCards.length.toLocaleString('th-TH')} รายการ
+          <div className="relative min-w-[180px] flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="ค้นหาเลขออเดอร์ / ชื่อ / เบอร์ / ที่อยู่..."
+              className="h-7 bg-background pl-8 text-xs"
+            />
+          </div>
+          <span className="shrink-0 text-muted-foreground">
+            {searchedCards.length.toLocaleString('th-TH')} รายการ
           </span>
         </div>
 
-        {visibleCards.length === 0 && (
+        {searchedCards.length === 0 && (
           <div className="px-3 py-10 text-center">
-            {processingBatches.length > 0 ? (
+            {search.trim() ? (
+              <div className="flex flex-col items-center gap-1.5 text-muted-foreground">
+                <Search className="h-6 w-6 text-muted-foreground/50" />
+                <div className="text-sm">ไม่พบออเดอร์ที่ตรงกับ “{search.trim()}”</div>
+                <div className="text-[11px]">
+                  ลองค้นด้วยเลขออเดอร์ (MV-ORD-... / mvord42) ชื่อ เบอร์ หรือที่อยู่ลูกค้า
+                </div>
+              </div>
+            ) : processingBatches.length > 0 ? (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin text-info" />
                 <div className="text-sm">กำลังประมวลผลไฟล์นำเข้า…</div>
@@ -1720,7 +1766,7 @@ function BatchWorkspace({
           </div>
         )}
 
-        {visibleCards.map((card) => {
+        {searchedCards.map((card) => {
           const r = card.primary;
           const order = card.orderId ? ordersById.get(card.orderId) : undefined;
           const selectable = card.kind === 'review' && !!card.orderId && !!order;
@@ -1765,6 +1811,12 @@ function BatchWorkspace({
                       className="h-3.5 w-3.5 disabled:opacity-30"
                     />
                     <RowStatusBadge kind={card.kind} />
+                    {order?.orderNo && (
+                      <span className="inline-flex items-center gap-0.5 font-mono text-[11px] font-semibold">
+                        {order.orderNo}
+                        <CopyOrderNoButton orderNo={order.orderNo} className="h-4 w-4" />
+                      </span>
+                    )}
                     {deliveryQueueBadge && (
                       <Badge variant="success" className="h-5 gap-1 px-1.5 text-[10px]">
                         <Route className="h-3 w-3" />
