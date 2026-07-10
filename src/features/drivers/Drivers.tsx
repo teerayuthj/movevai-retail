@@ -804,7 +804,7 @@ export function DriversPage() {
         title="บันทึกการส่งไม่สำเร็จ"
         description={
           failTargetId
-            ? `${orders.find((o) => o.id === failTargetId)?.code ?? ''} — ระบุเหตุผลและขั้นตอนต่อไป`
+            ? `${orders.find((o) => o.id === failTargetId)?.orderNo ?? ''} — ระบุเหตุผลและขั้นตอนต่อไป`
             : undefined
         }
         reasons={FAIL_REASONS}

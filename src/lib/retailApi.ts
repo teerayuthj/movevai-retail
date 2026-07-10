@@ -59,7 +59,11 @@ export type ApiDriver = Omit<Driver, 'id' | 'zone' | 'capacity'> & {
   zone?: string;
   capacity?: number;
 };
-type ApiOrder = Order & { assignedDriver?: ApiDriver; coDriverCodes?: string[] };
+type ApiOrder = Order & {
+  assignedDriver?: ApiDriver;
+  coDriverCodes?: string[];
+};
+type ApiOrderWire = Omit<ApiOrder, 'orderNo'> & { orderNo?: string };
 
 export type DriverApprovalStatus = NonNullable<Driver['approvalStatus']>;
 
@@ -327,9 +331,11 @@ function normalizeDriver(driver: ApiDriver): Driver {
   };
 }
 
-function normalizeOrder(order: ApiOrder): Order {
+function normalizeOrder(order: ApiOrderWire): Order {
   return {
     ...order,
+    // รองรับ backend/client เก่าระหว่าง rollout โดยไม่ปล่อยเลขว่างขึ้น UI
+    orderNo: order.orderNo ?? order.code,
     assignedDriverId: order.assignedDriver?.code,
     coDriverIds: order.coDriverCodes,
     proofOfDelivery: order.proofOfDelivery
@@ -371,6 +377,7 @@ function normalizePaymentForBackend(value: Order['payment']): Order['payment'] {
 function serializeOrderForBackend(order: Order) {
   return {
     id: order.id,
+    orderNo: order.orderNo,
     code: order.code,
     source: order.source,
     status: order.status,
@@ -468,6 +475,7 @@ export type CustomerGeoFilter = 'all' | 'verified' | 'unverified';
 
 export type CustomerOrderSummary = {
   id: string;
+  orderNo: string;
   code: string;
   status: string;
   source: string;
@@ -717,14 +725,15 @@ export async function fetchAppOrder(orderId: string) {
 }
 
 /**
- * ดึง order สำหรับหน้าติดตามลูกค้า โดยรับได้ทั้ง order **code** (ORD-...) ที่ลูกค้ารู้จัก
- * และ order **id** (O-...) ของลิงก์เก่า — backend `/orders/:id` รับเฉพาะ id
- * จึง resolve code → id ผ่าน q-search ก่อน แล้วค่อยดึงรายละเอียดเต็มด้วย id
+ * ดึง order สำหรับหน้าติดตามลูกค้า โดยรับได้ทั้ง canonical orderNo (MV-ORD-...),
+ * legacy code และ internal id รวมถึง trackingCode สั้นจาก /t/:code
  */
 export async function fetchCustomerOrder(idOrCode: string) {
   try {
     const { orders } = await fetchAppOrders({ q: idOrCode, take: 5 });
-    const match = orders.find((order) => order.code === idOrCode || order.id === idOrCode);
+    const match = orders.find(
+      (order) => order.orderNo === idOrCode || order.code === idOrCode || order.id === idOrCode,
+    );
     if (match) return fetchAppOrder(match.id);
   } catch {
     // q-search ใช้ไม่ได้ — fallback ไป lookup ด้วย id ตรงๆ ด้านล่าง
@@ -855,6 +864,15 @@ export async function syncAndAssignOrder(order: Order, driverCode: string) {
   const result = await request<ApiOrder>(`${APP_API_BASE}/orders/assign`, {
     method: 'POST',
     body: JSON.stringify({ order: serializeOrderForBackend(order), driverCode }),
+  });
+  return normalizeOrder(result);
+}
+
+/** สร้าง intake order ให้ backend ออก MV-ORD ตั้งแต่ก่อนเข้าคิว */
+export async function createAppOrder(order: Order) {
+  const result = await request<ApiOrder>(`${APP_API_BASE}/orders`, {
+    method: 'POST',
+    body: JSON.stringify(serializeOrderForBackend(order)),
   });
   return normalizeOrder(result);
 }
@@ -1093,6 +1111,7 @@ export async function fetchMessengerOrders(_driverCode: string) {
  */
 export type MessengerCompletedDelivery = {
   id: string;
+  orderNo: string;
   code: string;
   deliveredAt: string;
   /** เวลาเริ่มส่ง — ใช้โชว์ "ใช้เวลา X นาที" หลังจบงาน (undefined = งานเก่าก่อนมีข้อมูลนี้) */
@@ -1251,6 +1270,7 @@ export function fetchActiveMessengerTracking(deviceId: string) {
 export type MessengerOrderRouteHistory = {
   order: {
     id: string;
+    orderNo: string;
     code: string;
     status: string;
     routeSequence: number | null;

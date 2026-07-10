@@ -129,7 +129,7 @@ function InTransitJobSheet({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-xs font-medium">{order.code}</span>
+                <span className="font-mono text-xs font-medium">{order.orderNo}</span>
                 <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
                   <Package className="h-3 w-3" /> พัสดุ
                 </Badge>

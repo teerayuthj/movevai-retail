@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import {
   type CancelReason,
   type FailReason,
@@ -17,7 +18,10 @@ export function OrderSummary({ order }: { order: Order }) {
       <div className="text-[11px] font-medium text-muted-foreground">Order</div>
       <div className="mt-1 rounded-lg border p-3">
         <div className="flex items-center justify-between">
-          <span className="font-mono text-sm font-medium">{order.code}</span>
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono text-sm font-medium">{order.orderNo}</span>
+            <CopyOrderNoButton orderNo={order.orderNo} />
+          </div>
           <Badge variant="muted">{order.items.length} รายการ</Badge>
         </div>
         <div className="mt-1 text-sm">{order.customer.name}</div>

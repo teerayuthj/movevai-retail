@@ -200,7 +200,7 @@ export function InboxPage({
 
           <MobileDetailSheet
             open={!!selected && mobileDetailOpen}
-            title={<span className="font-mono">{selected?.code}</span>}
+            title={<span className="font-mono">{selected?.orderNo}</span>}
             subtitle={selected ? statusLabel[selected.status] : undefined}
             onClose={() => setMobileDetailOpen(false)}
           >
@@ -224,7 +224,7 @@ export function InboxPage({
             title="ยกเลิกออเดอร์"
             description={
               cancelTargetId
-                ? `${orders.find((order) => order.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผลการยกเลิก`
+                ? `${orders.find((order) => order.id === cancelTargetId)?.orderNo ?? ''} — เลือกเหตุผลการยกเลิก`
                 : undefined
             }
             reasons={CANCEL_REASONS}
@@ -237,7 +237,7 @@ export function InboxPage({
             }}
             onConfirm={({ reason, note }) => {
               if (!cancelTargetId) return;
-              const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+              const code = orders.find((order) => order.id === cancelTargetId)?.orderNo ?? '';
               setCancelError('');
               void cancelOrder(cancelTargetId, { reason, note })
                 .then(() => {

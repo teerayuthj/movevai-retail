@@ -193,6 +193,7 @@ function statusBadgeVariant(status: OrderStatus) {
 
 function searchText(order: Order, driver: Driver | null) {
   return [
+    order.orderNo,
     order.code,
     order.customer.name,
     order.customer.phone,
@@ -281,7 +282,7 @@ function buildReportCsv(rows: ReportRow[]) {
   rows.forEach(({ order, driver, closedAt, plannedAt }) => {
     lines.push(
       [
-        order.code,
+        order.orderNo,
         statusLabel[order.status],
         order.customer.name,
         order.customer.phone,
@@ -570,7 +571,7 @@ export function DeliveryReportPage() {
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-semibold">{order.code}</span>
+                    <span className="font-mono text-xs font-semibold">{order.orderNo}</span>
                     <Badge
                       variant={statusBadgeVariant(order.status)}
                       className="h-5 px-1.5 text-[10px]"
@@ -683,7 +684,7 @@ export function DeliveryReportPage() {
 
       <DetailDrawer
         open={!!selectedRow}
-        title={<span className="font-mono">{selectedRow?.order.code}</span>}
+        title={<span className="font-mono">{selectedRow?.order.orderNo}</span>}
         subtitle={
           selectedRow ? `รายงานงานส่ง · ${statusLabel[selectedRow.order.status]}` : undefined
         }

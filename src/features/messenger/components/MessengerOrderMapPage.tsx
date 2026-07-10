@@ -157,7 +157,7 @@ export function MessengerOrderMapPage({
 
   const firstPoint = ridePath[0] ?? null;
   const lastPoint = ridePath[ridePath.length - 1] ?? null;
-  const displayCode = order?.code ?? history?.order.code ?? orderId;
+  const displayCode = order?.orderNo ?? history?.order.orderNo ?? orderId;
   const displayRoute = order?.deliveryRoute?.code ?? history?.route?.code;
 
   return (

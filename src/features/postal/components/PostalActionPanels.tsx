@@ -49,7 +49,7 @@ export function ReadyActionPanel({
           <div className="mt-2 space-y-1 text-[11px] text-muted-foreground">
             {selectedList.slice(0, 5).map((o) => (
               <div key={o.id} className="flex items-center justify-between">
-                <span className="font-mono">{o.code}</span>
+                <span className="font-mono">{o.orderNo}</span>
                 <span className="line-clamp-1 ml-2 max-w-48 truncate">{o.customer.name}</span>
               </div>
             ))}
@@ -76,7 +76,7 @@ export function ReadyActionPanel({
           onClick={onRequestCancel}
         >
           <Ban className="h-4 w-4" />
-          ยกเลิก {selectedOrder.code}
+          ยกเลิก {selectedOrder.orderNo}
         </Button>
       )}
     </>

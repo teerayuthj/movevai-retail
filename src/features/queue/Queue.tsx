@@ -135,6 +135,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
       const matchesQuery =
         !normalizedQuery ||
         [
+          order.orderNo,
           order.code,
           order.customer.name,
           order.customer.phone,
@@ -209,7 +210,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
         note,
       });
       const orderId = urgentTarget.orderId;
-      const orderCode = orders.find((order) => order.id === orderId)?.code ?? '';
+      const orderCode = orders.find((order) => order.id === orderId)?.orderNo ?? '';
       setUrgentTarget(null);
       toast.success(`ส่งงานทันที ${orderCode} ให้คนขับแล้ว — รอคนขับรับงาน`);
       onOpenTracking(`?tab=awaiting_acceptance&order=${encodeURIComponent(orderId)}`);
@@ -227,7 +228,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     setOperationError('');
     try {
       await startDelivery(selectedOrder.id);
-      toast.success(`${selectedOrder.code} จำลอง Messenger รับงานและเริ่มส่งแล้ว`);
+      toast.success(`${selectedOrder.orderNo} จำลอง Messenger รับงานและเริ่มส่งแล้ว`);
       onOpenTracking(`?tab=in_transit&order=${encodeURIComponent(selectedOrder.id)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -386,7 +387,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
         title="ยกเลิกออเดอร์"
         description={
           cancelTargetId
-            ? `${orders.find((order) => order.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผล`
+            ? `${orders.find((order) => order.id === cancelTargetId)?.orderNo ?? ''} — เลือกเหตุผล`
             : undefined
         }
         reasons={CANCEL_REASONS}
@@ -399,7 +400,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
         }}
         onConfirm={({ reason, note }) => {
           if (!cancelTargetId) return;
-          const code = orders.find((order) => order.id === cancelTargetId)?.code ?? '';
+          const code = orders.find((order) => order.id === cancelTargetId)?.orderNo ?? '';
           setCancelError('');
           void cancelOrder(cancelTargetId, { reason, note })
             .then(() => {
@@ -442,7 +443,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
           <div className="rounded-lg border bg-background/70 px-3 py-2">
             <div className="text-[11px] text-muted-foreground">Order ที่เลือก</div>
             <div className="mt-0.5 truncate font-mono text-sm font-semibold">
-              {selectedOrder?.code ?? 'ยังไม่ได้เลือก'}
+              {selectedOrder?.orderNo ?? 'ยังไม่ได้เลือก'}
             </div>
             {fastSelectedSla && (
               <div
@@ -548,7 +549,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                     </div>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {selectedOrder
-                        ? `${selectedOrder.code} · ${selectedOrder.customer.address}`
+                        ? `${selectedOrder.orderNo} · ${selectedOrder.customer.address}`
                         : 'เลือก order จากรายการหรือแตะหมุดเพื่อคำนวณเส้นทาง'}
                     </p>
                   </div>
@@ -603,7 +604,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                             <button
                               type="button"
                               className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-warning/30 bg-background px-2.5 text-xs font-medium text-warning transition hover:bg-warning/10"
-                              aria-label={`แก้ไขข้อมูลจาก CSV ของ ${order.code}`}
+                              aria-label={`แก้ไขข้อมูลจาก CSV ของ ${order.orderNo}`}
                               title="แก้ไขข้อมูลจาก CSV"
                               onClick={() => openOrderCsvEdit(order)}
                             >
@@ -614,7 +615,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                           <button
                             type="button"
                             className="inline-flex h-8 items-center justify-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium text-info transition hover:bg-info/10"
-                            aria-label={`ดูแผนที่ของ ${order.code}`}
+                            aria-label={`ดูแผนที่ของ ${order.orderNo}`}
                             title="ดูแผนที่"
                             onClick={() => {
                               setSelectedOrderId(order.id);
@@ -643,9 +644,9 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
               {selectedOrder
                 ? selectedOrder.status === 'ready'
                   ? selectedDriverIds.length > 1
-                    ? `สำหรับ ${selectedOrder.code} · ส่งร่วม ${selectedDriverIds.length} คน`
-                    : `สำหรับ ${selectedOrder.code} · เลือกหลายคนเพื่อส่งร่วมกัน`
-                  : `${selectedOrder.code} · ${statusLabel[selectedOrder.status]}`
+                    ? `สำหรับ ${selectedOrder.orderNo} · ส่งร่วม ${selectedDriverIds.length} คน`
+                    : `สำหรับ ${selectedOrder.orderNo} · เลือกหลายคนเพื่อส่งร่วมกัน`
+                  : `${selectedOrder.orderNo} · ${statusLabel[selectedOrder.status]}`
                 : 'เลือก order ก่อน'}
             </CardDescription>
           </CardHeader>
@@ -765,7 +766,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
       {/* มือถือ: เลือกคนขับ + มอบหมาย/สร้าง Route แบบเต็มจอ */}
       <MobileDetailSheet
         open={!!selectedOrder && mobileDetailOpen}
-        title={<span className="font-mono">{selectedOrder?.code}</span>}
+        title={<span className="font-mono">{selectedOrder?.orderNo}</span>}
         subtitle={selectedOrder ? statusLabel[selectedOrder.status] : undefined}
         onClose={() => setMobileDetailOpen(false)}
         footer={assignmentActions}

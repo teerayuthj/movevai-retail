@@ -1,4 +1,5 @@
 import { Badge } from '@/components/ui/badge';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/orderTypes';
 import { formatPlanningDateTime, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { hasCsvImportSource } from '@/lib/orderSourceLink';
@@ -54,7 +55,8 @@ export function PlanningOrderCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs font-medium">{order.code}</span>
+            <span className="font-mono text-xs font-medium">{order.orderNo}</span>
+            <CopyOrderNoButton orderNo={order.orderNo} />
             {isUnreleasedPlannedOrder(order) ? (
               <Badge variant="info" className="h-5 px-1.5 text-[10px]">
                 {formatPlanningDateTime(

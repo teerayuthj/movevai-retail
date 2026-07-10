@@ -118,7 +118,7 @@ export function DriverCard({
               <div key={order.id} className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div>
-                    <div className="font-mono text-xs font-medium">{order.code}</div>
+                    <div className="font-mono text-xs font-medium">{order.orderNo}</div>
                     <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
                       {order.customer.name}
                     </div>

@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import {
   Ban,
@@ -222,7 +223,8 @@ export function QueueOrderCard({
                   #{rank}
                 </span>
               )}
-              <span className="font-mono text-xs font-medium">{order.code}</span>
+              <span className="font-mono text-xs font-medium">{order.orderNo}</span>
+              <CopyOrderNoButton orderNo={order.orderNo} />
               <Badge
                 variant={order.status === 'ready' ? 'success' : 'muted'}
                 className="h-5 px-1.5 text-[10px]"
@@ -319,7 +321,10 @@ export function OrderSummary({ order }: { order: Order }) {
   return (
     <div className="rounded-lg border p-3">
       <div className="flex items-center justify-between">
-        <span className="font-mono text-sm font-medium">{order.code}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-sm font-medium">{order.orderNo}</span>
+          <CopyOrderNoButton orderNo={order.orderNo} />
+        </div>
         <Badge variant="muted">{order.items.length} รายการ</Badge>
       </div>
       <div className="mt-1 text-sm">{order.customer.name}</div>

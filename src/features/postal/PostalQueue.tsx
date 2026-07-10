@@ -46,7 +46,7 @@ const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
   Object.keys(failNextActionLabel) as FailNextAction[]
 ).map((value) => ({ value, label: failNextActionLabel[value] }));
 
-export function PostalQueuePage() {
+export function PostalQueuePage({ locationSearch }: { locationSearch?: string }) {
   const {
     orders,
     exportPostalBatch,
@@ -74,8 +74,11 @@ export function PostalQueuePage() {
     ['delivered', 'failed', 'cancelled', 'returned'].includes(o.status),
   );
 
+  const params = useMemo(() => new URLSearchParams(locationSearch ?? ''), [locationSearch]);
+  const focusedOrderId = params.get('order');
+  const requestedQuery = params.get('q') ?? '';
   const [activeTab, setActiveTab] = useState<PostalTab>('ready');
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(requestedQuery);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [lastExport, setLastExport] = useState<{ batchId: string; count: number } | null>(null);
@@ -100,6 +103,7 @@ export function PostalQueuePage() {
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return [
+      order.orderNo,
       order.code,
       order.customer.name,
       order.customer.phone,
@@ -113,6 +117,17 @@ export function PostalQueuePage() {
   });
 
   const selectedOrder = orders.find((o) => o.id === selectedOrderId) ?? null;
+
+  useEffect(() => {
+    setQuery(requestedQuery);
+    if (!focusedOrderId) return;
+    const focused = postalOrders.find((order) => order.id === focusedOrderId);
+    const focusedTab = focused ? getPostalTab(focused) : null;
+    if (focused && focusedTab) {
+      setActiveTab(focusedTab);
+      setSelectedOrderId(focused.id);
+    }
+  }, [focusedOrderId, postalOrders, requestedQuery]);
 
   useEffect(() => {
     if (!filteredOrders.some((o) => o.id === selectedOrderId)) {
@@ -327,7 +342,7 @@ export function PostalQueuePage() {
                   order={selectedOrder}
                   onTracking={(id, tracking) => setPostalTracking(id, tracking)}
                   onHandOver={(id) => {
-                    const code = orders.find((order) => order.id === id)?.code ?? '';
+                    const code = orders.find((order) => order.id === id)?.orderNo ?? '';
                     markPostalHandedOver([id]);
                     toast.success(`มอบพัสดุ ${code} ให้ไปรษณีย์แล้ว`);
                   }}
@@ -367,7 +382,7 @@ export function PostalQueuePage() {
         title="ยกเลิกออเดอร์ไปรษณีย์"
         description={
           cancelTargetId
-            ? `${orders.find((o) => o.id === cancelTargetId)?.code ?? ''} — เลือกเหตุผล`
+            ? `${orders.find((o) => o.id === cancelTargetId)?.orderNo ?? ''} — เลือกเหตุผล`
             : undefined
         }
         reasons={CANCEL_REASONS}
@@ -380,7 +395,7 @@ export function PostalQueuePage() {
         }}
         onConfirm={({ reason, note }) => {
           if (!cancelTargetId) return;
-          const code = orders.find((o) => o.id === cancelTargetId)?.code ?? '';
+          const code = orders.find((o) => o.id === cancelTargetId)?.orderNo ?? '';
           setCancelError('');
           void cancelOrder(cancelTargetId, { reason, note })
             .then(() => {
@@ -400,7 +415,7 @@ export function PostalQueuePage() {
         title="บันทึกการส่งไม่สำเร็จ"
         description={
           failTargetId
-            ? `${orders.find((o) => o.id === failTargetId)?.code ?? ''} — ระบุเหตุผลและขั้นตอนต่อไป`
+            ? `${orders.find((o) => o.id === failTargetId)?.orderNo ?? ''} — ระบุเหตุผลและขั้นตอนต่อไป`
             : undefined
         }
         reasons={FAIL_REASONS}
@@ -419,7 +434,7 @@ export function PostalQueuePage() {
         onCancel={() => setFailTargetId(null)}
         onConfirm={({ reason, note, action }) => {
           if (failTargetId && action) {
-            const code = orders.find((o) => o.id === failTargetId)?.code ?? '';
+            const code = orders.find((o) => o.id === failTargetId)?.orderNo ?? '';
             failDelivery(failTargetId, {
               reason,
               nextAction: action,

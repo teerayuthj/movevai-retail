@@ -42,6 +42,7 @@ export function matchesPlanningQuery(order: Order, drivers: Driver[], query: str
     : '';
 
   return [
+    order.orderNo,
     order.code,
     order.customer.name,
     order.customer.phone,

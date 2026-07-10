@@ -224,7 +224,7 @@ function renderTemplateText(templateText: string, order: Order, trackingUrl: str
     (_, token) => {
       switch (token) {
         case 'orderCode':
-          return order.code;
+          return order.orderNo;
         case 'customerName':
           return order.customer.name;
         case 'plannedDelivery':

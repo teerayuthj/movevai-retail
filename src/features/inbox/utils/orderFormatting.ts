@@ -28,6 +28,7 @@ export function buildRawText(order: Order): string {
 
 export function buildOrderSearchText(order: Order): string {
   return [
+    order.orderNo,
     order.code,
     order.customer.name,
     order.customer.phone,

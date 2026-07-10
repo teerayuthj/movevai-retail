@@ -69,7 +69,7 @@ export default function OrderListItem({
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs font-medium">{order.code}</span>
+        <span className="font-mono text-xs font-medium">{order.orderNo}</span>
         <Badge
           variant={STATUS_COLORS[order.status] ?? 'secondary'}
           className="h-5 px-1.5 text-[10px]"

@@ -37,7 +37,7 @@ export default function OrderListPanel({
         <Input
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="ค้นหา order / ลูกค้า / SKU..."
+          placeholder="ค้นหาเลขออเดอร์ / ลูกค้า / SKU..."
           className="h-8"
         />
 

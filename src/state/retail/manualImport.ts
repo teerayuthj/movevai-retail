@@ -29,9 +29,11 @@ function nextManualOrderIdentity(orders: Order[], offset: number) {
   }, 1040);
 
   const nextNumber = maxNumber + offset + 1;
+  const code = `#AUS-${nextNumber}`;
   return {
     id: `O-${nextNumber}`,
-    code: `#AUS-${nextNumber}`,
+    orderNo: code,
+    code,
   };
 }
 

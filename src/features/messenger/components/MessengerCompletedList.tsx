@@ -146,7 +146,7 @@ export function MessengerCompletedList({ messengerCode }: { messengerCode: strin
       {items.map((item) => (
         <div key={item.id} className="rounded-xl border bg-card p-4">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-xs font-medium">{item.code}</span>
+            <span className="font-mono text-xs font-medium">{item.orderNo}</span>
             <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
               <Package className="h-3 w-3" /> {item.itemCount}
             </Badge>
