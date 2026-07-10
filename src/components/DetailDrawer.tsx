@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 
 type DetailDrawerProps = {
   /** เปิด overlay (ปกติผูกกับ "มีรายการที่เลือกอยู่หรือไม่") */
@@ -29,6 +29,17 @@ export function DetailDrawer({
   widthClassName = 'lg:w-[460px]',
   children,
 }: DetailDrawerProps) {
+  // ล็อค scroll ของ body ระหว่างเปิด drawer เพื่อกันไม่ให้ scrollbar ของหน้าเบื้องหลัง
+  // โผล่ซ้อนกับ scrollbar ของ drawer (พาเนล dock ขวาชนตำแหน่งเดียวกัน)
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   if (!open) return null;
 
   return (

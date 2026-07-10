@@ -10,6 +10,7 @@ import {
   Route,
   History,
   FileSpreadsheet,
+  FileText,
   Smartphone,
   BellRing,
 } from 'lucide-react';
@@ -51,6 +52,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: 'queue', label: 'ส่งทันที', icon: Truck, showBadge: true },
       { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
       { key: 'delivery_tracking', label: 'ติดตามการจัดส่ง', icon: Route, showBadge: true },
+      { key: 'delivery_report', label: 'รายงานงานส่ง', icon: FileText },
       { key: 'tracking_history', label: 'ประวัติการติดตาม', icon: History },
       { key: 'notifications', label: 'แจ้งเตือนลูกค้า', icon: BellRing },
       { key: 'postal', label: 'ไปรษณีย์ไทย', icon: Mailbox, showBadge: true },

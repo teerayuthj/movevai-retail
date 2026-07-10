@@ -10,8 +10,7 @@ import {
   type Order,
 } from '@/data/orderTypes';
 import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
-import { cn } from '@/lib/utils';
-import { AlertTriangle, CalendarClock, Check, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, XCircle } from 'lucide-react';
 
 type PlanSettingsCardProps = {
   drivers: Driver[];
@@ -50,7 +49,6 @@ export function PlanSettingsCard({
   onCancelPlans,
   cancelDisabled,
 }: PlanSettingsCardProps) {
-  const selectedDriverSet = new Set(plannedDriverIds);
   const selectedDriverWorkloads = plannedDriverIds
     .map((driverId) => drivers.find((driver) => driver.id === driverId))
     .filter((driver): driver is Driver => Boolean(driver))
@@ -66,14 +64,6 @@ export function PlanSettingsCard({
       workload.returning > 0 ||
       workload.plannedForDate > 0,
   );
-
-  const toggleDriver = (driverId: string) => {
-    onPlannedDriverIds(
-      selectedDriverSet.has(driverId)
-        ? plannedDriverIds.filter((id) => id !== driverId)
-        : [...plannedDriverIds, driverId],
-    );
-  };
 
   return (
     <Card>
@@ -119,7 +109,7 @@ export function PlanSettingsCard({
         <div className="grid gap-2">
           <div className="flex items-center justify-between gap-2">
             <label className="text-[11px] font-medium text-muted-foreground">
-              Messenger ตามแผน
+              Messenger ที่เลือก
             </label>
             {plannedDriverIds.length > 0 && (
               <Button
@@ -133,49 +123,29 @@ export function PlanSettingsCard({
               </Button>
             )}
           </div>
-          <div className="app-scroll grid max-h-64 gap-2 overflow-auto rounded-md border bg-background p-2 pr-3">
-            {drivers.map((driver) => {
-              const selected = selectedDriverSet.has(driver.id);
-              const workload = getDriverWorkloadSummary(driver, orders, { plannedDate: planDate });
-              return (
-                <button
-                  key={driver.id}
-                  type="button"
-                  onClick={() => toggleDriver(driver.id)}
-                  className={cn(
-                    'flex min-h-20 items-start gap-3 rounded-md border px-3 py-2.5 text-left text-sm transition-colors',
-                    selected
-                      ? 'border-primary bg-primary/5 text-primary'
-                      : 'border-transparent hover:bg-muted',
-                  )}
-                  aria-pressed={selected}
-                >
+          {selectedDriverWorkloads.length > 0 ? (
+            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm">
+              <div className="flex flex-wrap gap-1.5">
+                {selectedDriverWorkloads.map(({ driver }) => (
                   <span
-                    className={cn(
-                      'mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded border',
-                      selected ? 'border-primary bg-primary text-primary-foreground' : 'bg-card',
-                    )}
+                    key={driver.id}
+                    className="rounded-md bg-background px-2 py-1 text-xs font-medium shadow-xs"
                   >
-                    {selected && <Check className="h-3 w-3" />}
+                    {driver.name}
                   </span>
-                  <span className="grid min-w-0 flex-1 gap-1">
-                    <span className="block truncate font-medium leading-5">{driver.name}</span>
-                    <span className="block truncate text-[11px] leading-4 text-muted-foreground">
-                      {driver.phone}
-                    </span>
-                    <DriverWorkloadChips
-                      workload={workload}
-                      plannedLabel="แผนวันนั้น"
-                      className="min-h-5 gap-x-1 gap-y-1"
-                    />
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-[11px] text-muted-foreground">
-            เลือกได้มากกว่า 1 คน ระบบจะกระจายรายการที่เลือกเป็น Route แยกตาม Messenger
-          </p>
+                ))}
+              </div>
+              {selectedDriverWorkloads.length > 1 && (
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  ระบบจะกระจายรายการที่เลือกเป็น Route แยกตาม Messenger
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed bg-muted/20 px-3 py-3 text-[11px] text-muted-foreground">
+              เลือกคนขับจากกล่อง “งานคนขับของวัน” ทางซ้าย
+            </div>
+          )}
         </div>
 
         {selectedDriversWithExistingWork.length > 0 && (

@@ -16,6 +16,9 @@ const QueuePage = lazy(() => import('@/pages/Queue').then((m) => ({ default: m.Q
 const DeliveryTrackingPage = lazy(() =>
   import('@/pages/DeliveryTracking').then((m) => ({ default: m.DeliveryTrackingPage })),
 );
+const DeliveryReportPage = lazy(() =>
+  import('@/pages/DeliveryReport').then((m) => ({ default: m.DeliveryReportPage })),
+);
 const TrackingHistoryPage = lazy(() =>
   import('@/pages/TrackingHistory').then((m) => ({ default: m.TrackingHistoryPage })),
 );
@@ -151,8 +154,11 @@ export default function App() {
             <DeliveryTrackingPage
               locationSearch={locationSearch}
               onOpenQueue={(search) => navigateToPage('queue', { search })}
+              onOpenTrackingHistory={() => navigateToPage('tracking_history')}
+              onOpenDeliveryReport={() => navigateToPage('delivery_report')}
             />
           )}
+          {page === 'delivery_report' && <DeliveryReportPage />}
           {page === 'tracking_history' && <TrackingHistoryPage />}
           {page === 'notifications' && <NotificationsPage />}
           {page === 'planning' && (

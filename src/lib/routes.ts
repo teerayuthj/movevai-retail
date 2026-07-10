@@ -4,6 +4,7 @@ export type PageKey =
   | 'inbox'
   | 'queue'
   | 'delivery_tracking'
+  | 'delivery_report'
   | 'tracking_history'
   | 'notifications'
   | 'planning'
@@ -26,6 +27,7 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'inbox', path: '/order-inbox' },
   { page: 'queue', path: '/driver-queue' },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
+  { page: 'delivery_report', path: '/delivery-report' },
   { page: 'tracking_history', path: '/tracking-history' },
   { page: 'notifications', path: '/notifications' },
   { page: 'planning', path: '/delivery-planning' },
