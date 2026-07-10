@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
+  Ban,
   FileSpreadsheet,
   RefreshCw,
   CheckCircle2,
@@ -276,8 +277,8 @@ function BatchListItem({
   );
 }
 
-type Tab = 'review' | 'approved' | 'rejected' | 'all';
-type RowKind = 'error' | 'review' | 'approved' | 'rejected';
+type Tab = 'review' | 'approved' | 'cancelled' | 'rejected' | 'all';
+type RowKind = 'error' | 'review' | 'approved' | 'cancelled' | 'rejected';
 
 type RowVM = {
   rowId: string;
@@ -510,6 +511,7 @@ function visibleRawEntries(raw: Record<string, string>) {
 function rowKindForOrder(order: Order | undefined): RowKind {
   if (!order) return 'review';
   if (order.status === 'rejected') return 'rejected';
+  if (order.status === 'cancelled') return 'cancelled';
   if (REVIEW_STATUSES.includes(order.status)) return 'review';
   return 'approved';
 }
@@ -540,6 +542,7 @@ function canOpenFastDispatch(card: CardVM, order: Order | undefined) {
     !!card.orderId &&
     card.kind !== 'error' &&
     card.kind !== 'rejected' &&
+    card.kind !== 'cancelled' &&
     !hasPublishedDeliveryJob(order)
   );
 }
@@ -549,6 +552,7 @@ function canOpenPlanning(card: CardVM, order: Order | undefined) {
     !!card.orderId &&
     card.kind !== 'error' &&
     card.kind !== 'rejected' &&
+    card.kind !== 'cancelled' &&
     !hasPublishedDeliveryJob(order)
   );
 }
@@ -837,14 +841,16 @@ function TabChip({
   onClick: () => void;
   label: string;
   count: number;
-  tone: 'accent' | 'muted' | 'success';
+  tone: 'accent' | 'muted' | 'success' | 'destructive';
 }) {
   const activeClass =
     tone === 'success'
       ? 'border-success bg-success/10 text-success'
-      : tone === 'muted'
-        ? 'border-foreground/40 text-foreground'
-        : 'border-primary bg-primary/5 text-primary';
+      : tone === 'destructive'
+        ? 'border-destructive bg-destructive/10 text-destructive'
+        : tone === 'muted'
+          ? 'border-foreground/40 text-foreground'
+          : 'border-primary bg-primary/5 text-primary';
   return (
     <button
       type="button"
@@ -866,7 +872,14 @@ function TabEmptyState({
   onJump,
 }: {
   tab: Tab;
-  stats: { review: number; approved: number; rejected: number; error: number; total: number };
+  stats: {
+    review: number;
+    approved: number;
+    cancelled: number;
+    rejected: number;
+    error: number;
+    total: number;
+  };
   onJump: (tab: Tab) => void;
 }) {
   const reviewCount = stats.review + stats.error;
@@ -875,6 +888,8 @@ function TabEmptyState({
     suggestions.push({ tab: 'approved', label: 'อนุมัติแล้ว', count: stats.approved });
   if (tab !== 'review' && reviewCount > 0)
     suggestions.push({ tab: 'review', label: 'รอตรวจ', count: reviewCount });
+  if (tab !== 'cancelled' && stats.cancelled > 0)
+    suggestions.push({ tab: 'cancelled', label: 'ยกเลิกแล้ว', count: stats.cancelled });
   if (tab !== 'rejected' && stats.rejected > 0)
     suggestions.push({ tab: 'rejected', label: 'ปฏิเสธ', count: stats.rejected });
 
@@ -884,9 +899,11 @@ function TabEmptyState({
     ? 'ตรวจครบแล้ว — ไม่มีรายการรอตรวจ'
     : tab === 'approved'
       ? 'ยังไม่มีรายการที่อนุมัติเข้าคิว'
-      : tab === 'rejected'
-        ? 'ไม่มีรายการที่ปฏิเสธ'
-        : 'ไม่มีรายการในกลุ่มนี้';
+      : tab === 'cancelled'
+        ? 'ไม่มีรายการที่ยกเลิก'
+        : tab === 'rejected'
+          ? 'ไม่มีรายการที่ปฏิเสธ'
+          : 'ไม่มีรายการในกลุ่มนี้';
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -927,6 +944,13 @@ function RowStatusBadge({ kind }: { kind: RowKind }) {
     return (
       <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
         <Clock className="h-3 w-3 shrink-0" /> รอตรวจ
+      </span>
+    );
+  }
+  if (kind === 'cancelled') {
+    return (
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+        <Ban className="h-3 w-3 shrink-0" /> ยกเลิกแล้ว
       </span>
     );
   }
@@ -1089,12 +1113,14 @@ function BatchWorkspace({
   const stats = useMemo(() => {
     let review = 0;
     let approved = 0;
+    let cancelled = 0;
     let rejected = 0;
     let error = 0;
     let value = 0;
     for (const card of cards) {
       if (card.kind === 'review') review += 1;
       else if (card.kind === 'approved') approved += 1;
+      else if (card.kind === 'cancelled') cancelled += 1;
       else if (card.kind === 'rejected') rejected += 1;
       else error += 1;
       if (card.primary.value) value += card.primary.value;
@@ -1102,6 +1128,7 @@ function BatchWorkspace({
     return {
       review,
       approved,
+      cancelled,
       rejected,
       error,
       value,
@@ -1115,14 +1142,24 @@ function BatchWorkspace({
     if (loading || tabTouched) return;
     if (stats.review + stats.error > 0) setTab('review');
     else if (stats.approved > 0) setTab('approved');
+    else if (stats.cancelled > 0) setTab('cancelled');
     else if (stats.rejected > 0) setTab('rejected');
     else setTab('all');
-  }, [loading, tabTouched, stats.review, stats.error, stats.approved, stats.rejected]);
+  }, [
+    loading,
+    tabTouched,
+    stats.review,
+    stats.error,
+    stats.approved,
+    stats.cancelled,
+    stats.rejected,
+  ]);
 
   const visibleCards = useMemo(() => {
     if (tab === 'all') return cards;
     if (tab === 'review') return cards.filter((c) => c.kind === 'review' || c.kind === 'error');
     if (tab === 'approved') return cards.filter((c) => c.kind === 'approved');
+    if (tab === 'cancelled') return cards.filter((c) => c.kind === 'cancelled');
     return cards.filter((c) => c.kind === 'rejected');
   }, [cards, tab]);
 
@@ -1665,6 +1702,15 @@ function BatchWorkspace({
           count={stats.approved}
           tone="success"
         />
+        {stats.cancelled > 0 && (
+          <TabChip
+            active={tab === 'cancelled'}
+            onClick={() => selectTab('cancelled')}
+            label="ยกเลิกแล้ว"
+            count={stats.cancelled}
+            tone="destructive"
+          />
+        )}
         <TabChip
           active={tab === 'rejected'}
           onClick={() => selectTab('rejected')}
@@ -1771,7 +1817,8 @@ function BatchWorkspace({
           const order = card.orderId ? ordersById.get(card.orderId) : undefined;
           const selectable = card.kind === 'review' && !!card.orderId && !!order;
           const checked = !!card.orderId && selected.has(card.orderId);
-          const editable = !!card.orderId && card.kind !== 'error';
+          // ยกเลิกแล้วเป็นสถานะสุดทาง — แก้ไขไม่ได้ (ต่างจากปฏิเสธที่ยังดึงกลับมาแก้ได้)
+          const editable = !!card.orderId && card.kind !== 'error' && card.kind !== 'cancelled';
           const showFastDispatchAction = !!card.orderId && canOpenFastDispatch(card, order);
           const showPlanningAction = !!card.orderId && canOpenPlanning(card, order);
           const plannedAlready = !!order && isUnreleasedPlannedOrder(order);
@@ -1796,7 +1843,8 @@ function BatchWorkspace({
               className={cn(
                 'rounded-lg border bg-background p-3 transition-colors hover:border-border',
                 checked && 'border-primary/40 bg-primary/5',
-                card.kind === 'rejected' && 'bg-muted/40 text-muted-foreground',
+                (card.kind === 'rejected' || card.kind === 'cancelled') &&
+                  'bg-muted/40 text-muted-foreground',
               )}
             >
               <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1849,7 +1897,7 @@ function BatchWorkspace({
                   <div
                     className={cn(
                       'mt-2 truncate text-sm font-semibold',
-                      card.kind === 'rejected' && 'line-through',
+                      (card.kind === 'rejected' || card.kind === 'cancelled') && 'line-through',
                     )}
                   >
                     {r.name}
@@ -2429,12 +2477,18 @@ function BatchWorkspace({
         </div>
       )}
 
-      {errorSummary && stats.error > 0 && tab !== 'approved' && tab !== 'rejected' && (
-        <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5">
-          <div className="mb-1 text-[11px] font-medium text-destructive">สาเหตุข้อผิดพลาด</div>
-          <pre className="whitespace-pre-wrap text-[10px] text-destructive/80">{errorSummary}</pre>
-        </div>
-      )}
+      {errorSummary &&
+        stats.error > 0 &&
+        tab !== 'approved' &&
+        tab !== 'cancelled' &&
+        tab !== 'rejected' && (
+          <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5">
+            <div className="mb-1 text-[11px] font-medium text-destructive">สาเหตุข้อผิดพลาด</div>
+            <pre className="whitespace-pre-wrap text-[10px] text-destructive/80">
+              {errorSummary}
+            </pre>
+          </div>
+        )}
 
       {/* bulk action bar */}
       {selected.size > 0 && (
