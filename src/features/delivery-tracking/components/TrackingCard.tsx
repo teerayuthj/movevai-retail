@@ -36,7 +36,28 @@ type TrackingCardProps = {
   settling?: boolean;
   /** ข้อความสรุป action ที่เพิ่งทำ เช่น "ปิดงานแล้ว" */
   settledLabel?: string;
+  /** เวลาปัจจุบันจากหน้าหลัก เพื่อให้อายุงานทั้งรายการอ้างอิงเวลาเดียวกัน */
+  nowMs?: number;
 };
+
+const REVIEW_ATTENTION_MINUTES = 24 * 60;
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleString('th-TH', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function getElapsedMinutes(value: string, nowMs: number) {
+  const startedAt = new Date(value).getTime();
+  if (Number.isNaN(startedAt)) return null;
+  return Math.max(0, Math.floor((nowMs - startedAt) / 60_000));
+}
 
 /** การ์ดในรายการ: สรุป + หลักฐานย่อ + ปุ่ม action ในตัว */
 export function TrackingCard({
@@ -48,6 +69,7 @@ export function TrackingCard({
   inTransitMinutes,
   settling = false,
   settledLabel,
+  nowMs = Date.now(),
 }: TrackingCardProps) {
   const pod = order.proofOfDelivery;
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
@@ -65,6 +87,12 @@ export function TrackingCard({
     order.status === 'in_transit' ||
     order.status === 'pending_confirmation' ||
     order.status === 'returning';
+  const proofCapturedAt = pod?.capturedAt;
+  const reviewMinutes =
+    order.status === 'pending_confirmation' && proofCapturedAt
+      ? getElapsedMinutes(proofCapturedAt, nowMs)
+      : null;
+  const reviewNeedsAttention = reviewMinutes != null && reviewMinutes >= REVIEW_ATTENTION_MINUTES;
 
   return (
     <div
@@ -143,10 +171,32 @@ export function TrackingCard({
         </div>
 
         <div className="mt-1.5 text-sm font-medium">{order.customer.name}</div>
-        {overdueMinutes != null && order.deliveryPlan && (
-          <div className="mt-1 text-[11px] font-medium text-destructive">
+        {order.status === 'assigned' && order.deliveryPlan && (
+          <div
+            className={cn(
+              'mt-1 text-[11px] font-medium',
+              overdueMinutes != null ? 'text-destructive' : 'text-muted-foreground',
+            )}
+          >
             {order.deliveryRoute?.code ?? 'Route'} · นัดส่ง{' '}
             {formatPlanningDateTime(order.deliveryPlan.plannedDate, order.deliveryPlan.plannedTime)}
+          </div>
+        )}
+        {order.status === 'in_transit' && order.inTransitAt && (
+          <div className="mt-1 text-[11px] font-medium text-info">
+            เริ่มจัดส่ง {formatDateTime(order.inTransitAt)}
+          </div>
+        )}
+        {order.status === 'pending_confirmation' && proofCapturedAt && reviewMinutes != null && (
+          <div
+            className={cn(
+              'mt-1 text-[11px] font-medium',
+              reviewNeedsAttention ? 'text-destructive' : 'text-warning',
+            )}
+          >
+            ส่งหลักฐาน {formatDateTime(proofCapturedAt)} · รอยืนยัน{' '}
+            {formatElapsedDuration(reviewMinutes)}
+            {reviewNeedsAttention && ' — ควรตรวจสอบ'}
           </div>
         )}
         <div className="mt-1 space-y-1 text-[11px] text-muted-foreground">

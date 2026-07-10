@@ -154,6 +154,8 @@ export default function App() {
             <DeliveryTrackingPage
               locationSearch={locationSearch}
               onOpenQueue={(search) => navigateToPage('queue', { search })}
+              onOpenTrackingHistory={() => navigateToPage('tracking_history')}
+              onOpenDeliveryReport={() => navigateToPage('delivery_report')}
             />
           )}
           {page === 'delivery_report' && <DeliveryReportPage />}
