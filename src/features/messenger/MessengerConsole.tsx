@@ -22,6 +22,7 @@ import {
   Package,
   Phone,
   RefreshCw,
+  Users,
 } from 'lucide-react';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { MESSENGER_JOB_STATUSES, MESSENGER_TABS, type MessengerTab } from './messengerTabs';
@@ -53,7 +54,11 @@ import { MessengerRouteMap } from './components/MessengerRouteMap';
 import { MessengerOrderMapPage } from './components/MessengerOrderMapPage';
 import { useRouteStops } from './hooks/useRouteStops';
 import { cn } from '@/lib/utils';
-import { isMessengerOrderParticipant } from '@/lib/messengerJobs';
+import {
+  getMessengerOrderRole,
+  isMessengerOrderParticipant,
+  type MessengerOrderRole,
+} from '@/lib/messengerJobs';
 import type { Order } from '@/data/orderTypes';
 import {
   hasMessengerSession,
@@ -77,13 +82,17 @@ function InTransitJobSheet({
   expanded,
   onExpandedChange,
   onClose,
+  role = 'main',
 }: {
   order: Order;
   nowMs: number;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onClose: () => void;
+  /** co (คนขับร่วม) เห็นข้อมูลงานได้แต่ยืนยันส่งมอบไม่ได้ — คนขับหลักเป็นคนปิดงาน */
+  role?: MessengerOrderRole;
 }) {
+  const isCoDriver = role === 'co';
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
   // เวลาเริ่มส่ง = ตัวเลขนิ่ง, เวลานัด = นับถอยหลัง — จงใจไม่โชว์นาฬิกาจับเวลาให้คนขับ
   const startedAtLabel = formatInTransitStartTime(order);
@@ -206,11 +215,26 @@ function InTransitJobSheet({
                 นำทาง
               </a>
             </Button>
-            <Button size="sm" className="flex-1 bg-success hover:bg-success/90" onClick={onClose}>
-              <CheckCircle2 className="h-4 w-4" />
-              ยืนยันส่งมอบ
-            </Button>
+            {!isCoDriver && (
+              <Button size="sm" className="flex-1 bg-success hover:bg-success/90" onClick={onClose}>
+                <CheckCircle2 className="h-4 w-4" />
+                ยืนยันส่งมอบ
+              </Button>
+            )}
           </div>
+
+          {isCoDriver && (
+            <div className="mt-2 flex items-start gap-2 rounded-xl border border-info/30 bg-info/10 px-3 py-2 text-[12px] text-info">
+              <Users className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                คุณร่วมส่งงานนี้ — นำโดย{' '}
+                <span className="font-semibold">
+                  {order.assignedDriverName ?? order.assignedDriverId}
+                </span>{' '}
+                ซึ่งเป็นคนยืนยันส่งมอบ
+              </span>
+            </div>
+          )}
 
           {expanded && (
             <div className="app-scroll mt-3 max-h-[34dvh] space-y-3 overflow-auto border-t pt-3">
@@ -604,8 +628,14 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
   // กรณีเปิดแอปกลับมาตอนมีงานกำลังส่งอยู่แล้ว: แผนที่มือถืออ่าน GPS local ได้
   // แต่ถ้าไม่มี tracking session จะไม่ส่งตำแหน่งให้ admin. เริ่ม session ให้เองหนึ่งครั้งต่อ route.
+  // คนขับร่วมห้ามเริ่ม/ยึด session ของ route — GPS เส้นหลักต้องมาจากคนขับหลักเท่านั้น
+  const activeDeliveryRole = activeDeliveryJob
+    ? getMessengerOrderRole(activeDeliveryJob, messengerCode)
+    : null;
+
   useEffect(() => {
     const routeId = activeDeliveryJob?.deliveryRoute?.id;
+    if (activeDeliveryRole === 'co') return;
     const session = tracking.session;
     // session ของ delivery ที่ยัง active แต่ผูกกับ route อื่น (เช่น รอบเมื่อวานที่ยังไม่กดจบ)
     // ถือเป็น session ค้าง — ต้องเริ่ม/ยึด session ของ route ที่กำลังส่งจริง ไม่งั้น GPS ไม่ไปถึงแอดมิน
@@ -639,6 +669,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     });
   }, [
     activeDeliveryJob?.deliveryRoute?.id,
+    activeDeliveryRole,
     authenticated,
     fallbackLocation.location,
     jobsError,
@@ -869,6 +900,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 <InTransitJobSheet
                   order={activeDeliveryJob}
                   nowMs={nowMs}
+                  role={getMessengerOrderRole(activeDeliveryJob, messengerCode) ?? 'main'}
                   expanded={deliverySheetExpanded}
                   onExpandedChange={setDeliverySheetExpanded}
                   onClose={() => setCloseTargetId(activeDeliveryJob.id)}
@@ -949,6 +981,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                         <JobCard
                           order={order}
                           nowMs={nowMs}
+                          role={getMessengerOrderRole(order, messengerCode) ?? 'main'}
                           starting={startingJobId === order.id}
                           onStart={() => void handleStartJob(order)}
                           onClose={() => setCloseTargetId(order.id)}

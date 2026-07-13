@@ -21,6 +21,7 @@ import {
   Package,
   Phone,
   PenLine,
+  Users,
 } from 'lucide-react';
 import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
@@ -33,6 +34,7 @@ import {
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { navigationUrl } from '../geocode';
 import type { AssignedOrderOverdue } from '@/lib/deliveryPlanning';
+import type { MessengerOrderRole } from '@/lib/messengerJobs';
 
 // งานด่วนไม่มีเวลานัด → เส้นตายคือ SLA รับงาน (dispatch + 5 นาที) ต้องไม่พูดว่า "เวลานัด"
 function formatMessengerDueLabel(overdue: AssignedOrderOverdue) {
@@ -51,6 +53,7 @@ export function JobCard({
   onClose,
   onViewMap,
   starting = false,
+  role = 'main',
 }: {
   order: Order;
   nowMs?: number;
@@ -60,7 +63,10 @@ export function JobCard({
   onViewMap?: () => void;
   /** กำลังเริ่มงานนี้อยู่ (ระหว่างรอ backend) — disable ปุ่ม + แสดงสถานะ */
   starting?: boolean;
+  /** บทบาทของ messenger คนนี้ — co (คนขับร่วม) ดูงานได้แต่เริ่ม/ปิดงานไม่ได้ */
+  role?: MessengerOrderRole;
 }) {
+  const isCoDriver = role === 'co';
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
   const isFutureJob =
@@ -122,6 +128,19 @@ export function JobCard({
         </Badge>
       </div>
       <div className="mt-1 text-sm font-semibold">{order.customer.name}</div>
+
+      {isCoDriver && (
+        <div className="mt-2 flex items-start gap-2 rounded-xl border border-info/30 bg-info/10 px-3 py-2 text-[12px] text-info">
+          <Users className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>
+            คุณร่วมส่งงานนี้ — นำโดย{' '}
+            <span className="font-semibold">
+              {order.assignedDriverName ?? order.assignedDriverId}
+            </span>{' '}
+            (คนขับหลักเป็นคนเริ่มงานและปิดงาน)
+          </span>
+        </div>
+      )}
 
       {order.deliveryPlan?.plannedDate && (
         <div
@@ -293,7 +312,13 @@ export function JobCard({
       )}
 
       <div className="mt-3 flex items-center justify-end border-t border-border/50 pt-3">
-        {order.status === 'assigned' && (
+        {isCoDriver && (order.status === 'assigned' || order.status === 'in_transit') && (
+          <Badge variant="muted" className="gap-1">
+            <Users className="h-3 w-3" />
+            {order.status === 'assigned' ? 'รอคนขับหลักเริ่มงาน' : 'คนขับหลักกำลังส่ง'}
+          </Badge>
+        )}
+        {order.status === 'assigned' && !isCoDriver && (
           <Button
             size="sm"
             variant="default"
@@ -313,7 +338,7 @@ export function JobCard({
                     : 'เริ่มส่ง'}
           </Button>
         )}
-        {order.status === 'in_transit' && (
+        {order.status === 'in_transit' && !isCoDriver && (
           <Button size="sm" className="rounded-full px-4" onClick={onClose}>
             <CheckCircle2 className="h-4 w-4" />
             ยืนยันส่งมอบ
@@ -332,19 +357,21 @@ export function JobCard({
                   แผนที่
                 </Button>
               )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="rounded-full"
-                disabled={!canMessengerEditProof}
-                title={
-                  canMessengerEditProof ? undefined : 'messenger แก้ไขหลักฐานได้ครบ 1 ครั้งแล้ว'
-                }
-                onClick={onClose}
-              >
-                <PenLine className="h-3.5 w-3.5" />
-                แก้ไขหลักฐาน
-              </Button>
+              {!isCoDriver && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="rounded-full"
+                  disabled={!canMessengerEditProof}
+                  title={
+                    canMessengerEditProof ? undefined : 'messenger แก้ไขหลักฐานได้ครบ 1 ครั้งแล้ว'
+                  }
+                  onClick={onClose}
+                >
+                  <PenLine className="h-3.5 w-3.5" />
+                  แก้ไขหลักฐาน
+                </Button>
+              )}
             </div>
           </div>
         )}

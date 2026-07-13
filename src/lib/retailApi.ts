@@ -337,6 +337,7 @@ function normalizeOrder(order: ApiOrderWire): Order {
     // draft LINE import ยังไม่มีเลข (null) — ห้าม fallback เป็น code เพราะช่องเลขต้องว่างจนกว่าจะอนุมัติ
     orderNo: order.orderNo ?? null,
     assignedDriverId: order.assignedDriver?.code,
+    assignedDriverName: order.assignedDriver?.name,
     coDriverIds: order.coDriverCodes,
     proofOfDelivery: order.proofOfDelivery
       ? {

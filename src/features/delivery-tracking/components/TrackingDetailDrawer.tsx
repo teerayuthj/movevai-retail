@@ -5,6 +5,7 @@ import { CustomerTrackingQrCard } from '@/components/CustomerTrackingQrCard';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import {
   DriverSummary,
+  DriverTeamBadges,
   OrderSummary,
   ProofOfDeliveryInfo,
   ResolutionInfo,
@@ -20,6 +21,8 @@ import { Clock3, Loader2 } from 'lucide-react';
 type TrackingDetailDrawerProps = {
   order: Order | null;
   driver: Driver | null;
+  /** ใช้ resolve ชื่อคนขับร่วมบนป้ายทีมจัดส่ง */
+  drivers: Driver[];
   isDetailLoading: boolean;
   onClose: () => void;
   actions?: ReactNode;
@@ -31,6 +34,7 @@ type TrackingDetailDrawerProps = {
 export function TrackingDetailDrawer({
   order,
   driver,
+  drivers,
   isDetailLoading,
   onClose,
   actions,
@@ -89,9 +93,10 @@ export function TrackingDetailDrawer({
             {order.deliveryRoute?.dispatchMode === 'urgent' && (
               <Badge variant="info">ส่งทันที</Badge>
             )}
-            {driver && <Badge variant="muted">คนขับ: {driver.name}</Badge>}
-            {order.coDriverIds && order.coDriverIds.length > 0 && (
-              <Badge variant="info">+{order.coDriverIds.length} ร่วมส่ง</Badge>
+            {order.coDriverIds && order.coDriverIds.length > 0 ? (
+              <DriverTeamBadges order={order} drivers={drivers} />
+            ) : (
+              driver && <Badge variant="muted">คนขับ: {driver.name}</Badge>
             )}
             {isDetailLoading && (
               <Badge variant="muted" className="gap-1">

@@ -197,14 +197,21 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     onOpenTracking(buildTrackingSearch(selectedOrderForFocus));
   };
 
-  const confirmUrgentDispatch = async (note?: string) => {
-    if (!urgentTarget) return;
+  // driverIds มาจาก dialog (สลับคนขับหลักได้ก่อนยืนยัน) — index 0 = คนขับหลัก
+  const confirmUrgentDispatch = async ({
+    note,
+    driverIds,
+  }: {
+    note?: string;
+    driverIds: string[];
+  }) => {
+    if (!urgentTarget || driverIds.length === 0) return;
     setUrgentLoading(true);
     setUrgentError('');
     try {
       await publishUrgentRoute(urgentTarget.orderId, {
-        driverCode: urgentTarget.driverIds[0],
-        coDriverCodes: urgentTarget.driverIds.slice(1),
+        driverCode: driverIds[0],
+        coDriverCodes: driverIds.slice(1),
         note,
       });
       const orderId = urgentTarget.orderId;
@@ -364,7 +371,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
         onCancel={() => {
           if (!urgentLoading) setUrgentTarget(null);
         }}
-        onConfirm={(note) => void confirmUrgentDispatch(note)}
+        onConfirm={(input) => void confirmUrgentDispatch(input)}
       />
 
       <ResolutionDialog

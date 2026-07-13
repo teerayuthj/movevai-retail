@@ -261,8 +261,11 @@ export type Order = {
   requiresIdCheck: boolean;
   insured: boolean;
   assignedDriverId?: string;
+  // ชื่อคนขับหลักจาก backend — ฝั่ง messenger ไม่มี drivers list ของคนอื่น
+  // ต้องพึ่งค่านี้แสดง "นำโดยใคร" ให้คนขับร่วม
+  assignedDriverName?: string;
   // คนขับร่วม (co-delivery) — งานที่ต้องใช้ messenger หลายคนขนพร้อมกัน; เก็บ driver code
-  // ของคนช่วย (ไม่รวม primary ที่อยู่ใน assignedDriverId)
+  // ของคนช่วย (ไม่รวม primary/คนขับหลัก ที่อยู่ใน assignedDriverId)
   coDriverIds?: string[];
   shippingMethod?: ShippingMethod; // undefined = internal_driver (default)
   deliveryPlan?: DeliveryPlan;

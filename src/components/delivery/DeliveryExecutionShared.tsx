@@ -12,11 +12,13 @@ import {
   Coins,
   IdCard,
   MapPin,
+  Navigation2,
   Package,
   Phone,
   Route,
   ShieldCheck,
   Truck as TruckIcon,
+  Users,
   X,
   ZoomIn,
   ZoomOut,
@@ -38,6 +40,7 @@ import {
   deriveDriverDisplayStatus,
   describeProof,
   getDriverWorkloadSummary,
+  getOrderDriverTeam,
   type DriverWorkloadSummary,
 } from '@/lib/deliveryExecution';
 import { formatFastDispatchDueAt, getFastDispatchSla } from '@/lib/fastDispatch';
@@ -53,6 +56,36 @@ function vehicleLabel(vehicle: Driver['vehicle']) {
   if (vehicle === 'motorcycle') return 'จักรยานยนต์';
   if (vehicle === 'van') return 'รถตู้';
   return 'รถกระบะ';
+}
+
+/** ป้ายทีมจัดส่งรายคนพร้อม role หลัก/ร่วม — ใช้แทน "+N ร่วมส่ง" เมื่อเป็นงาน co-delivery */
+export function DriverTeamBadges({
+  order,
+  drivers,
+}: {
+  order: Pick<Order, 'assignedDriverId' | 'assignedDriverName' | 'coDriverIds'>;
+  drivers: Pick<Driver, 'id' | 'name'>[];
+}) {
+  const team = getOrderDriverTeam(order, drivers);
+  if (team.length === 0) return null;
+  return (
+    <>
+      {team.map((member) => (
+        <Badge
+          key={member.code}
+          variant={member.role === 'main' ? 'info' : 'muted'}
+          className="gap-1"
+        >
+          {member.role === 'main' ? (
+            <Navigation2 className="h-3 w-3" />
+          ) : (
+            <Users className="h-3 w-3" />
+          )}
+          {member.name} · {member.role === 'main' ? 'คนขับหลัก' : 'คนขับร่วม'}
+        </Badge>
+      ))}
+    </>
+  );
 }
 
 export function DriverWorkloadChips({

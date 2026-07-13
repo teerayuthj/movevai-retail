@@ -63,6 +63,27 @@ export function isDriverAssignedToOrder(order: Order, driverId: string) {
   return order.assignedDriverId === driverId || (order.coDriverIds ?? []).includes(driverId);
 }
 
+/** สมาชิกทีมจัดส่งของ order เรียงคนขับหลักก่อน — ชื่อ resolve จาก drivers list, fallback เป็นชื่อ/รหัสบน order */
+export function getOrderDriverTeam(
+  order: Pick<Order, 'assignedDriverId' | 'assignedDriverName' | 'coDriverIds'>,
+  drivers: Pick<Driver, 'id' | 'name'>[],
+): { code: string; name: string; role: 'main' | 'co' }[] {
+  if (!order.assignedDriverId) return [];
+  const nameOf = (code: string) => drivers.find((driver) => driver.id === code)?.name;
+  return [
+    {
+      code: order.assignedDriverId,
+      name: nameOf(order.assignedDriverId) ?? order.assignedDriverName ?? order.assignedDriverId,
+      role: 'main' as const,
+    },
+    ...(order.coDriverIds ?? []).map((code) => ({
+      code,
+      name: nameOf(code) ?? code,
+      role: 'co' as const,
+    })),
+  ];
+}
+
 export function getDriverWorkloadSummary(
   driver: Pick<Driver, 'id'>,
   orders: Order[],
