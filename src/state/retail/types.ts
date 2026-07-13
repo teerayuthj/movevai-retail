@@ -152,7 +152,7 @@ export type RetailStore = RetailState & {
   ) => Promise<PlanningRoute>;
   reassignRoute: (
     routeId: string,
-    input: { driverCode: string; note?: string },
+    input: { driverCode: string; coDriverCodes?: string[]; note?: string },
   ) => Promise<PlanningRoute>;
   setDispatchReadiness: (
     orderId: string,

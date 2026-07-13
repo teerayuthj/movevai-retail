@@ -1015,7 +1015,7 @@ export async function cancelPlanningRoute(
 
 export async function reassignPlanningRoute(
   routeId: string,
-  input: { driverCode: string; note?: string },
+  input: { driverCode: string; coDriverCodes?: string[]; note?: string },
 ) {
   const route = await request<PlanningRoute>(
     `${APP_API_BASE}/planning/routes/${encodeURIComponent(routeId)}/reassign`,

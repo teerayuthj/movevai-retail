@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
-import { DriverAvatar } from '@/components/DriverAvatar';
+import { ReassignRouteDialog } from '@/components/delivery/ReassignRouteDialog';
 import { toast } from 'sonner';
 import { MessengerCloseJobDialog } from '@/components/delivery/MessengerCloseJobDialog';
 import {
@@ -16,7 +16,7 @@ import {
   failReasonLabel,
 } from '@/data/orderTypes';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
-import { formatDriverActiveJobs, getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
+import { getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
 import {
   canReviseDeliveryProof,
   deliveryProofRevisionLimits,
@@ -279,7 +279,10 @@ export function DeliveryTrackingPage({
     settleTimers.current.push(timer);
   }
 
-  async function confirmRouteAction(value: string, note?: string) {
+  async function confirmRouteAction(
+    value: string | { driverCode: string; coDriverCodes: string[]; note?: string },
+    note?: string,
+  ) {
     const routeId = routeAction?.order.deliveryRoute?.id;
     if (!routeAction || !routeId) return;
     setRouteActionError('');
@@ -288,7 +291,8 @@ export function DeliveryTrackingPage({
       if (routeAction.type === 'cancel') {
         await cancelRoute(routeId, { reason: value as PlanningCancelReason, note });
       } else {
-        await reassignRoute(routeId, { driverCode: value, note });
+        if (typeof value === 'string') return;
+        await reassignRoute(routeId, value);
       }
       toast.success(
         routeAction.type === 'cancel'
@@ -697,24 +701,19 @@ export function DeliveryTrackingPage({
       )}
 
       {routeAction?.type === 'reassign' && routeAction.order.deliveryRoute && (
-        <ResolutionDialog
+        <ReassignRouteDialog
           open
           title={`เปลี่ยนคนขับ Route ${routeAction.order.deliveryRoute.code}`}
           description={`ย้ายงานที่ยังรอส่ง ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดไปคนขับใหม่`}
           error={routeActionError}
-          reasons={drivers
-            .filter((driver) => driver.id !== routeAction.order.assignedDriverId)
-            .map((driver) => ({
-              value: driver.id,
-              label: driver.name,
-              leading: <DriverAvatar driver={driver} className="h-9 w-9" />,
-              description: `${driver.phone} · ${formatDriverActiveJobs(driver, orders)}`,
-            }))}
-          reasonLabel="คนขับใหม่"
-          notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
-          confirmLabel="ย้ายงาน"
+          drivers={drivers}
+          orders={orders}
+          initialDriverIds={[
+            ...(routeAction.order.assignedDriverId ? [routeAction.order.assignedDriverId] : []),
+            ...(routeAction.order.coDriverIds ?? []),
+          ]}
           onCancel={() => setRouteAction(null)}
-          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+          onConfirm={(input) => void confirmRouteAction(input)}
         />
       )}
 
