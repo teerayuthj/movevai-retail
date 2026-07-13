@@ -420,6 +420,12 @@ export type PlanningRoute = {
   scheduledFor?: string;
   dispatchMode: 'scheduled' | 'urgent';
   acceptBy?: string;
+  requiresAcceptance?: boolean;
+  acceptedAt?: string;
+  startBy?: string;
+  acceptWithinMinutes?: number;
+  startWithinMinutes?: number;
+  startPolicy?: 'manual' | 'accept_starts';
   status: 'published' | 'active' | 'completed' | 'cancelled';
   note?: string;
   publishedAt: string;
@@ -966,6 +972,10 @@ export async function publishPlanningRoute(input: {
   driverCode: string;
   note?: string;
   origin?: RouteOrigin;
+  requiresAcceptance?: boolean;
+  acceptWithinMinutes?: number;
+  startWithinMinutes?: number;
+  startPolicy?: 'manual' | 'accept_starts';
 }) {
   const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/publish`, {
     method: 'POST',
@@ -975,11 +985,15 @@ export async function publishPlanningRoute(input: {
 }
 
 export async function publishUrgentPlanningRoute(input: {
-  orderId: string;
+  orderId?: string;
+  orderIds?: string[];
   driverCode: string;
   coDriverCodes?: string[];
   note?: string;
   origin?: RouteOrigin;
+  acceptWithinMinutes?: number;
+  startWithinMinutes?: number;
+  startPolicy?: 'manual' | 'accept_starts';
 }) {
   const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/urgent`, {
     method: 'POST',
@@ -1167,6 +1181,14 @@ export async function startMessengerOrder(orderId: string, _driverCode: string) 
       method: 'POST',
       body: JSON.stringify({}),
     },
+  );
+  return normalizeOrder(result);
+}
+
+export async function acceptMessengerOrder(orderId: string, _driverCode: string) {
+  const result = await request<ApiOrder>(
+    `${MESSENGER_API_BASE}/orders/${encodeURIComponent(orderId)}/accept`,
+    { method: 'POST', body: JSON.stringify({}) },
   );
   return normalizeOrder(result);
 }

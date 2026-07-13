@@ -104,9 +104,9 @@ export function InboxPage({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Order Inbox — คำสั่งซื้อ</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Intake Inbox — งานขาเข้า</h1>
           <p className="text-sm text-muted-foreground">
-            รวมออเดอร์จากทุกช่องทาง intake · อ่านข้อมูลจาก CSV/รูป/ข้อความต้นทาง · แก้ไขก่อนยืนยัน
+            รับข้อมูลจาก LINE, CSV, รูป และข้อความต้นทาง · ตรวจสอบก่อนส่งเข้าสู่ Dispatch Board
           </p>
         </div>
 

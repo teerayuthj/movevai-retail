@@ -286,7 +286,14 @@ function resolveMessengerCode() {
 
 export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const [authenticated, setAuthenticated] = useState(hasMessengerSession);
-  const { orders, drivers, startDelivery, submitDelivery, refreshMessengerJobs } = useRetailStore();
+  const {
+    orders,
+    drivers,
+    acceptDeliveryJob,
+    startDelivery,
+    submitDelivery,
+    refreshMessengerJobs,
+  } = useRetailStore();
   const [closeTargetId, setCloseTargetId] = useState<string | null>(null);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -299,6 +306,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const [jobsLoading, setJobsLoading] = useState(true);
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [startingJobId, setStartingJobId] = useState<string | null>(null);
+  const [acceptingJobId, setAcceptingJobId] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
   const install = useInstallPrompt();
   const { activeTab, mapOrderId, setTab, openOrderMap, backToPending } = useMessengerTab();
@@ -479,6 +487,40 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
       }
     },
     [setTab, startDelivery, tracking],
+  );
+
+  const handleAcceptJob = useCallback(
+    async (order: Order) => {
+      setAcceptingJobId(order.id);
+      try {
+        await acceptDeliveryJob(order.id);
+        if (order.deliveryRoute?.startPolicy === 'accept_starts') {
+          const routeId = order.deliveryRoute.id;
+          if (!tracking.session) {
+            try {
+              await tracking.start(routeId);
+            } catch (error) {
+              if (isMessengerAuthError(error)) return;
+            }
+          }
+          setTab('in_transit');
+          toast.success('รับงานและเริ่ม GPS Tracking แล้ว');
+        } else {
+          toast.success('รับงานแล้ว — กดเริ่มงานเมื่อพร้อมออกเดินทาง');
+        }
+      } catch (error) {
+        if (isMessengerAuthError(error)) {
+          toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'รับงานไม่สำเร็จ';
+        setJobsError(message);
+        toast.error(`รับงานไม่สำเร็จ — ${message}`);
+      } finally {
+        setAcceptingJobId(null);
+      }
+    },
+    [acceptDeliveryJob, setTab, tracking],
   );
 
   const refreshJobs = useCallback(
@@ -983,6 +1025,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                           nowMs={nowMs}
                           role={getMessengerOrderRole(order, messengerCode) ?? 'main'}
                           starting={startingJobId === order.id}
+                          accepting={acceptingJobId === order.id}
+                          onAccept={() => void handleAcceptJob(order)}
                           onStart={() => void handleStartJob(order)}
                           onClose={() => setCloseTargetId(order.id)}
                           onViewMap={

@@ -52,6 +52,7 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   order_confirmed: { Icon: CheckCircle2, tone: 'success' },
   driver_assigned: { Icon: UserCog, tone: 'neutral' },
   driver_auto_assigned: { Icon: Sparkles, tone: 'info' },
+  delivery_job_accepted: { Icon: CheckCircle2, tone: 'info' },
   delivery_started: { Icon: Route, tone: 'info' },
   delivery_submitted: { Icon: ClipboardCheck, tone: 'warning' },
   delivery_proof_revised: { Icon: Pencil, tone: 'warning' },

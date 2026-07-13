@@ -750,19 +750,20 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
                   })}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-1.5">
-                  {history.photos?.[0] && (
+                  {(history.photos ?? []).map((src, photoIndex) => (
                     <button
+                      key={photoIndex}
                       type="button"
-                      onClick={() => setPreview({ src: history.photos![0], alt: 'รูปหลักฐานเดิม' })}
+                      onClick={() => setPreview({ src, alt: `รูปหลักฐานเดิม ${photoIndex + 1}` })}
                       className="aspect-4/3 overflow-hidden rounded border border-success/20"
                     >
                       <img
-                        src={history.photos[0]}
-                        alt="รูปหลักฐานเดิม"
+                        src={src}
+                        alt={`รูปหลักฐานเดิม ${photoIndex + 1}`}
                         className="h-full w-full object-cover"
                       />
                     </button>
-                  )}
+                  ))}
                   {history.signatureDataUrl && (
                     <button
                       type="button"

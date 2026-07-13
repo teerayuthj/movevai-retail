@@ -109,6 +109,7 @@ export type RetailStore = RetailState & {
   /** จับคู่คนขับ + สร้าง route + เริ่มจัดส่ง ในคำสั่งเดียว — คืน id งานที่ส่งออก */
   autoAssignAndDispatchReadyOrders: (orderIds?: string[]) => Promise<string[]>;
   startDelivery: (orderId: string) => Promise<void>;
+  acceptDeliveryJob: (orderId: string) => Promise<void>;
   submitDelivery: (orderId: string, input: SubmitDeliveryInput) => Promise<void>;
   confirmDelivery: (orderId: string, input?: ConfirmDeliveryInput) => Promise<void>;
   completeDelivery: (orderId: string, success?: boolean) => void;
@@ -129,12 +130,15 @@ export type RetailStore = RetailState & {
   ) => Promise<void>;
   releasePlannedOrders: (orderIds: string[]) => Promise<PlanningRoute>;
   publishUrgentRoute: (
-    orderId: string,
+    orderId: string | string[],
     input: {
       driverCode: string;
       coDriverCodes?: string[];
       note?: string;
       origin?: { lat: number; lng: number };
+      acceptWithinMinutes?: number;
+      startWithinMinutes?: number;
+      startPolicy?: 'manual' | 'accept_starts';
     },
   ) => Promise<PlanningRoute>;
   cancelRoute: (
