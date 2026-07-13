@@ -108,6 +108,7 @@ export function DeliveryTrackingPage({
     markReturned,
     cancelRoute,
     reassignRoute,
+    unassignOrder,
   } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [messengerCloseTargetId, setMessengerCloseTargetId] = useState<string | null>(null);
@@ -127,6 +128,8 @@ export function DeliveryTrackingPage({
   const [settlingOrders, setSettlingOrders] = useState<Record<string, string>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [routeActionError, setRouteActionError] = useState('');
+  const [unassignTarget, setUnassignTarget] = useState<Order | null>(null);
+  const [unassignError, setUnassignError] = useState('');
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     order: Order;
@@ -306,14 +309,28 @@ export function DeliveryTrackingPage({
   function renderActions(order: Order) {
     if (order.status === 'assigned' && !order.deliveryRoute) {
       return (
-        <Button
-          variant="outline"
-          className="w-full"
-          onClick={() => onOpenQueue(buildQueueSearch(order.id))}
-        >
-          <ClipboardList className="h-4 w-4" />
-          ไปจัด Route ใน Queue
-        </Button>
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => onOpenQueue(buildQueueSearch(order.id))}
+          >
+            <ClipboardList className="h-4 w-4" />
+            ไปจัด Route ใน Queue
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              setUnassignError('');
+              setSelectedOrderId(null);
+              setUnassignTarget(order);
+            }}
+          >
+            <Undo2 className="h-4 w-4" />
+            ถอนการมอบหมาย
+          </Button>
+        </div>
       );
     }
 
@@ -391,7 +408,7 @@ export function DeliveryTrackingPage({
             แก้ไข: M {messengerRevisionCount}/{messengerRevisionLimit} · A {adminRevisionCount}/
             {adminRevisionLimit}
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
               className="w-full"
@@ -628,6 +645,42 @@ export function DeliveryTrackingPage({
         }}
       />
 
+      {unassignTarget && (
+        <ResolutionDialog
+          open
+          title={`ถอนการมอบหมาย ${unassignTarget.orderNo}`}
+          description="เอางานออกจาก Messenger และคืนเป็นงานรอมอบหมาย โดยไม่ยกเลิกออเดอร์"
+          error={unassignError}
+          reasons={PLANNING_CANCEL_REASONS}
+          notePlaceholder="เช่น เลือกคนขับผิด / ต้องจัดคิวใหม่"
+          confirmLabel="ยืนยันถอนการมอบหมาย"
+          confirmVariant="destructive"
+          onCancel={() => {
+            setUnassignError('');
+            setUnassignTarget(null);
+          }}
+          onConfirm={({ reason, note }) => {
+            const target = unassignTarget;
+            setUnassignError('');
+            void unassignOrder(target.id, {
+              reason: reason as PlanningCancelReason,
+              note,
+            })
+              .then(() => {
+                toast.success(`ถอนการมอบหมาย ${target.orderNo} แล้ว — คืนเข้าคิวรอมอบหมาย`);
+                setSelectedOrderId(null);
+                setUnassignTarget(null);
+                refreshTracking();
+              })
+              .catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                setUnassignError(message);
+                toast.error(`ถอนการมอบหมาย ${target.orderNo} ไม่สำเร็จ — ${message}`);
+              });
+          }}
+        />
+      )}
+
       {routeAction?.type === 'cancel' && routeAction.order.deliveryRoute && (
         <ResolutionDialog
           open
@@ -795,6 +848,7 @@ export function DeliveryTrackingPage({
       <TrackingDetailDrawer
         order={selectedOrder}
         driver={selectedDriver}
+        drivers={drivers}
         isDetailLoading={isDetailLoading}
         onClose={() => setSelectedOrderId(null)}
         actions={selectedOrder ? renderActions(selectedOrder) : undefined}

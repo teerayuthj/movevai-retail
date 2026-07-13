@@ -892,6 +892,18 @@ export async function cancelOrder(
   return normalizeOrder(result);
 }
 
+// ถอนการมอบหมายงานที่ยังไม่มี Route แล้วคืนเข้า ready queue
+export async function unassignAppOrder(
+  orderId: string,
+  input: { reason: PlanningCancelReason; note?: string },
+) {
+  const result = await request<ApiOrder>(
+    `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/unassign`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return normalizeOrder(result);
+}
+
 export async function syncAppOrder(order: Order) {
   const result = await request<ApiOrder>(`${APP_API_BASE}/orders/sync`, {
     method: 'POST',
