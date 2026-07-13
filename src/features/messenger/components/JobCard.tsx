@@ -50,25 +50,42 @@ export function JobCard({
   order,
   nowMs = Date.now(),
   onStart,
+  onAccept,
   onClose,
   onViewMap,
   starting = false,
+  accepting = false,
   role = 'main',
 }: {
   order: Order;
   nowMs?: number;
   onStart: () => void;
+  onAccept: () => void;
   onClose: () => void;
   /** เปิดแผนที่โฟกัสปลายทางของงานนี้โดยเฉพาะ (แยกจากภาพรวมทั้ง Route) */
   onViewMap?: () => void;
   /** กำลังเริ่มงานนี้อยู่ (ระหว่างรอ backend) — disable ปุ่ม + แสดงสถานะ */
   starting?: boolean;
+  /** กำลังรับงานจาก backend */
+  accepting?: boolean;
   /** บทบาทของ messenger คนนี้ — co (คนขับร่วม) ดูงานได้แต่เริ่ม/ปิดงานไม่ได้ */
   role?: MessengerOrderRole;
 }) {
   const isCoDriver = role === 'co';
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
+  const awaitingAcceptance =
+    order.status === 'assigned' &&
+    order.deliveryRoute?.requiresAcceptance === true &&
+    !order.deliveryRoute.acceptedAt;
+  const acceptanceDeadline = awaitingAcceptance
+    ? order.deliveryRoute?.acceptBy
+    : order.deliveryRoute?.startBy;
+  const deadlineMs = acceptanceDeadline ? new Date(acceptanceDeadline).getTime() : Number.NaN;
+  const deadlineMinutes = Number.isNaN(deadlineMs)
+    ? null
+    : Math.max(0, Math.ceil(Math.abs(deadlineMs - nowMs) / 60_000));
+  const deadlineOverdue = !Number.isNaN(deadlineMs) && deadlineMs < nowMs;
   const isFutureJob =
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
   const overdue = getMessengerJobOverdue(order, nowMs);
@@ -188,6 +205,36 @@ export function JobCard({
         </div>
       )}
 
+      {order.status === 'assigned' && order.deliveryRoute?.requiresAcceptance && (
+        <div
+          className={cn(
+            'mt-2 flex items-center gap-2.5 rounded-xl border px-3 py-2',
+            deadlineOverdue
+              ? 'border-destructive/30 bg-destructive/10 text-destructive'
+              : awaitingAcceptance
+                ? 'border-warning/30 bg-warning/10 text-warning'
+                : 'border-info/30 bg-info/10 text-info',
+          )}
+        >
+          <Clock3 className="h-5 w-5 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-semibold">
+              {awaitingAcceptance ? 'ต้องรับงานภายใน' : 'รับงานแล้ว · ต้องเริ่มภายใน'}
+            </div>
+            <div className="text-[11px] opacity-90">
+              {deadlineMinutes == null
+                ? awaitingAcceptance
+                  ? `${order.deliveryRoute.acceptWithinMinutes ?? 15} นาทีหลังมอบหมาย`
+                  : `${order.deliveryRoute.startWithinMinutes ?? 10} นาทีหลังรับงาน`
+                : deadlineOverdue
+                  ? `เกินกำหนด ${deadlineMinutes} นาที`
+                  : `เหลือ ${deadlineMinutes} นาที`}
+            </div>
+          </div>
+          {order.deliveryRoute.acceptedAt && <Badge variant="info">รับแล้ว</Badge>}
+        </div>
+      )}
+
       <div className="mt-2 space-y-1.5 text-[12px] text-muted-foreground">
         <div className="flex items-start gap-1.5">
           <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -268,13 +315,14 @@ export function JobCard({
           </div>
 
           <div className="mt-2 grid grid-cols-2 gap-2">
-            {order.proofOfDelivery.photos?.[0] && (
+            {(order.proofOfDelivery.photos ?? []).map((src, index) => (
               <img
-                src={order.proofOfDelivery.photos[0]}
-                alt="รูปหลักฐานการส่งมอบ"
+                key={index}
+                src={src}
+                alt={`รูปหลักฐานการส่งมอบ ${index + 1}`}
                 className="aspect-4/3 w-full rounded-md border object-cover"
               />
-            )}
+            ))}
             {order.proofOfDelivery.signatureDataUrl && (
               <img
                 src={order.proofOfDelivery.signatureDataUrl}
@@ -318,26 +366,42 @@ export function JobCard({
             {order.status === 'assigned' ? 'รอคนขับหลักเริ่มงาน' : 'คนขับหลักกำลังส่ง'}
           </Badge>
         )}
-        {order.status === 'assigned' && !isCoDriver && (
-          <Button
-            size="sm"
-            variant="default"
-            className="rounded-full px-4"
-            onClick={onStart}
-            disabled={isFutureJob || starting}
-          >
-            <Navigation className="h-4 w-4" />
-            {isFutureJob
-              ? 'ยังไม่ถึงวันส่ง'
-              : starting
-                ? 'กำลังเริ่มส่ง...'
-                : isOverdue
-                  ? 'เริ่มส่งตอนนี้'
-                  : isUrgent
-                    ? 'เริ่มส่งทันที'
-                    : 'เริ่มส่ง'}
-          </Button>
-        )}
+        {order.status === 'assigned' &&
+          !isCoDriver &&
+          (awaitingAcceptance ? (
+            <Button
+              size="sm"
+              className="rounded-full px-4"
+              onClick={onAccept}
+              disabled={isFutureJob || accepting}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {accepting
+                ? 'กำลังรับงาน...'
+                : order.deliveryRoute?.startPolicy === 'accept_starts'
+                  ? 'รับงานและเริ่มทันที'
+                  : 'รับงาน'}
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="default"
+              className="rounded-full px-4"
+              onClick={onStart}
+              disabled={isFutureJob || starting}
+            >
+              <Navigation className="h-4 w-4" />
+              {isFutureJob
+                ? 'ยังไม่ถึงวันส่ง'
+                : starting
+                  ? 'กำลังเริ่มส่ง...'
+                  : isOverdue
+                    ? 'เริ่มส่งตอนนี้'
+                    : isUrgent
+                      ? 'เริ่มส่งทันที'
+                      : 'เริ่มส่ง'}
+            </Button>
+          ))}
         {order.status === 'in_transit' && !isCoDriver && (
           <Button size="sm" className="rounded-full px-4" onClick={onClose}>
             <CheckCircle2 className="h-4 w-4" />

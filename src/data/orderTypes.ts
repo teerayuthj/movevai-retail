@@ -83,6 +83,12 @@ export type DeliveryRoute = {
   plannedTime?: string;
   dispatchMode?: 'scheduled' | 'urgent';
   acceptBy?: string;
+  requiresAcceptance?: boolean;
+  acceptedAt?: string;
+  startBy?: string;
+  acceptWithinMinutes?: number;
+  startWithinMinutes?: number;
+  startPolicy?: 'manual' | 'accept_starts';
   status: 'published' | 'active' | 'completed';
   sequence: number;
   stopCount?: number;
@@ -167,6 +173,7 @@ export type OrderActivityEventType =
   | 'driver_assigned'
   | 'driver_auto_assigned'
   | 'delivery_started'
+  | 'delivery_job_accepted'
   | 'delivery_submitted'
   | 'delivery_proof_revised'
   | 'delivery_confirmed'
@@ -296,6 +303,25 @@ export type OrderImportMeta = {
 
 export type OrderMetadata = {
   import?: OrderImportMeta;
+  dispatch?: {
+    jobType: 'order' | 'document' | 'parcel' | 'other';
+    createdVia: 'intake' | 'quick_create' | 'route_template';
+    title?: string;
+    pickup?: {
+      name: string;
+      phone?: string;
+      address: string;
+    };
+    routeTemplateId?: string;
+    routeTemplateName?: string;
+    routeRunKey?: string;
+    sla?: {
+      requiresAcceptance: boolean;
+      acceptWithinMinutes: number;
+      startWithinMinutes: number;
+      startPolicy: 'manual' | 'accept_starts';
+    };
+  };
   [key: string]: unknown;
 };
 

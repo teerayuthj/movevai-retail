@@ -53,6 +53,7 @@ import type {
 } from '@/state/retail/types';
 import {
   approveImportOrders as approveImportOrdersApi,
+  acceptMessengerOrder,
   createAppOrder,
   cancelOrder as cancelOrderApi,
   cancelPlanningRoute,
@@ -465,6 +466,20 @@ export function RetailProvider({
     [commit, state.orders],
   );
 
+  const acceptDeliveryJob = useCallback(
+    async (orderId: string) => {
+      const order = state.orders.find((item) => item.id === orderId);
+      if (!order?.assignedDriverId) return;
+      const canonical = await acceptMessengerOrder(orderId, order.assignedDriverId);
+      messengerWorkflowRevisionRef.current += 1;
+      commit((current) => ({
+        ...current,
+        orders: replaceOrder(current.orders, canonical),
+      }));
+    },
+    [commit, state.orders],
+  );
+
   const submitDelivery = useCallback(
     async (orderId: string, input: SubmitDeliveryInput) => {
       const order = state.orders.find((item) => item.id === orderId);
@@ -710,6 +725,10 @@ export function RetailProvider({
         driverCode,
         note: first.deliveryPlan?.note,
         origin: await getAdminRouteOrigin(),
+        requiresAcceptance: first.metadataJson?.dispatch?.sla?.requiresAcceptance,
+        acceptWithinMinutes: first.metadataJson?.dispatch?.sla?.acceptWithinMinutes,
+        startWithinMinutes: first.metadataJson?.dispatch?.sla?.startWithinMinutes,
+        startPolicy: first.metadataJson?.dispatch?.sla?.startPolicy,
       });
       await syncFromBackend();
       return route;
@@ -718,12 +737,14 @@ export function RetailProvider({
   );
 
   const publishUrgentRoute = useCallback(
-    async (orderId: string, input: Parameters<RetailStore['publishUrgentRoute']>[1]) => {
-      const order = state.orders.find((item) => item.id === orderId);
-      if (!order) throw new Error('ไม่พบออเดอร์ที่เลือก');
-      await syncAppOrder(order);
+    async (orderId: string | string[], input: Parameters<RetailStore['publishUrgentRoute']>[1]) => {
+      const orderIds = Array.isArray(orderId) ? orderId : [orderId];
+      const selected = state.orders.filter((item) => orderIds.includes(item.id));
+      if (selected.length !== orderIds.length) throw new Error('ไม่พบงานที่เลือก');
+      const canonical = await Promise.all(selected.map(syncAppOrder));
       const route = await publishUrgentPlanningRoute({
-        orderId,
+        orderId: orderIds.length === 1 ? canonical[0].id : undefined,
+        orderIds: orderIds.length > 1 ? canonical.map((order) => order.id) : undefined,
         ...input,
         origin: input.origin ?? (await getAdminRouteOrigin()),
       });
@@ -801,6 +822,7 @@ export function RetailProvider({
       autoAssignReadyOrders,
       autoAssignAndDispatchReadyOrders,
       startDelivery,
+      acceptDeliveryJob,
       submitDelivery,
       confirmDelivery,
       completeDelivery,
@@ -845,6 +867,7 @@ export function RetailProvider({
       autoAssignReadyOrders,
       autoAssignAndDispatchReadyOrders,
       startDelivery,
+      acceptDeliveryJob,
       submitDelivery,
       confirmDelivery,
       completeDelivery,

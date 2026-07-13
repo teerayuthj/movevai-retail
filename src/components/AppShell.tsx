@@ -53,6 +53,11 @@ export function AppShell({ page, onChangePage, children }: Props) {
         (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
         isVisibleInExecutionQueue(o),
     ).length,
+    dispatch_board: orders.filter(
+      (o) =>
+        (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
+        ['ready', 'assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
+    ).length,
     delivery_tracking: orders.filter(
       (o) =>
         getDeliveryTrackingTab(o) &&
@@ -137,7 +142,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
       return;
     }
 
-    onChangePage('queue', { search: `?${orderSearch}` });
+    onChangePage('dispatch_board', { search: `?${orderSearch}` });
   };
 
   const handleGlobalSearch = async (query: string) => {

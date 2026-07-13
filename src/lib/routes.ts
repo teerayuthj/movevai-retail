@@ -2,6 +2,8 @@ export type PageKey =
   | 'overview'
   | 'script_transform'
   | 'inbox'
+  | 'dispatch_board'
+  | 'route_templates'
   | 'queue'
   | 'delivery_tracking'
   | 'delivery_report'
@@ -25,6 +27,8 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'overview', path: '/', aliases: ['/overview'] },
   { page: 'script_transform', path: '/script-transform' },
   { page: 'inbox', path: '/order-inbox' },
+  { page: 'dispatch_board', path: '/dispatch-board' },
+  { page: 'route_templates', path: '/route-templates' },
   { page: 'queue', path: '/driver-queue' },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
   { page: 'delivery_report', path: '/delivery-report' },

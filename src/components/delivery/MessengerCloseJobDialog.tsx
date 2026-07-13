@@ -18,7 +18,6 @@ import {
   ImagePlus,
   MapPin,
   PenLine,
-  RotateCcw,
   X,
 } from 'lucide-react';
 
@@ -33,6 +32,7 @@ type Props = {
 
 const MAX_PHOTO_EDGE = 1280;
 const PHOTO_QUALITY = 0.72;
+const MAX_PHOTOS = 10;
 
 function canvasToJpegDataUrl(canvas: HTMLCanvasElement) {
   return canvas.toDataURL('image/jpeg', PHOTO_QUALITY);
@@ -106,10 +106,15 @@ function CameraCaptureSheet({
   open,
   onClose,
   onCapture,
+  capturedCount = 0,
+  maxPhotos = MAX_PHOTOS,
 }: {
   open: boolean;
   onClose: () => void;
   onCapture: (dataUrl: string) => void;
+  /** จำนวนรูปที่ถ่ายไปแล้ว — ให้ถ่ายต่อเนื่องได้จนครบ maxPhotos โดยไม่ต้องเปิดกล้องใหม่ */
+  capturedCount?: number;
+  maxPhotos?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -186,6 +191,11 @@ function CameraCaptureSheet({
 
   if (!open) return null;
 
+  const closeSheet = () => {
+    stopCameraStream(stream);
+    onClose();
+  };
+
   const captureFrame = () => {
     const video = videoRef.current;
     if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
@@ -200,22 +210,27 @@ function CameraCaptureSheet({
     }
 
     onCapture(dataUrl);
-    stopCameraStream(stream);
-    onClose();
+    // ถ่ายครบโควตาแล้วค่อยปิด — ระหว่างนั้นเปิดกล้องค้างไว้ให้ถ่ายรูปถัดไปต่อได้เลย
+    if (capturedCount + 1 >= maxPhotos) closeSheet();
   };
 
   const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files ?? []);
     event.target.value = '';
-    if (!file) return;
+    if (files.length === 0) return;
+
+    const remaining = maxPhotos - capturedCount;
+    if (remaining <= 0) {
+      setCameraError(`เพิ่มรูปได้สูงสุด ${maxPhotos} รูป`);
+      return;
+    }
 
     setProcessingFile(true);
     setCameraError(null);
     try {
-      const dataUrl = await photoFromFile(file);
-      onCapture(dataUrl);
-      stopCameraStream(stream);
-      onClose();
+      const dataUrls = await Promise.all(files.slice(0, remaining).map(photoFromFile));
+      dataUrls.forEach(onCapture);
+      closeSheet();
     } catch {
       setCameraError('อ่านรูปภาพไม่สำเร็จ กรุณาลองถ่ายใหม่');
     } finally {
@@ -227,20 +242,33 @@ function CameraCaptureSheet({
     <div className="fixed inset-0 z-[2010] flex flex-col bg-black text-white">
       <div className="flex items-center justify-between px-4 pb-3 pt-safe">
         <div>
-          <div className="text-sm font-semibold">ถ่ายรูปส่งมอบ</div>
+          <div className="text-sm font-semibold">
+            ถ่ายรูปส่งมอบ{' '}
+            <span className="font-normal text-white/65">
+              ({capturedCount}/{maxPhotos})
+            </span>
+          </div>
           <div className="text-[11px] text-white/65">ใช้กล้องหลัง ถ่ายพัสดุและจุดส่งมอบให้ชัด</div>
         </div>
-        <button
-          type="button"
-          onClick={() => {
-            stopCameraStream(stream);
-            onClose();
-          }}
-          className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
-          aria-label="ปิดกล้อง"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {capturedCount > 0 && (
+            <button
+              type="button"
+              onClick={closeSheet}
+              className="rounded-full bg-white px-4 py-1.5 text-sm font-semibold text-black hover:bg-white/90"
+            >
+              เสร็จ
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={closeSheet}
+            className="rounded-full bg-white/10 p-2 text-white hover:bg-white/20"
+            aria-label="ปิดกล้อง"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       <div className="relative flex min-h-0 flex-1 items-center justify-center bg-black">
@@ -310,6 +338,7 @@ function CameraCaptureSheet({
           ref={libraryInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           onChange={handleFileChange}
         />
@@ -503,7 +532,9 @@ function readCloseJobDraft(
       orderCode: typeof draft.orderCode === 'string' ? draft.orderCode : '',
       editorRole,
       photos: Array.isArray(draft.photos)
-        ? draft.photos.filter((photo): photo is string => typeof photo === 'string')
+        ? draft.photos
+            .filter((photo): photo is string => typeof photo === 'string')
+            .slice(0, MAX_PHOTOS)
         : [],
       signatureDataUrl: typeof draft.signatureDataUrl === 'string' ? draft.signatureDataUrl : null,
       step:
@@ -575,7 +606,10 @@ export function MessengerCloseJobDialog({
     initializedOrderIdRef.current = order.id;
     const existingProof = order.proofOfDelivery;
     const draft = readCloseJobDraft(order.id, editorRole);
-    const nextPhotos = draft?.photos.length ? draft.photos : (existingProof?.photos ?? []);
+    const nextPhotos = (draft?.photos.length ? draft.photos : (existingProof?.photos ?? [])).slice(
+      0,
+      MAX_PHOTOS,
+    );
     const nextSignatureDataUrl = draft?.signatureDataUrl ?? existingProof?.signatureDataUrl ?? null;
     const nextStep = draft
       ? restoreStep(draft.step, nextPhotos.length > 0, !!nextSignatureDataUrl)
@@ -685,19 +719,36 @@ export function MessengerCloseJobDialog({
   };
 
   const handlePhotoCaptured = (dataUrl: string) => {
-    setPhotos([dataUrl]);
+    setPhotos((prev) => (prev.length >= MAX_PHOTOS ? prev : [...prev, dataUrl]));
     setPhotoError(null);
     setStep('photo');
   };
 
-  const handleLibraryPick = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
+  const handleRemovePhoto = (index: number) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
     setPhotoError(null);
+  };
+
+  const handleLibraryPick = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (files.length === 0) return;
+    setPhotoError(null);
+
+    const remaining = MAX_PHOTOS - photos.length;
+    if (remaining <= 0) {
+      setPhotoError(`เพิ่มรูปได้สูงสุด ${MAX_PHOTOS} รูป`);
+      return;
+    }
+
     try {
-      const dataUrl = await photoFromFile(file);
-      handlePhotoCaptured(dataUrl);
+      const dataUrls = await Promise.all(files.slice(0, remaining).map(photoFromFile));
+      setPhotos((prev) => [...prev, ...dataUrls].slice(0, MAX_PHOTOS));
+      if (files.length > remaining) {
+        setPhotoError(
+          `เพิ่มรูปได้สูงสุด ${MAX_PHOTOS} รูป — รูปที่เกินมา ${files.length - remaining} รูปไม่ถูกเพิ่ม`,
+        );
+      }
     } catch {
       setPhotoError('อ่านรูปภาพไม่สำเร็จ กรุณาลองเลือกใหม่');
     }
@@ -828,37 +879,69 @@ export function MessengerCloseJobDialog({
           {step === 'photo' && (
             <div className="space-y-4">
               <div>
-                <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Camera className="h-4 w-4 text-primary" />
-                  ถ่ายรูปส่งมอบ
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <Camera className="h-4 w-4 text-primary" />
+                    ถ่ายรูปส่งมอบ
+                  </div>
+                  <span className="text-xs tabular-nums text-muted-foreground">
+                    {photos.length}/{MAX_PHOTOS} รูป
+                  </span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ให้ messenger ถ่ายพัสดุและจุดส่งมอบก่อนส่งมือถือให้ลูกค้าเซ็น
+                  ให้ messenger ถ่ายพัสดุและจุดส่งมอบก่อนส่งมือถือให้ลูกค้าเซ็น (สูงสุด {MAX_PHOTOS}{' '}
+                  รูป)
                 </p>
               </div>
 
-              {photos[0] ? (
+              {photos.length > 0 ? (
                 <div className="space-y-3">
-                  <div className="overflow-hidden rounded-lg border bg-muted">
-                    <img
-                      src={photos[0]}
-                      alt="รูปส่งมอบ"
-                      className="aspect-4/3 w-full object-cover"
-                    />
+                  <div className="grid grid-cols-3 gap-2">
+                    {photos.map((src, index) => (
+                      <div
+                        key={index}
+                        className="relative overflow-hidden rounded-lg border bg-muted"
+                      >
+                        <img
+                          src={src}
+                          alt={`รูปส่งมอบ ${index + 1}`}
+                          className="aspect-square w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePhoto(index)}
+                          className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                          aria-label={`ลบรูปที่ ${index + 1}`}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                    {photos.length < MAX_PHOTOS && (
+                      <button
+                        type="button"
+                        onClick={() => setCameraOpen(true)}
+                        className="flex aspect-square flex-col items-center justify-center gap-1 rounded-lg border border-dashed text-muted-foreground transition-colors hover:bg-muted/50"
+                      >
+                        <Camera className="h-5 w-5" />
+                        <span className="text-[10px] font-medium">ถ่ายเพิ่ม</span>
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" onClick={() => setCameraOpen(true)}>
-                      <RotateCcw className="h-4 w-4" />
-                      ถ่ายใหม่
-                    </Button>
-                    <Button variant="outline" onClick={() => libraryInputRef.current?.click()}>
+                    <Button
+                      variant="outline"
+                      disabled={photos.length >= MAX_PHOTOS}
+                      onClick={() => libraryInputRef.current?.click()}
+                    >
                       <ImagePlus className="h-4 w-4" />
-                      เลือกรูปใหม่
+                      เลือกจากคลังภาพ
                     </Button>
-                    <Button className="col-span-2" onClick={() => setStep('signature')}>
-                      ถัดไป
-                    </Button>
+                    <Button onClick={() => setStep('signature')}>ถัดไป</Button>
                   </div>
+                  {photoError && (
+                    <p className="text-center text-[11px] text-destructive">{photoError}</p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -869,7 +952,7 @@ export function MessengerCloseJobDialog({
                   >
                     <Camera className="h-8 w-8" />
                     <span className="text-sm font-medium">เปิดกล้องถ่ายรูป</span>
-                    <span className="text-xs">ต้องมีรูปก่อนให้ลูกค้าเซ็น</span>
+                    <span className="text-xs">ต้องมีรูปอย่างน้อย 1 รูปก่อนให้ลูกค้าเซ็น</span>
                   </button>
                   <Button
                     variant="outline"
@@ -892,6 +975,7 @@ export function MessengerCloseJobDialog({
                 ref={libraryInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 className="hidden"
                 onChange={handleLibraryPick}
               />
@@ -923,24 +1007,36 @@ export function MessengerCloseJobDialog({
               </div>
 
               <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setStep('photo')}
-                  className="overflow-hidden rounded-lg border bg-card text-left"
-                >
-                  {photos[0] ? (
-                    <img
-                      src={photos[0]}
-                      alt="รูปส่งมอบ"
-                      className="aspect-4/3 w-full object-cover"
-                    />
-                  ) : (
+                {photos.length > 0 ? (
+                  photos.map((src, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => setStep('photo')}
+                      className="overflow-hidden rounded-lg border bg-card text-left"
+                    >
+                      <img
+                        src={src}
+                        alt={`รูปส่งมอบ ${index + 1}`}
+                        className="aspect-4/3 w-full object-cover"
+                      />
+                      <div className="px-2 py-1.5 text-[11px] font-medium">
+                        รูปส่งมอบ {index + 1}/{photos.length}
+                      </div>
+                    </button>
+                  ))
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setStep('photo')}
+                    className="overflow-hidden rounded-lg border bg-card text-left"
+                  >
                     <div className="flex aspect-4/3 items-center justify-center bg-muted text-muted-foreground">
                       <Camera className="h-6 w-6" />
                     </div>
-                  )}
-                  <div className="px-2 py-1.5 text-[11px] font-medium">รูปส่งมอบ</div>
-                </button>
+                    <div className="px-2 py-1.5 text-[11px] font-medium">รูปส่งมอบ</div>
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -1072,6 +1168,8 @@ export function MessengerCloseJobDialog({
         open={cameraOpen}
         onClose={() => setCameraOpen(false)}
         onCapture={handlePhotoCaptured}
+        capturedCount={photos.length}
+        maxPhotos={MAX_PHOTOS}
       />
     </div>
   );

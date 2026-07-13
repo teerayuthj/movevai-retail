@@ -2,7 +2,6 @@ import type React from 'react';
 import {
   LayoutDashboard,
   Inbox,
-  Truck,
   Users,
   BookUser,
   Mailbox,
@@ -13,6 +12,8 @@ import {
   FileText,
   Smartphone,
   BellRing,
+  Columns3,
+  Repeat2,
 } from 'lucide-react';
 import type { PageKey } from '@/lib/routes';
 
@@ -39,17 +40,18 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     id: 'intake',
-    label: 'รับออเดอร์',
+    label: 'รับงาน',
     items: [
       { key: 'script_transform', label: 'Script Transform', icon: FileSpreadsheet },
-      { key: 'inbox', label: 'Order Inbox', icon: Inbox, showBadge: true },
+      { key: 'inbox', label: 'Intake Inbox', icon: Inbox, showBadge: true },
     ],
   },
   {
     id: 'delivery',
     label: 'จัดส่ง',
     items: [
-      { key: 'queue', label: 'ส่งทันที', icon: Truck, showBadge: true },
+      { key: 'dispatch_board', label: 'Dispatch Board', icon: Columns3, showBadge: true },
+      { key: 'route_templates', label: 'Route Templates', icon: Repeat2 },
       { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
       { key: 'delivery_tracking', label: 'ติดตามการจัดส่ง', icon: Route, showBadge: true },
       { key: 'delivery_report', label: 'รายงานงานส่ง', icon: FileText },
