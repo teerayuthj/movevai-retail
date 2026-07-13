@@ -29,6 +29,7 @@ import {
   Send,
   Split,
   Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
@@ -45,6 +46,7 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   fetchImportBatches,
+  fetchImportRowSource,
   downloadImportBatchCsv,
   updateImportedOrder,
   mergeImportOrders,
@@ -61,7 +63,6 @@ import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from 
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';
-import { normalizeOrderNumberInput } from '@/lib/orderNumber';
 import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import {
@@ -103,7 +104,7 @@ import {
   SOURCE_MISSING_FIELDS_COLUMN,
   visibleRawEntries,
 } from '@/features/inbox/utils/importRawFields';
-import { useImportBatchDetails } from '@/features/inbox/hooks/useImportBatchDetails';
+import { useImportEntries } from '@/features/inbox/hooks/useImportEntries';
 import { useImportCards } from '@/features/inbox/hooks/useImportCards';
 import { BatchListItem } from '@/features/inbox/components/import/BatchListItem';
 import { OrderItemPreviewList } from '@/features/inbox/components/import/OrderItemPreviewList';
@@ -176,6 +177,7 @@ const REJECT_REASONS: ImportRejectReason[] = [
 function BatchWorkspace({
   scope,
   batches,
+  windowParams,
   focusedOrderId,
   editOnOpen,
   onFastDispatchOrder,
@@ -185,6 +187,7 @@ function BatchWorkspace({
 }: {
   scope: string; // batchId | 'all'
   batches: ImportBatch[];
+  windowParams?: { days?: number; from?: string; to?: string };
   focusedOrderId?: string | null;
   editOnOpen?: boolean;
   onFastDispatchOrder?: (orderId: string) => void;
@@ -193,7 +196,6 @@ function BatchWorkspace({
   downloadingBatchId: string | null;
 }) {
   const {
-    orders,
     approveImportOrders,
     rejectImportOrders,
     restoreImportOrders,
@@ -212,6 +214,14 @@ function BatchWorkspace({
   const [method, setMethod] = useState<ShippingMethod>('internal_driver');
   const [reason, setReason] = useState<ImportRejectReason | ''>('');
   const [busy, setBusy] = useState(false);
+  const [shortcutConfirm, setShortcutConfirm] = useState<{
+    orderId: string;
+    orderName: string;
+    orderNo: string | null;
+    action: 'fast' | 'planning';
+    requiresApproval: boolean;
+    plannedAlready: boolean;
+  } | null>(null);
   const [editingRow, setEditingRow] = useState<RowVM | null>(null);
   const [editDraft, setEditDraft] = useState<ImportEditDraft | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
@@ -221,15 +231,46 @@ function BatchWorkspace({
     fileName: string;
     rowIndex: number;
   } | null>(null);
+  const [previewLoadingRowId, setPreviewLoadingRowId] = useState<string | null>(null);
   const autoOpenedOrderRef = useRef<string | null>(null);
 
-  const { details, loading, processingBatches, reloadDetails } = useImportBatchDetails({
-    scope,
-    batches,
-    onResetSelection: () => setSelected(new Set()),
+  const entryData = useImportEntries({
+    batchId: scope === ALL_SCOPE ? undefined : scope,
+    tab,
+    query: search,
+    windowParams: scope === ALL_SCOPE ? windowParams : undefined,
   });
+  const { details, entryOrders, loading, hasMore, total, page, error, loadMore, loadPrevious } =
+    entryData;
+  const reloadDetails = entryData.reload;
+  const processingBatches = useMemo(
+    () =>
+      batches.filter(
+        (batch) =>
+          (scope === ALL_SCOPE || batch.id === scope) &&
+          (batch.status === 'PENDING' || batch.status === 'PROCESSING'),
+      ),
+    [batches, scope],
+  );
+  const batchProgressKey = useMemo(
+    () =>
+      processingBatches
+        .map((batch) => `${batch.id}:${batch.status}:${batch.importedRows}:${batch.errorRows}`)
+        .join('|'),
+    [processingBatches],
+  );
+  const previousBatchProgressRef = useRef<string | null>(null);
+  const reloadEntriesRef = useRef(reloadDetails);
+  reloadEntriesRef.current = reloadDetails;
 
-  const { ordersById, cards, stats } = useImportCards(details, orders);
+  useEffect(() => {
+    const previous = previousBatchProgressRef.current;
+    previousBatchProgressRef.current = batchProgressKey;
+    if (previous != null && previous !== batchProgressKey) void reloadEntriesRef.current();
+  }, [batchProgressKey]);
+
+  const { ordersById, cards } = useImportCards(details, entryOrders);
+  const stats = entryData.stats;
 
   useEffect(() => {
     if (!focusedOrderId || !editOnOpen) return;
@@ -239,6 +280,8 @@ function BatchWorkspace({
     if (!targetRow) return;
     startEditRow(targetRow);
     autoOpenedOrderRef.current = focusedOrderId;
+    // startEditRow is an event helper that intentionally uses the current page snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cards, editOnOpen, focusedOrderId]);
 
   // ถ้าผู้ใช้ยังไม่กดแท็บเอง ให้เด้งไปแท็บแรกที่มีรายการ (ตรวจครบแล้ว → ไปดู "อนุมัติแล้ว" แทนหน้าว่าง)
@@ -259,37 +302,8 @@ function BatchWorkspace({
     stats.rejected,
   ]);
 
-  const visibleCards = useMemo(() => {
-    if (tab === 'all') return cards;
-    if (tab === 'review') return cards.filter((c) => c.kind === 'review' || c.kind === 'error');
-    if (tab === 'approved') return cards.filter((c) => c.kind === 'approved');
-    if (tab === 'cancelled') return cards.filter((c) => c.kind === 'cancelled');
-    return cards.filter((c) => c.kind === 'rejected');
-  }, [cards, tab]);
-
-  // ค้นหาในแท็บปัจจุบัน — รองรับเลขออเดอร์ (MV-ORD-000042 / mvord42), legacy code (IMP-...),
-  // ชื่อ/เบอร์/ที่อยู่ลูกค้า และชื่อไฟล์ต้นทาง
-  const searchedCards = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return visibleCards;
-    const qOrderNo = normalizeOrderNumberInput(search).toLowerCase();
-    return visibleCards.filter((card) => {
-      const order = card.orderId ? ordersById.get(card.orderId) : undefined;
-      const haystack = [
-        order?.orderNo,
-        order?.code,
-        order?.customer.phone,
-        card.primary.name,
-        card.primary.address,
-        card.primary.item,
-        card.primary.fileName,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-      return haystack.includes(q) || (qOrderNo !== q && haystack.includes(qOrderNo));
-    });
-  }, [visibleCards, search, ordersById]);
+  // Filter/search ทำบน backend เพื่อไม่ต้องถือ order หลักหมื่นไว้ใน browser.
+  const searchedCards = cards;
 
   // เลือกได้เฉพาะออเดอร์ที่ยังรอตรวจ (มี order อยู่ใน store) — จำกัดตามผลค้นหาที่เห็นอยู่
   const selectableIds = useMemo(
@@ -336,6 +350,7 @@ function BatchWorkspace({
     setBusy(true);
     try {
       await fn();
+      await reloadDetails();
       toast.success(label);
       setSelected(new Set());
     } catch (error) {
@@ -401,6 +416,14 @@ function BatchWorkspace({
     });
   };
 
+  const confirmShortcutAction = () => {
+    if (!shortcutConfirm) return;
+    const { action, orderId } = shortcutConfirm;
+    setShortcutConfirm(null);
+    if (action === 'fast') approveAndOpenFastDispatch(orderId);
+    else approveAndOpenPlanning(orderId);
+  };
+
   // ปฏิเสธแล้วเด้ง toast ที่บอกชัดว่า "ไปอยู่แท็บ ปฏิเสธ" + ปุ่มดึงกลับ (undo) ในตัว
   // แก้ปัญหาแถวหายวับจากแท็บรอตรวจโดยไม่รู้ว่าไปไหน
   const rejectOrders = async (ids: string[], input?: { reason?: ImportRejectReason }) => {
@@ -408,6 +431,7 @@ function BatchWorkspace({
     setBusy(true);
     try {
       await rejectImportOrders(ids, input?.reason ? { reason: input.reason } : undefined);
+      await reloadDetails();
       setSelected(new Set());
       const count = ids.length;
       toast.success(count === 1 ? 'ปฏิเสธออเดอร์แล้ว' : `ปฏิเสธ ${count} รายการแล้ว`, {
@@ -417,11 +441,12 @@ function BatchWorkspace({
           label: 'ดึงกลับ',
           onClick: () => {
             void restoreImportOrders(ids)
-              .then(() =>
+              .then(async () => {
+                await reloadDetails();
                 toast.success(
                   count === 1 ? 'ดึงกลับมาตรวจใหม่แล้ว' : `ดึงกลับ ${count} รายการแล้ว`,
-                ),
-              )
+                );
+              })
               .catch((error) =>
                 toast.error(error instanceof Error ? error.message : 'ดึงกลับไม่สำเร็จ'),
               );
@@ -446,7 +471,7 @@ function BatchWorkspace({
       `รวม ${orderIds.length} รายการเป็น 1 ออเดอร์แล้ว — ตรวจอีกครั้งก่อนอนุมัติ`,
       async () => {
         await mergeImportOrders(orderIds);
-        await Promise.all([reloadDetails(), syncFromBackend()]);
+        await syncFromBackend();
       },
     );
   };
@@ -457,8 +482,30 @@ function BatchWorkspace({
     const rowIds = card.rows.slice(1).map((row) => row.rowId);
     void runAction(`แยกออเดอร์กลับเป็น ${card.rows.length} รายการตามแถวต้นทางแล้ว`, async () => {
       await splitImportOrderRows(card.orderId!, rowIds);
-      await Promise.all([reloadDetails(), syncFromBackend()]);
+      await syncFromBackend();
     });
+  };
+
+  const openPreviewImage = async (row: RowVM) => {
+    setPreviewLoadingRowId(row.rowId);
+    try {
+      const source = row.imageDataUrl
+        ? { imageDataUrl: row.imageDataUrl, imageMimeType: row.imageMimeType ?? null }
+        : await fetchImportRowSource(row.rowId);
+      if (!source.imageDataUrl) {
+        toast.error('ไม่พบรูปต้นฉบับของรายการนี้');
+        return;
+      }
+      setPreviewImage({
+        src: source.imageDataUrl,
+        fileName: row.fileName,
+        rowIndex: row.rowIndex,
+      });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'โหลดรูปต้นฉบับไม่สำเร็จ');
+    } finally {
+      setPreviewLoadingRowId(null);
+    }
   };
 
   const startEditRow = (row: RowVM) => {
@@ -677,18 +724,24 @@ function BatchWorkspace({
       </div>
     );
   }
-  if (details.length === 0) {
+  if (stats.total === 0 && !loading) {
     return <div className="py-8 text-center text-sm text-muted-foreground">ไม่มีข้อมูลนำเข้า</div>;
   }
 
-  const title = scope === ALL_SCOPE ? `รวมทุกรายการ (${details.length})` : details[0].fileName;
+  const scopeBatch = scope === ALL_SCOPE ? undefined : batches.find((batch) => batch.id === scope);
+  const title =
+    scope === ALL_SCOPE
+      ? `รวมทุกรายการ (${stats.batchCount.toLocaleString('th-TH')})`
+      : (scopeBatch?.fileName ?? 'รายการนำเข้า');
   const showFile = scope === ALL_SCOPE;
-  const errorSummary = scope === ALL_SCOPE ? null : details[0].errorSummary;
+  const errorSummary = scopeBatch?.errorSummary ?? null;
   const senderName =
     scope === ALL_SCOPE
       ? null
-      : details[0].lineSenderDisplayName?.trim() ||
-        (details[0].lineSenderUserId ? `LINE ${details[0].lineSenderUserId.slice(0, 8)}...` : null);
+      : scopeBatch?.lineSenderDisplayName?.trim() ||
+        (scopeBatch?.lineSenderUserId
+          ? `LINE ${scopeBatch.lineSenderUserId.slice(0, 8)}...`
+          : null);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -706,9 +759,9 @@ function BatchWorkspace({
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             {senderName && (
               <span className="inline-flex items-center gap-1">
-                {details[0].lineSenderPictureUrl ? (
+                {scopeBatch?.lineSenderPictureUrl ? (
                   <img
-                    src={details[0].lineSenderPictureUrl}
+                    src={scopeBatch.lineSenderPictureUrl}
                     alt=""
                     className="h-4 w-4 shrink-0 rounded-full object-cover"
                   />
@@ -736,19 +789,22 @@ function BatchWorkspace({
                 <option value="thai_post">ไปรษณีย์ไทย</option>
               </Select>
               <Button type="button" size="sm" disabled={busy} onClick={approveAllInScope}>
-                <CheckCircle2 className="h-3.5 w-3.5" /> อนุมัติทั้งหมด ({reviewIds.length})
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {scope === ALL_SCOPE || stats.review > reviewIds.length
+                  ? `อนุมัติที่โหลดแล้ว (${reviewIds.length})`
+                  : `อนุมัติทั้งหมด (${reviewIds.length})`}
               </Button>
             </>
           )}
-          {scope !== ALL_SCOPE && details[0] && (
+          {scope !== ALL_SCOPE && scopeBatch && (
             <Button
               type="button"
               size="sm"
               variant="outline"
-              disabled={downloadingBatchId === details[0].id}
-              onClick={() => onDownloadBatch(details[0])}
+              disabled={downloadingBatchId === scopeBatch.id}
+              onClick={() => onDownloadBatch(scopeBatch)}
             >
-              {downloadingBatchId === details[0].id ? (
+              {downloadingBatchId === scopeBatch.id ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
                 <Download className="h-3.5 w-3.5" />
@@ -782,6 +838,15 @@ function BatchWorkspace({
               </span>
             ) : null;
           })()}
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+          <span>{error}</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void reloadDetails()}>
+            ลองใหม่
+          </Button>
         </div>
       )}
 
@@ -883,7 +948,7 @@ function BatchWorkspace({
             />
           </div>
           <span className="shrink-0 text-muted-foreground">
-            {searchedCards.length.toLocaleString('th-TH')} รายการ
+            {total.toLocaleString('th-TH')} รายการ
           </span>
         </div>
 
@@ -911,305 +976,364 @@ function BatchWorkspace({
           </div>
         )}
 
-        {searchedCards.map((card) => {
-          const r = card.primary;
-          const order = card.orderId ? ordersById.get(card.orderId) : undefined;
-          const selectable = card.kind === 'review' && !!card.orderId && !!order;
-          const checked = !!card.orderId && selected.has(card.orderId);
-          // ยกเลิกแล้วเป็นสถานะสุดทาง — แก้ไขไม่ได้ (ต่างจากปฏิเสธที่ยังดึงกลับมาแก้ได้)
-          const editable = !!card.orderId && card.kind !== 'error' && card.kind !== 'cancelled';
-          const showFastDispatchAction = !!card.orderId && canOpenFastDispatch(card, order);
-          const showPlanningAction = !!card.orderId && canOpenPlanning(card, order);
-          const plannedAlready = !!order && isUnreleasedPlannedOrder(order);
-          const deliveryQueueBadge = getDeliveryQueueBadge(order);
-          const rowLabel =
-            card.rows.length === 1
-              ? `แถว ${r.rowIndex + 1}`
-              : `แถว ${card.rows.map((row) => row.rowIndex + 1).join(', ')}`;
-          const { skuCount, totalQty } = orderItemStats(order);
-          const skuSummary =
-            skuCount > 0
-              ? `${skuCount.toLocaleString('th-TH')} SKU · ${totalQty.toLocaleString('th-TH')} ชิ้น`
-              : r.item;
-          const requestedDelivery = getRowRequestedDelivery(r, order);
-          const requestedDeliveryText = requestedDelivery.date
-            ? formatRequestedDelivery(requestedDelivery)
-            : null;
+        <div className="space-y-2 pt-2">
+          {searchedCards.map((card) => {
+            const r = card.primary;
+            const order = card.orderId ? ordersById.get(card.orderId) : undefined;
+            const selectable = card.kind === 'review' && !!card.orderId && !!order;
+            const checked = !!card.orderId && selected.has(card.orderId);
+            // ยกเลิกแล้วเป็นสถานะสุดทาง — แก้ไขไม่ได้ (ต่างจากปฏิเสธที่ยังดึงกลับมาแก้ได้)
+            const editable = !!card.orderId && card.kind !== 'error' && card.kind !== 'cancelled';
+            const showFastDispatchAction = !!card.orderId && canOpenFastDispatch(card, order);
+            const showPlanningAction = !!card.orderId && canOpenPlanning(card, order);
+            const plannedAlready = !!order && isUnreleasedPlannedOrder(order);
+            const requiresApproval = card.kind === 'review';
+            const deliveryQueueBadge = getDeliveryQueueBadge(order);
+            const rowLabel =
+              card.rows.length === 1
+                ? `แถว ${r.rowIndex + 1}`
+                : `แถว ${card.rows.map((row) => row.rowIndex + 1).join(', ')}`;
+            const { skuCount, totalQty } = orderItemStats(order);
+            const skuSummary =
+              skuCount > 0
+                ? `${skuCount.toLocaleString('th-TH')} SKU · ${totalQty.toLocaleString('th-TH')} ชิ้น`
+                : r.item;
+            const requestedDelivery = getRowRequestedDelivery(r, order);
+            const requestedDeliveryText = requestedDelivery.date
+              ? formatRequestedDelivery(requestedDelivery)
+              : null;
 
-          return (
-            <div
-              key={card.key}
-              className={cn(
-                'rounded-lg border bg-background p-3 transition-colors hover:border-border',
-                checked && 'border-primary/40 bg-primary/5',
-                (card.kind === 'rejected' || card.kind === 'cancelled') &&
-                  'bg-muted/40 text-muted-foreground',
-              )}
-            >
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <input
-                      type="checkbox"
-                      aria-label={`เลือกออเดอร์จาก${rowLabel}`}
-                      checked={checked}
-                      disabled={!selectable}
-                      onChange={() => card.orderId && toggle(card.orderId)}
-                      className="h-3.5 w-3.5 disabled:opacity-30"
-                    />
-                    <RowStatusBadge kind={card.kind} />
-                    {order?.orderNo && (
-                      <span className="inline-flex items-center gap-0.5 font-mono text-[11px] font-semibold">
-                        {order.orderNo}
-                        <CopyOrderNoButton orderNo={order.orderNo} className="h-4 w-4" />
-                      </span>
-                    )}
-                    {deliveryQueueBadge && (
-                      <Badge variant="success" className="h-5 gap-1 px-1.5 text-[10px]">
-                        <Route className="h-3 w-3" />
-                        {deliveryQueueBadge}
-                      </Badge>
-                    )}
-                    {card.rows.length > 1 && (
-                      <Badge variant="info" className="h-5 gap-1 px-1.5 text-[10px]">
-                        <Layers className="h-3 w-3" />
-                        รวม {card.rows.length} แถว
-                      </Badge>
-                    )}
-                    {skuSummary && (
-                      <Badge variant="muted" className="h-5 gap-1 px-1.5 text-[10px]">
-                        <Package className="h-3 w-3" />
-                        {skuSummary}
-                      </Badge>
-                    )}
-                    {r.imageDataUrl && (
-                      <Badge variant="muted" className="h-5 gap-1 px-1.5 text-[10px]">
-                        <ImageIcon className="h-3 w-3" />
-                        รูปต้นฉบับ
-                      </Badge>
-                    )}
-                    <span className="text-[10px] text-muted-foreground">
-                      {showFile ? `${r.fileName} · ${rowLabel}` : rowLabel}
-                    </span>
-                  </div>
-
-                  <div
-                    className={cn(
-                      'mt-2 truncate text-sm font-semibold',
-                      (card.kind === 'rejected' || card.kind === 'cancelled') && 'line-through',
-                    )}
-                  >
-                    {r.name}
-                  </div>
-
-                  <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                    {card.kind === 'error' && r.errorMessage ? (
-                      <span className="text-destructive">{r.errorMessage}</span>
-                    ) : (
-                      r.address
-                    )}
-                  </div>
-
-                  {requestedDeliveryText && (
-                    <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-info/30 bg-info/5 px-2.5 py-1 text-xs text-info">
-                      <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                      <span className="shrink-0 font-medium">นัดส่ง</span>
-                      <span className="min-w-0 truncate text-foreground">
-                        {requestedDeliveryText}
+            return (
+              <div
+                key={card.key}
+                className={cn(
+                  'rounded-lg border bg-background p-3 transition-colors hover:border-border',
+                  checked && 'border-primary/40 bg-primary/5',
+                  (card.kind === 'rejected' || card.kind === 'cancelled') &&
+                    'bg-muted/40 text-muted-foreground',
+                )}
+              >
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`เลือกออเดอร์จาก${rowLabel}`}
+                        checked={checked}
+                        disabled={!selectable}
+                        onChange={() => card.orderId && toggle(card.orderId)}
+                        className="h-3.5 w-3.5 disabled:opacity-30"
+                      />
+                      <RowStatusBadge kind={card.kind} />
+                      {order?.orderNo && (
+                        <span className="inline-flex items-center gap-0.5 font-mono text-[11px] font-semibold">
+                          {order.orderNo}
+                          <CopyOrderNoButton orderNo={order.orderNo} className="h-4 w-4" />
+                        </span>
+                      )}
+                      {deliveryQueueBadge && (
+                        <Badge variant="success" className="h-5 gap-1 px-1.5 text-[10px]">
+                          <Route className="h-3 w-3" />
+                          {deliveryQueueBadge}
+                        </Badge>
+                      )}
+                      {card.rows.length > 1 && (
+                        <Badge variant="info" className="h-5 gap-1 px-1.5 text-[10px]">
+                          <Layers className="h-3 w-3" />
+                          รวม {card.rows.length} แถว
+                        </Badge>
+                      )}
+                      {skuSummary && (
+                        <Badge variant="muted" className="h-5 gap-1 px-1.5 text-[10px]">
+                          <Package className="h-3 w-3" />
+                          {skuSummary}
+                        </Badge>
+                      )}
+                      {r.hasSourceImage && (
+                        <Badge variant="muted" className="h-5 gap-1 px-1.5 text-[10px]">
+                          <ImageIcon className="h-3 w-3" />
+                          รูปต้นฉบับ
+                        </Badge>
+                      )}
+                      <span className="text-[10px] text-muted-foreground">
+                        {showFile ? `${r.fileName} · ${rowLabel}` : rowLabel}
                       </span>
                     </div>
-                  )}
 
-                  {order ? (
-                    <OrderItemPreviewList order={order} />
-                  ) : (
-                    r.item && (
-                      <div className="mt-2 flex items-center gap-1 rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">
-                        <Package className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{r.item}</span>
+                    <div
+                      className={cn(
+                        'mt-2 truncate text-sm font-semibold',
+                        (card.kind === 'rejected' || card.kind === 'cancelled') && 'line-through',
+                      )}
+                    >
+                      {r.name}
+                    </div>
+
+                    <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {card.kind === 'error' && r.errorMessage ? (
+                        <span className="text-destructive">{r.errorMessage}</span>
+                      ) : (
+                        r.address
+                      )}
+                    </div>
+
+                    {requestedDeliveryText && (
+                      <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-md border border-info/30 bg-info/5 px-2.5 py-1 text-xs text-info">
+                        <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                        <span className="shrink-0 font-medium">นัดส่ง</span>
+                        <span className="min-w-0 truncate text-foreground">
+                          {requestedDeliveryText}
+                        </span>
                       </div>
-                    )
-                  )}
-                </div>
+                    )}
 
-                <div className="flex shrink-0 flex-col items-stretch gap-2 xl:w-[230px]">
-                  <div className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 xl:block xl:text-right">
-                    <div className="text-[11px] text-muted-foreground">มูลค่ารวม</div>
-                    <div className="text-sm font-semibold tabular-nums text-warning">
-                      {r.value != null ? formatTHB(r.value) : '—'}
-                    </div>
+                    {order ? (
+                      <OrderItemPreviewList order={order} />
+                    ) : (
+                      r.item && (
+                        <div className="mt-2 flex items-center gap-1 rounded-md border bg-background px-3 py-2 text-xs text-muted-foreground">
+                          <Package className="h-3.5 w-3.5 shrink-0" />
+                          <span className="truncate">{r.item}</span>
+                        </div>
+                      )
+                    )}
                   </div>
 
-                  {/* ปุ่มเรียงเป็น grid 2 คอลัมน์ขนาดเท่ากัน (จำนวนคี่ → ปุ่มสุดท้ายเต็มแถว)
+                  <div className="flex shrink-0 flex-col items-stretch gap-2 xl:w-[230px]">
+                    <div className="flex items-baseline justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 xl:block xl:text-right">
+                      <div className="text-[11px] text-muted-foreground">มูลค่ารวม</div>
+                      <div className="text-sm font-semibold tabular-nums text-warning">
+                        {r.value != null ? formatTHB(r.value) : '—'}
+                      </div>
+                    </div>
+
+                    {/* ปุ่มเรียงเป็น grid 2 คอลัมน์ขนาดเท่ากัน (จำนวนคี่ → ปุ่มสุดท้ายเต็มแถว)
                       เรียงตามความสำคัญ: อนุมัติ/Fast Dispatch ก่อน, ปฏิเสธไว้ท้ายสุด */}
-                  <div className="grid grid-cols-2 gap-1.5 [&>*:last-child:nth-child(odd)]:col-span-2">
-                    {showFastDispatchAction && onFastDispatchOrder && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => approveAndOpenFastDispatch(card.orderId!)}
-                            className={cn(
-                              CARD_ACTION_CLASS,
-                              'border-primary bg-primary/5 text-primary hover:bg-primary/10',
-                            )}
-                          >
-                            <Send className="h-3 w-3" />
-                            ส่งทันที
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="end" className="max-w-[240px]">
-                          <p className="font-semibold">
-                            {plannedAlready
-                              ? 'ถอดออกจากรอบ แล้วส่งทันที'
-                              : 'อนุมัติแล้วไปหน้าส่งทันที'}
-                          </p>
-                          <p className="mt-0.5 font-normal leading-snug text-background/80">
-                            {plannedAlready
-                              ? 'order นี้ถูกจัดรอบไว้แล้ว — กดเพื่อถอดออกจากรอบ แล้วเปิดหน้า “ส่งทันที” เลือกคนขับมอบงานให้ Messenger ทันที'
-                              : 'เปิดหน้า “ส่งทันที” พร้อมโฟกัส order นี้ให้เลย — เลือกคนขับแล้วมอบงานให้ Messenger ได้ทันที'}
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    {showPlanningAction && onPlanningOrder && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => approveAndOpenPlanning(card.orderId!)}
-                            className={cn(
-                              CARD_ACTION_CLASS,
-                              'border-info/50 bg-info/5 text-info hover:bg-info/10',
-                            )}
-                          >
-                            <CalendarDays className="h-3 w-3" />
-                            จัดรอบส่ง
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="end" className="max-w-[240px]">
-                          <p className="font-semibold">อนุมัติแล้วไปหน้า Planning</p>
-                          <p className="mt-0.5 font-normal leading-snug text-background/80">
-                            เปิดหน้า Planning พร้อมโฟกัส order นี้ในลิสต์ “รอจัดรอบ” —
-                            เลือกวัน/เวลา/คนขับ แล้วบันทึกเพื่อมอบงานให้ Messenger
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    {card.kind === 'review' && card.orderId && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          runAction('อนุมัติ 1 รายการ', () =>
-                            approveImportOrders([card.orderId!], method),
-                          )
-                        }
-                        className={cn(
-                          CARD_ACTION_CLASS,
-                          'border-success/60 text-success hover:bg-success/10',
-                        )}
-                      >
-                        <CheckCircle2 className="h-3 w-3" />
-                        อนุมัติ
-                      </button>
-                    )}
-                    {editable && (
-                      <button
-                        type="button"
-                        disabled={busy || savingEdit}
-                        onClick={() => startEditRow(r)}
-                        className={cn(
-                          CARD_ACTION_CLASS,
-                          'border-border text-foreground hover:bg-muted',
-                        )}
-                      >
-                        <Pencil className="h-3 w-3" />
-                        แก้ไข
-                      </button>
-                    )}
-                    {r.imageDataUrl && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          setPreviewImage({
-                            src: r.imageDataUrl!,
-                            fileName: r.fileName,
-                            rowIndex: r.rowIndex,
-                          })
-                        }
-                        className={cn(
-                          CARD_ACTION_CLASS,
-                          'border-border text-foreground hover:bg-muted',
-                        )}
-                      >
-                        <Eye className="h-3 w-3" />
-                        ดูรูป
-                      </button>
-                    )}
-                    {card.kind === 'review' && card.orderId && card.rows.length > 1 && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => splitCard(card)}
-                            className={cn(
-                              CARD_ACTION_CLASS,
-                              'border-border text-foreground hover:bg-muted',
-                            )}
-                          >
-                            <Split className="h-3 w-3" />
-                            แยกตามแถว
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" align="end" className="max-w-[240px]">
-                          <p className="font-semibold">แยกตามแถวต้นทาง</p>
-                          <p className="mt-0.5 font-normal leading-snug text-background/80">
-                            แตกกลับเป็น {card.rows.length} ออเดอร์ตามแถวเดิมในไฟล์ —
-                            ใช้เมื่อรวมผิดหรือไฟล์ตั้งใจให้เป็นคนละออเดอร์
-                          </p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    {card.kind === 'review' && card.orderId && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void rejectOrders([card.orderId!])}
-                        className={cn(
-                          CARD_ACTION_CLASS,
-                          'border-border text-muted-foreground hover:bg-muted',
-                        )}
-                      >
-                        <XCircle className="h-3 w-3" />
-                        ปฏิเสธ
-                      </button>
-                    )}
-                    {card.kind === 'rejected' && card.orderId && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          runAction('ดึงกลับ 1 รายการ', () => restoreImportOrders([card.orderId!]))
-                        }
-                        className={cn(
-                          CARD_ACTION_CLASS,
-                          'border-border text-foreground hover:bg-muted',
-                        )}
-                      >
-                        <RotateCcw className="h-3 w-3" /> ดึงกลับ
-                      </button>
-                    )}
+                    <div className="grid grid-cols-2 gap-1.5 [&>*:last-child:nth-child(odd)]:col-span-2">
+                      {showFastDispatchAction && onFastDispatchOrder && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                setShortcutConfirm({
+                                  orderId: card.orderId!,
+                                  orderName: r.name,
+                                  orderNo: order?.orderNo ?? null,
+                                  action: 'fast',
+                                  requiresApproval,
+                                  plannedAlready,
+                                })
+                              }
+                              className={cn(
+                                CARD_ACTION_CLASS,
+                                'border-primary bg-primary/5 text-primary hover:bg-primary/10',
+                              )}
+                            >
+                              <Send className="h-3 w-3" />
+                              {requiresApproval ? 'อนุมัติและส่งทันที' : 'ส่งทันที'}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" align="end" className="max-w-[240px]">
+                            <p className="font-semibold">
+                              {plannedAlready
+                                ? 'ถอดออกจากรอบ แล้วส่งทันที'
+                                : requiresApproval
+                                  ? 'อนุมัติและไปหน้าส่งทันที'
+                                  : 'ไปหน้าส่งทันที'}
+                            </p>
+                            <p className="mt-0.5 font-normal leading-snug text-background/80">
+                              {plannedAlready
+                                ? 'order นี้ถูกจัดรอบไว้แล้ว — กดเพื่อถอดออกจากรอบ แล้วเปิดหน้า “ส่งทันที” เลือกคนขับมอบงานให้ Messenger ทันที'
+                                : requiresApproval
+                                  ? 'อนุมัติออเดอร์ก่อน แล้วเปิดหน้า “ส่งทันที” พร้อมโฟกัส order นี้ให้เลย'
+                                  : 'เปิดหน้า “ส่งทันที” พร้อมโฟกัส order นี้ให้เลย — เลือกคนขับแล้วมอบงานให้ Messenger ได้ทันที'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {showPlanningAction && onPlanningOrder && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() =>
+                                setShortcutConfirm({
+                                  orderId: card.orderId!,
+                                  orderName: r.name,
+                                  orderNo: order?.orderNo ?? null,
+                                  action: 'planning',
+                                  requiresApproval,
+                                  plannedAlready,
+                                })
+                              }
+                              className={cn(
+                                CARD_ACTION_CLASS,
+                                'border-info/50 bg-info/5 text-info hover:bg-info/10',
+                              )}
+                            >
+                              <CalendarDays className="h-3 w-3" />
+                              {requiresApproval ? 'อนุมัติและจัดรอบส่ง' : 'จัดรอบส่ง'}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" align="end" className="max-w-[240px]">
+                            <p className="font-semibold">
+                              {requiresApproval ? 'อนุมัติและไปหน้า Planning' : 'ไปหน้า Planning'}
+                            </p>
+                            <p className="mt-0.5 font-normal leading-snug text-background/80">
+                              {requiresApproval
+                                ? 'อนุมัติออเดอร์ก่อน แล้วเปิดหน้า Planning พร้อมโฟกัส order นี้ในลิสต์ “รอจัดรอบ”'
+                                : 'เปิดหน้า Planning พร้อมโฟกัส order นี้ในลิสต์ “รอจัดรอบ” — เลือกวัน/เวลา/คนขับ แล้วบันทึกเพื่อมอบงานให้ Messenger'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {card.kind === 'review' && card.orderId && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            runAction('อนุมัติ 1 รายการ', () =>
+                              approveImportOrders([card.orderId!], method),
+                            )
+                          }
+                          className={cn(
+                            CARD_ACTION_CLASS,
+                            'border-success/60 text-success hover:bg-success/10',
+                          )}
+                        >
+                          <CheckCircle2 className="h-3 w-3" />
+                          อนุมัติ
+                        </button>
+                      )}
+                      {editable && (
+                        <button
+                          type="button"
+                          disabled={busy || savingEdit}
+                          onClick={() => startEditRow(r)}
+                          className={cn(
+                            CARD_ACTION_CLASS,
+                            'border-border text-foreground hover:bg-muted',
+                          )}
+                        >
+                          <Pencil className="h-3 w-3" />
+                          แก้ไข
+                        </button>
+                      )}
+                      {r.hasSourceImage && (
+                        <button
+                          type="button"
+                          disabled={busy || previewLoadingRowId === r.rowId}
+                          onClick={() => void openPreviewImage(r)}
+                          className={cn(
+                            CARD_ACTION_CLASS,
+                            'border-border text-foreground hover:bg-muted',
+                          )}
+                        >
+                          {previewLoadingRowId === r.rowId ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            <Eye className="h-3 w-3" />
+                          )}
+                          ดูรูป
+                        </button>
+                      )}
+                      {card.kind === 'review' && card.orderId && card.rows.length > 1 && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => splitCard(card)}
+                              className={cn(
+                                CARD_ACTION_CLASS,
+                                'border-border text-foreground hover:bg-muted',
+                              )}
+                            >
+                              <Split className="h-3 w-3" />
+                              แยกตามแถว
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" align="end" className="max-w-[240px]">
+                            <p className="font-semibold">แยกตามแถวต้นทาง</p>
+                            <p className="mt-0.5 font-normal leading-snug text-background/80">
+                              แตกกลับเป็น {card.rows.length} ออเดอร์ตามแถวเดิมในไฟล์ —
+                              ใช้เมื่อรวมผิดหรือไฟล์ตั้งใจให้เป็นคนละออเดอร์
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                      {card.kind === 'review' && card.orderId && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void rejectOrders([card.orderId!])}
+                          className={cn(
+                            CARD_ACTION_CLASS,
+                            'border-border text-muted-foreground hover:bg-muted',
+                          )}
+                        >
+                          <XCircle className="h-3 w-3" />
+                          ปฏิเสธ
+                        </button>
+                      )}
+                      {card.kind === 'rejected' && card.orderId && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            runAction('ดึงกลับ 1 รายการ', () =>
+                              restoreImportOrders([card.orderId!]),
+                            )
+                          }
+                          className={cn(
+                            CARD_ACTION_CLASS,
+                            'border-border text-foreground hover:bg-muted',
+                          )}
+                        >
+                          <RotateCcw className="h-3 w-3" /> ดึงกลับ
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
+        {(page > 1 || hasMore) && (
+          <div className="flex items-center justify-center gap-2 py-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={loading || page <= 1}
+              onClick={() => {
+                setSelected(new Set());
+                loadPrevious();
+              }}
+            >
+              หน้าก่อนหน้า
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              หน้า {page.toLocaleString('th-TH')}
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={loading || !hasMore}
+              onClick={() => {
+                setSelected(new Set());
+                loadMore();
+              }}
+            >
+              หน้าถัดไป
+            </Button>
+          </div>
+        )}
       </div>
 
       {editingRow && editDraft && (
@@ -1317,6 +1441,7 @@ function BatchWorkspace({
               <DatePicker
                 size="sm"
                 value={editDraft.deliveryDate}
+                disablePastDates
                 onChange={(value) => setEditDraft({ ...editDraft, deliveryDate: value })}
                 className="w-full"
               />
@@ -1535,6 +1660,79 @@ function BatchWorkspace({
         </div>
       )}
 
+      {shortcutConfirm && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="shortcut-confirm-title"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget && !busy) setShortcutConfirm(null);
+          }}
+        >
+          <div className="w-full max-w-md overflow-hidden rounded-xl border bg-background shadow-xl">
+            <div className="flex items-start gap-3 border-b px-5 py-4">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/10 text-warning">
+                <AlertTriangle className="h-4 w-4" />
+              </span>
+              <div>
+                <h2 id="shortcut-confirm-title" className="text-base font-semibold">
+                  {shortcutConfirm.requiresApproval
+                    ? shortcutConfirm.action === 'fast'
+                      ? 'อนุมัติและเปิดส่งทันที?'
+                      : 'อนุมัติและเปิดจัดรอบส่ง?'
+                    : shortcutConfirm.action === 'fast'
+                      ? 'เปิดส่งทันที?'
+                      : 'เปิดจัดรอบส่ง?'}
+                </h2>
+                <p className="mt-1 text-xs text-muted-foreground">โปรดตรวจสอบก่อนดำเนินการ</p>
+              </div>
+            </div>
+
+            <div className="space-y-3 px-5 py-4">
+              <div className="rounded-lg border bg-muted/20 px-3 py-2.5">
+                {shortcutConfirm.orderNo && (
+                  <div className="font-mono text-[11px] font-medium">{shortcutConfirm.orderNo}</div>
+                )}
+                <div className="mt-0.5 text-sm font-medium">{shortcutConfirm.orderName}</div>
+              </div>
+
+              <p className="text-sm leading-6 text-muted-foreground">
+                {shortcutConfirm.plannedAlready && shortcutConfirm.action === 'fast'
+                  ? 'ออเดอร์นี้อยู่ในรอบส่งที่วางแผนไว้แล้ว ระบบจะถอดออกจากรอบเดิม แล้วเปิดหน้าส่งทันทีให้เลือก Messenger ใหม่'
+                  : shortcutConfirm.requiresApproval
+                    ? shortcutConfirm.action === 'fast'
+                      ? 'ระบบจะอนุมัติออเดอร์เป็นการจัดส่งโดยคนขับภายใน แล้วเปิดหน้าส่งทันทีเพื่อเลือก Messenger และมอบงาน'
+                      : 'ระบบจะอนุมัติออเดอร์เป็นการจัดส่งโดยคนขับภายใน แล้วเปิดหน้า Planning เพื่อกำหนดวัน เวลา และคนขับ'
+                    : shortcutConfirm.action === 'fast'
+                      ? 'ระบบจะเปิดหน้าส่งทันทีเพื่อเลือก Messenger และมอบงาน'
+                      : 'ระบบจะเปิดหน้า Planning เพื่อกำหนดวัน เวลา และคนขับ'}
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2 border-t bg-muted/20 px-5 py-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShortcutConfirm(null)}
+                disabled={busy}
+              >
+                ยกเลิก
+              </Button>
+              <Button type="button" onClick={confirmShortcutAction} disabled={busy}>
+                {shortcutConfirm.requiresApproval
+                  ? shortcutConfirm.action === 'fast'
+                    ? 'อนุมัติและส่งทันที'
+                    : 'อนุมัติและจัดรอบส่ง'
+                  : shortcutConfirm.action === 'fast'
+                    ? 'เปิดส่งทันที'
+                    : 'เปิดจัดรอบส่ง'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {previewImage && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
@@ -1665,6 +1863,7 @@ export default function ImportBatchPanel({
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
+  const [batchPage, setBatchPage] = useState(1);
   const [days, setDays] = useState(DEFAULT_DAYS);
   const [range, setRange] = useState<DateRange | undefined>();
   const [rangeOpen, setRangeOpen] = useState(false);
@@ -1737,6 +1936,7 @@ export default function ImportBatchPanel({
     loadingRef.current = true;
     setLoading(true);
     pageRef.current = 1;
+    setBatchPage(1);
     fetchImportBatches({ page: 1, limit: BATCH_PAGE_SIZE, ...windowParams })
       .then((res) => {
         setBatches(res.batches);
@@ -1763,11 +1963,9 @@ export default function ImportBatchPanel({
     fetchImportBatches({ page: nextPage, limit: BATCH_PAGE_SIZE, ...windowParams })
       .then((res) => {
         pageRef.current = nextPage;
-        // กันรายการซ้ำ (เผลอมีไฟล์ใหม่เข้ามาระหว่างเลื่อน) — dedupe ตาม id
-        setBatches((prev) => {
-          const seen = new Set(prev.map((b) => b.id));
-          return [...prev, ...res.batches.filter((b) => !seen.has(b.id))];
-        });
+        setBatchPage(nextPage);
+        setBatches(res.batches);
+        setSelectedId(ALL_SCOPE);
         setTotal(res.total);
         setHasMore(res.hasMore);
       })
@@ -1781,6 +1979,31 @@ export default function ImportBatchPanel({
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, windowKey]);
+
+  const loadPrevious = useCallback(() => {
+    if (loadingRef.current || pageRef.current <= 1 || !windowParams) return;
+    loadingRef.current = true;
+    setLoadingMore(true);
+    const previousPage = pageRef.current - 1;
+    fetchImportBatches({ page: previousPage, limit: BATCH_PAGE_SIZE, ...windowParams })
+      .then((res) => {
+        pageRef.current = previousPage;
+        setBatchPage(previousPage);
+        setBatches(res.batches);
+        setSelectedId(ALL_SCOPE);
+        setTotal(res.total);
+        setHasMore(res.hasMore);
+      })
+      .catch((error) => {
+        console.error(error);
+        toast.error('โหลดรายการก่อนหน้าไม่สำเร็จ');
+      })
+      .finally(() => {
+        setLoadingMore(false);
+        loadingRef.current = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [windowKey]);
 
   useEffect(() => {
     reload();
@@ -1801,13 +2024,11 @@ export default function ImportBatchPanel({
         setBatches((prev) => {
           if (prev.length === 0) return res.batches;
           const incomingById = new Map(res.batches.map((b) => [b.id, b]));
-          const seen = new Set(prev.map((b) => b.id));
-          const merged = prev.map((b) => incomingById.get(b.id) ?? b);
-          const fresh = res.batches.filter((b) => !seen.has(b.id));
-          return fresh.length > 0 ? [...fresh, ...merged] : merged;
+          if (pageRef.current === 1) return res.batches;
+          return prev.map((batch) => incomingById.get(batch.id) ?? batch);
         });
         setTotal(res.total);
-        if (batchCountRef.current === 0) setHasMore(res.hasMore);
+        if (pageRef.current === 1 || batchCountRef.current === 0) setHasMore(res.hasMore);
       })
       .catch(() => {
         // เงียบ — เป็น background poll ไม่ต้องรบกวนผู้ใช้ด้วย toast
@@ -1829,24 +2050,9 @@ export default function ImportBatchPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inProgressCount > 0, windowKey, pollRefresh]);
 
-  // เลื่อน scrollbar ลงใกล้สุด → โหลดหน้าถัดไป
-  const handleScroll = useCallback(() => {
-    const el = listRef.current;
-    if (!el || !hasMore || loadingRef.current) return;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 120) loadMore();
-  }, [hasMore, loadMore]);
-
-  // ถ้าหน้าแรกสั้นจนไม่มี scrollbar แต่ยังมีรายการต่อ → โหลดต่อเองให้เลื่อนได้
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el || loading || loadingMore || !hasMore) return;
-    if (el.scrollHeight <= el.clientHeight) loadMore();
-  }, [loading, loadingMore, hasMore, batches.length, loadMore]);
-
   const hasBatches = batches.length > 0;
   const unreadCount = batches.filter((batch) => !readBatchIds.has(batch.id)).length;
-  const workspaceKey =
-    selectedId === ALL_SCOPE ? `all:${batches.map((b) => b.id).join(',')}` : selectedId;
+  const workspaceKey = selectedId === ALL_SCOPE ? `all:${windowKey}` : selectedId;
 
   useEffect(() => {
     if (!focusedBatchId) return;
@@ -1892,6 +2098,7 @@ export default function ImportBatchPanel({
               key={workspaceKey}
               scope={selectedId}
               batches={batches}
+              windowParams={windowParams ?? undefined}
               focusedOrderId={selectedId === focusedBatchId ? focusedOrderId : null}
               editOnOpen={selectedId === focusedBatchId && editOnOpen}
               onFastDispatchOrder={onFastDispatchOrder}
@@ -1972,7 +2179,7 @@ export default function ImportBatchPanel({
             </Select>
             {total > 0 && (
               <span className="shrink-0 text-xs text-muted-foreground">
-                {batches.length}/{total}
+                หน้า {batchPage.toLocaleString('th-TH')} · {total.toLocaleString('th-TH')}
               </span>
             )}
           </div>
@@ -2025,11 +2232,7 @@ export default function ImportBatchPanel({
           )}
         </CardHeader>
         <Separator />
-        <CardContent
-          ref={listRef}
-          onScroll={handleScroll}
-          className="app-scroll flex-1 space-y-2 overflow-auto p-3"
-        >
+        <CardContent ref={listRef} className="app-scroll flex-1 space-y-2 overflow-auto p-3">
           {loading && batches.length === 0 && (
             <div className="flex h-20 items-center justify-center">
               <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
@@ -2070,7 +2273,7 @@ export default function ImportBatchPanel({
                   </Badge>
                 )}
                 <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
-                  {batches.length} รายการ
+                  {total.toLocaleString('th-TH')} รายการ
                 </Badge>
               </span>
             </button>
@@ -2087,12 +2290,30 @@ export default function ImportBatchPanel({
               }}
             />
           ))}
-          {loadingMore && (
-            <div className="flex items-center justify-center py-3">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          {(batchPage > 1 || hasMore) && (
+            <div className="flex items-center justify-center gap-2 py-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={loadingMore || batchPage <= 1}
+                onClick={loadPrevious}
+              >
+                ก่อนหน้า
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={loadingMore || !hasMore}
+                onClick={loadMore}
+              >
+                {loadingMore && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                ถัดไป
+              </Button>
             </div>
           )}
-          {!loading && !loadingMore && hasBatches && !hasMore && (
+          {!loading && !loadingMore && hasBatches && !hasMore && batchPage === 1 && (
             <div className="py-3 text-center text-[11px] text-muted-foreground">
               แสดงครบทุกรายการในช่วงเวลานี้แล้ว
             </div>
@@ -2106,6 +2327,7 @@ export default function ImportBatchPanel({
             key={workspaceKey}
             scope={selectedId}
             batches={batches}
+            windowParams={windowParams ?? undefined}
             focusedOrderId={selectedId === focusedBatchId ? focusedOrderId : null}
             editOnOpen={selectedId === focusedBatchId && editOnOpen}
             onFastDispatchOrder={onFastDispatchOrder}

@@ -84,6 +84,35 @@ export async function fillMissingPostalCode(addr: ThaiAddressValue): Promise<Tha
   return match?.postalCode ? { ...addr, postalCode: match.postalCode } : addr;
 }
 
+function requestedDeliveryFromRawData(rawData: Record<string, string>) {
+  const fromColumns = parseDeliveryFromText(
+    [
+      rawField(
+        rawData,
+        'deliveryDate',
+        'delivery_date',
+        'scheduledDate',
+        'วันนัดส่ง',
+        'นัดส่ง',
+        'วันส่ง',
+      ),
+      rawField(
+        rawData,
+        'deliveryTime',
+        'delivery_time',
+        'scheduledTime',
+        'เวลานัดส่ง',
+        'เวลา',
+        'เวลาส่ง',
+      ),
+    ]
+      .filter(Boolean)
+      .join(' '),
+  );
+  if (fromColumns.date || fromColumns.time) return fromColumns;
+  return parseDeliveryFromText(rawField(rawData, 'note', 'หมายเหตุ'));
+}
+
 // items ของออเดอร์ → ตารางแก้ไข: ใช้ของจริงจาก order ทุก SKU (รองรับออเดอร์หลายแถว/รวมแล้ว)
 // ถ้ายังไม่มี order (แถว error) fallback เป็น item เดียวจาก rawData
 export function itemDraftsFromRow(
@@ -123,16 +152,14 @@ export function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDr
   const ocrOnly = row.ocrOnly || isOcrOnlyRaw(row.rawData);
   const rawTotalValue = Number(rawField(row.rawData, 'totalValue', 'total', 'ราคารวม', 'มูลค่า'));
   const rawPayment = rawField(row.rawData, 'payment', 'การชำระ', 'ชำระ');
-  const rawDelivery = parseDeliveryFromText(
-    [
-      rawField(row.rawData, 'deliveryDate', 'delivery_date', 'นัดส่ง', 'วันส่ง'),
-      rawField(row.rawData, 'deliveryTime', 'delivery_time', 'เวลา', 'เวลาส่ง'),
-      rawField(row.rawData, 'note', 'หมายเหตุ'),
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-  const requestedDelivery = order ? getRequestedDeliveryDraft(order) : rawDelivery;
+  const rawDelivery = requestedDeliveryFromRawData(row.rawData);
+  const orderDelivery = order ? getRequestedDeliveryDraft(order) : { date: '', time: '' };
+  // หน้า import ต้องยึดค่าจากแถวไฟล์ที่กำลังตรวจเป็นหลัก เพราะ metadata/deliveryPlan
+  // ระดับออเดอร์อาจเป็นค่าจากแถวเดิมหรือแผนส่งเก่าที่ยังค้างอยู่
+  const requestedDelivery = {
+    date: rawDelivery.date || orderDelivery.date,
+    time: rawDelivery.time || orderDelivery.time,
+  };
   const orderCustomerName =
     ocrOnly && order?.customer.name === '(รอตรวจจากรูป LINE)' ? '' : order?.customer.name;
   const orderCustomerAddress = ocrOnly ? '' : order?.customer.address;
@@ -162,14 +189,12 @@ export function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDr
 }
 
 export function getRowRequestedDelivery(row: RowVM, order: Order | undefined) {
-  if (order) return getRequestedDeliveryDraft(order);
-  return parseDeliveryFromText(
-    [
-      rawField(row.rawData, 'deliveryDate', 'delivery_date', 'scheduledDate', 'นัดส่ง', 'วันส่ง'),
-      rawField(row.rawData, 'deliveryTime', 'delivery_time', 'scheduledTime', 'เวลา', 'เวลาส่ง'),
-      rawField(row.rawData, 'note', 'หมายเหตุ'),
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
+  const rawDelivery = requestedDeliveryFromRawData(row.rawData);
+  if (!order) return rawDelivery;
+
+  const orderDelivery = getRequestedDeliveryDraft(order);
+  return {
+    date: rawDelivery.date || orderDelivery.date,
+    time: rawDelivery.time || orderDelivery.time,
+  };
 }

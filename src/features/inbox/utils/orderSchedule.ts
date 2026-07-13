@@ -55,10 +55,26 @@ export function parseDeliveryFromText(text: string | undefined): RequestedDelive
 export function getRawRequestedDelivery(order: Order): RequestedDeliveryDraft {
   const raw = order.metadataJson?.import?.columns;
   const date = normalizeDate(
-    rawField(raw, 'deliveryDate', 'delivery_date', 'scheduledDate', 'นัดส่ง', 'วันส่ง'),
+    rawField(
+      raw,
+      'deliveryDate',
+      'delivery_date',
+      'scheduledDate',
+      'วันนัดส่ง',
+      'นัดส่ง',
+      'วันส่ง',
+    ),
   );
   const time = normalizeTime(
-    rawField(raw, 'deliveryTime', 'delivery_time', 'scheduledTime', 'เวลา', 'เวลาส่ง'),
+    rawField(
+      raw,
+      'deliveryTime',
+      'delivery_time',
+      'scheduledTime',
+      'เวลานัดส่ง',
+      'เวลา',
+      'เวลาส่ง',
+    ),
   );
   if (date || time) return { date, time };
   return parseDeliveryFromText(rawField(raw, 'note', 'หมายเหตุ') || order.rawText);
@@ -72,13 +88,19 @@ export function getRequestedDeliveryDraft(order: Order): RequestedDeliveryDraft 
   const time = typeof metadata?.time === 'string' ? normalizeTime(metadata.time) : '';
   if (date || time) return { date, time };
 
+  // ค่าวันนัดในไฟล์เป็นคำขอของลูกค้า ส่วน deliveryPlan เป็นรอบที่ทีมจัดส่งวางไว้
+  // เมื่อยังไม่มีการแก้ไขโดยผู้ใช้ ให้ฟอร์มแสดงค่าจากไฟล์เสมอ เพื่อไม่ให้ดูขัดแย้ง
+  // กับข้อมูลดิบที่แสดงข้างออเดอร์
+  const rawRequestedDelivery = getRawRequestedDelivery(order);
+  if (rawRequestedDelivery.date || rawRequestedDelivery.time) return rawRequestedDelivery;
+
   if (order.deliveryPlan?.plannedDate) {
     return { date: order.deliveryPlan.plannedDate, time: order.deliveryPlan.plannedTime ?? '' };
   }
 
   const fromNote = parseDeliveryFromText(order.note);
   if (fromNote.date || fromNote.time) return fromNote;
-  return getRawRequestedDelivery(order);
+  return { date: '', time: '' };
 }
 
 export function formatRequestedDelivery(draft: RequestedDeliveryDraft) {

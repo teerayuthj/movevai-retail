@@ -263,6 +263,7 @@ export default function OrderDetail({
                 <DatePicker
                   size="sm"
                   value={draftRequestedDelivery.date}
+                  disablePastDates
                   onChange={(value) =>
                     setDraftRequestedDelivery((current) => ({
                       ...current,

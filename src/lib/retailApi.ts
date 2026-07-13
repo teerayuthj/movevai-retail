@@ -1398,6 +1398,10 @@ export type ImportBatchRow = {
   status: 'PENDING' | 'IMPORTED' | 'ERROR';
   errorMessage: string | null;
   orderId: string | null;
+  fileName?: string;
+  batchId?: string;
+  hasSourceImage?: boolean;
+  hasOcrText?: boolean;
 };
 
 export type ImportRejectReason = 'incomplete_data' | 'duplicate' | 'wrong_group' | 'other';
@@ -1517,6 +1521,26 @@ export type ImportBatchDetail = ImportBatch & {
   groupSuggestions?: ImportGroupSuggestion[];
 };
 
+export type ImportEntryTab = 'review' | 'approved' | 'cancelled' | 'rejected' | 'all';
+
+export type ImportEntryStats = {
+  review: number;
+  approved: number;
+  cancelled: number;
+  rejected: number;
+  error: number;
+  value: number;
+  total: number;
+  totalRows: number;
+  batchCount: number;
+};
+
+export type ImportEntry = {
+  batch: ImportBatch;
+  rows: ImportBatchRow[];
+  order: Order | null;
+};
+
 export async function fetchImportBatches(params?: {
   page?: number;
   limit?: number;
@@ -1546,6 +1570,43 @@ export async function fetchImportBatches(params?: {
 
 export async function fetchImportBatch(id: string) {
   return request<ImportBatchDetail>(`${APP_API_BASE}/import-batches/${encodeURIComponent(id)}`);
+}
+
+export async function fetchImportEntries(params: {
+  page?: number;
+  limit?: number;
+  tab?: ImportEntryTab;
+  q?: string;
+  batchId?: string;
+  days?: number;
+  from?: string;
+  to?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params.page) search.set('page', String(params.page));
+  if (params.limit) search.set('limit', String(params.limit));
+  if (params.tab) search.set('tab', params.tab);
+  if (params.q?.trim()) search.set('q', params.q.trim());
+  if (params.batchId) search.set('batchId', params.batchId);
+  if (params.days != null) search.set('days', String(params.days));
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
+  return request<{
+    entries: ImportEntry[];
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+    groupSuggestions: ImportGroupSuggestion[];
+    stats: ImportEntryStats;
+  }>(`${APP_API_BASE}/import-batches/entries?${search.toString()}`);
+}
+
+export async function fetchImportRowSource(rowId: string) {
+  return request<{
+    imageDataUrl: string | null;
+    imageMimeType: string | null;
+  }>(`${APP_API_BASE}/import-batches/row-source/${encodeURIComponent(rowId)}`);
 }
 
 function filenameFromContentDisposition(value: string | null) {

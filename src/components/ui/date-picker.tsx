@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { format, parse } from 'date-fns';
+import { format, parse, startOfToday } from 'date-fns';
 import { th } from 'date-fns/locale';
 import { Calendar as CalendarIcon } from 'lucide-react';
 
@@ -14,6 +14,8 @@ interface DatePickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /** Prevent choosing a calendar date before today. */
+  disablePastDates?: boolean;
   /** Match compact form rows (h-8 / text-xs) — defaults to standard h-9 control size. */
   size?: 'sm' | 'default';
 }
@@ -26,6 +28,7 @@ export function DatePicker({
   placeholder = 'เลือกวันที่',
   className,
   disabled,
+  disablePastDates = false,
   size = 'default',
 }: DatePickerProps) {
   const selected = React.useMemo(() => {
@@ -35,6 +38,10 @@ export function DatePicker({
   }, [value]);
 
   const [open, setOpen] = React.useState(false);
+  const earliestSelectableDate = React.useMemo(
+    () => (disablePastDates ? startOfToday() : undefined),
+    [disablePastDates],
+  );
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -64,6 +71,7 @@ export function DatePicker({
             onChange?.(format(date, ISO_FORMAT));
             setOpen(false);
           }}
+          disabled={earliestSelectableDate ? { before: earliestSelectableDate } : undefined}
           autoFocus
         />
       </PopoverContent>
