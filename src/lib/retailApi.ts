@@ -377,7 +377,10 @@ function normalizePaymentForBackend(value: Order['payment']): Order['payment'] {
 function serializeOrderForBackend(order: Order) {
   return {
     id: order.id,
-    orderNo: order.orderNo,
+    // Draft LINE imports intentionally have no order number until approval.
+    // The backend schema treats orderNo as an optional string, so sending null
+    // from a stale pre-approval snapshot makes approve + dispatch fail.
+    ...(order.orderNo ? { orderNo: order.orderNo } : {}),
     code: order.code,
     source: order.source,
     status: order.status,

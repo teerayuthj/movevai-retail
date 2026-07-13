@@ -269,12 +269,27 @@ export function BatchWorkspace({
     });
   };
 
+  const runShortcutAction = (confirm: ShortcutConfirm) => {
+    if (confirm.action === 'fast') approveAndOpenFastDispatch(confirm.orderId);
+    else approveAndOpenPlanning(confirm.orderId);
+  };
+
+  // เด้ง dialog ยืนยันเฉพาะตอนมีผลข้างเคียงจริง (อนุมัติออเดอร์ / ถอดออกจากรอบเดิม)
+  // ออเดอร์ที่อนุมัติแล้วและไม่ติดรอบ = แค่เปิดหน้า ไม่ต้องถามซ้ำ
+  const requestShortcutAction = (confirm: ShortcutConfirm) => {
+    const removesFromPlan = confirm.action === 'fast' && confirm.plannedAlready;
+    if (!confirm.requiresApproval && !removesFromPlan) {
+      runShortcutAction(confirm);
+      return;
+    }
+    setShortcutConfirm(confirm);
+  };
+
   const confirmShortcutAction = () => {
     if (!shortcutConfirm) return;
-    const { action, orderId } = shortcutConfirm;
+    const confirm = shortcutConfirm;
     setShortcutConfirm(null);
-    if (action === 'fast') approveAndOpenFastDispatch(orderId);
-    else approveAndOpenPlanning(orderId);
+    runShortcutAction(confirm);
   };
 
   // ปฏิเสธแล้วเด้ง toast ที่บอกชัดว่า "ไปอยู่แท็บ ปฏิเสธ" + ปุ่มดึงกลับ (undo) ในตัว
@@ -574,8 +589,8 @@ export function BatchWorkspace({
               onEdit={editor.startEditRow}
               onPreviewImage={(row) => void openPreviewImage(row)}
               onSplit={() => splitCard(card)}
-              onFastDispatch={onFastDispatchOrder ? setShortcutConfirm : undefined}
-              onPlanning={onPlanningOrder ? setShortcutConfirm : undefined}
+              onFastDispatch={onFastDispatchOrder ? requestShortcutAction : undefined}
+              onPlanning={onPlanningOrder ? requestShortcutAction : undefined}
             />
           ))}
         </div>

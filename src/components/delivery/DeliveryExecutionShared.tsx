@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNod
 import { Badge } from '@/components/ui/badge';
 import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { DriverAvatar } from '@/components/DriverAvatar';
+import { LineOrderSource } from '@/components/LineOrderSource';
 import {
   Ban,
   Bike,
@@ -202,11 +203,11 @@ export function QueueOrderCard({
   return (
     <div
       className={cn(
-        'w-full overflow-hidden rounded-lg border bg-card transition-all',
-        selected ? 'border-primary ring-1 ring-primary shadow-xs' : 'hover:border-primary/40',
+        'w-full overflow-hidden rounded-xl border bg-card transition-all',
+        selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary/40',
       )}
     >
-      <button onClick={onClick} className="w-full p-4 text-left">
+      <button onClick={onClick} aria-pressed={selected} className="w-full p-4 text-left">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -262,9 +263,16 @@ export function QueueOrderCard({
               )}
             </div>
             <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
+            <LineOrderSource order={order} className="mt-1" />
           </div>
-          <Badge variant="muted" className="shrink-0">
-            <Package className="h-3 w-3" /> {order.items.length}
+          <Badge variant={selected ? 'default' : 'muted'} className="shrink-0">
+            {selected ? (
+              'เลือกแล้ว'
+            ) : (
+              <>
+                <Package className="h-3 w-3" /> {order.items.length}
+              </>
+            )}
           </Badge>
         </div>
 

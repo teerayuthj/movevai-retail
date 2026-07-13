@@ -82,10 +82,25 @@ export function getRawRequestedDelivery(order: Order): RequestedDeliveryDraft {
 
 export function getRequestedDeliveryDraft(order: Order): RequestedDeliveryDraft {
   const metadata = order.metadataJson?.requestedDelivery as
-    | { date?: unknown; time?: unknown }
+    | { date?: unknown; time?: unknown; plannedDate?: unknown; plannedTime?: unknown }
     | undefined;
-  const date = typeof metadata?.date === 'string' ? normalizeDate(metadata.date) : '';
-  const time = typeof metadata?.time === 'string' ? normalizeTime(metadata.time) : '';
+  // Backend import records use plannedDate/plannedTime, while edits made in the
+  // frontend use date/time. Normalize both shapes here so an explicit imported
+  // appointment always wins over an older date embedded in note/rawText.
+  const metadataDate =
+    typeof metadata?.date === 'string'
+      ? metadata.date
+      : typeof metadata?.plannedDate === 'string'
+        ? metadata.plannedDate
+        : undefined;
+  const metadataTime =
+    typeof metadata?.time === 'string'
+      ? metadata.time
+      : typeof metadata?.plannedTime === 'string'
+        ? metadata.plannedTime
+        : undefined;
+  const date = normalizeDate(metadataDate);
+  const time = normalizeTime(metadataTime);
   if (date || time) return { date, time };
 
   // ค่าวันนัดในไฟล์เป็นคำขอของลูกค้า ส่วน deliveryPlan เป็นรอบที่ทีมจัดส่งวางไว้

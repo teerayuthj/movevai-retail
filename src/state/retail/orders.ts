@@ -30,10 +30,20 @@ function driverHasBusyOrder(
 
 function requestedDeliveryFromOrder(order: Order) {
   const metadata = order.metadataJson?.requestedDelivery as
-    | { date?: unknown; time?: unknown }
+    | { date?: unknown; time?: unknown; plannedDate?: unknown; plannedTime?: unknown }
     | undefined;
-  const metadataDate = typeof metadata?.date === 'string' ? metadata.date : '';
-  const metadataTime = typeof metadata?.time === 'string' ? metadata.time : '';
+  const metadataDate =
+    typeof metadata?.date === 'string'
+      ? metadata.date
+      : typeof metadata?.plannedDate === 'string'
+        ? metadata.plannedDate
+        : '';
+  const metadataTime =
+    typeof metadata?.time === 'string'
+      ? metadata.time
+      : typeof metadata?.plannedTime === 'string'
+        ? metadata.plannedTime
+        : '';
   if (metadataDate || metadataTime) return { date: metadataDate, time: metadataTime };
 
   if (order.deliveryPlan?.plannedDate) {
