@@ -1,5 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
+import { LineOrderSource } from '@/components/LineOrderSource';
 import { dispatchReadinessLabel, formatTHB, type Driver, type Order } from '@/data/orderTypes';
 import { formatPlanningDateTime, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { hasCsvImportSource } from '@/lib/orderSourceLink';
@@ -76,6 +77,7 @@ export function PlanningOrderCard({
             )}
           </div>
           <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
+          <LineOrderSource order={order} className="mt-1" />
         </div>
         <Badge variant={selected ? 'default' : 'outline'} className="shrink-0">
           {selected ? 'เลือกแล้ว' : `${totalQuantity} ชิ้น`}

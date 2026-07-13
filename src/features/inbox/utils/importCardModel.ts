@@ -35,6 +35,7 @@ export type RowVM = {
   item?: string;
   imageDataUrl?: string;
   imageMimeType?: string;
+  hasSourceImage?: boolean;
   ocrText?: string;
   parseWarnings?: string[];
   missingFields?: string[];
@@ -182,6 +183,7 @@ export function toRowVM(
       item: ocrOnly ? undefined : itemSummary(undefined, row.rawData),
       imageDataUrl: sourceImageDataUrl(row.rawData),
       imageMimeType: sourceImageMimeType(row.rawData),
+      hasSourceImage: row.hasSourceImage || !!sourceImageDataUrl(row.rawData),
       ocrText: sourceOcrText(row.rawData),
       parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
       missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),
@@ -212,6 +214,7 @@ export function toRowVM(
     item: ocrOnly ? undefined : itemSummary(order, row.rawData),
     imageDataUrl: sourceImageDataUrl(row.rawData),
     imageMimeType: sourceImageMimeType(row.rawData),
+    hasSourceImage: row.hasSourceImage || !!sourceImageDataUrl(row.rawData),
     ocrText: sourceOcrText(row.rawData),
     parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
     missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),

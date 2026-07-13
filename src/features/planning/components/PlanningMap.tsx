@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { MapContainer, Marker, Polyline, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { Info, Loader2, MapPin, Route } from 'lucide-react';
+import { AlertTriangle, Info, Loader2, MapPin, RefreshCw, Route } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
 import type { Order } from '@/data/orderTypes';
 import { BANGKOK_CENTER } from '@/features/messenger/geocode';
@@ -17,6 +17,7 @@ type PlannedRouteOverlay = {
   driverName?: string;
   distanceMeters?: number | null;
   durationSeconds?: number | null;
+  error?: string;
   geometry: { lat: number; lng: number }[];
 };
 
@@ -86,6 +87,7 @@ export function PlanningMap({
   selectedLabel = '✓ เลือกอยู่ — แตะเพื่อนำออก',
   unselectedLabel = 'แตะเพื่อเลือกเข้ากลุ่ม',
   routePreviewTitle = 'พรีวิวเส้นทาง (ก่อน Publish)',
+  onRetryRoute,
 }: {
   orders: Order[];
   selectedIds: Set<string>;
@@ -95,6 +97,7 @@ export function PlanningMap({
   selectedLabel?: string;
   unselectedLabel?: string;
   routePreviewTitle?: string;
+  onRetryRoute?: () => void;
 }) {
   const geo = useOrdersGeo(orders);
   const routeMode = Boolean(route);
@@ -229,7 +232,24 @@ export function PlanningMap({
                 </span>
               ) : null}
             </div>
-          ) : null}
+          ) : route.error ? (
+            <div className="mt-1 flex items-start gap-1.5 text-destructive">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>{route.error}</span>
+            </div>
+          ) : (
+            <div className="mt-0.5 text-muted-foreground">ยังไม่พบเส้นทางตามถนน</div>
+          )}
+          {route.error && onRetryRoute && (
+            <button
+              type="button"
+              className="mt-1.5 inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium text-foreground hover:bg-muted"
+              onClick={onRetryRoute}
+            >
+              <RefreshCw className="h-3 w-3" />
+              ลองคำนวณใหม่
+            </button>
+          )}
           <div className="mt-1 flex items-start gap-1 text-[11px] text-muted-foreground">
             <Info className="mt-0.5 h-3 w-3 shrink-0" />
             เส้นทางถนน ไม่รวมสภาพจราจร

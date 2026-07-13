@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { DriverTeamBadges } from '@/components/delivery/DeliveryExecutionShared';
 import { type Driver, type Order, statusLabel } from '@/data/orderTypes';
 
 export function InTransitCard({ orders, drivers }: { orders: Order[]; drivers: Driver[] }) {
@@ -24,12 +25,15 @@ export function InTransitCard({ orders, drivers }: { orders: Order[]; drivers: D
                   </Badge>
                 </div>
                 <div className="mt-1 text-sm font-medium">{o.customer.name}</div>
-                <div className="mt-0.5 text-xs text-muted-foreground">
-                  คนขับ: {driver?.name ?? '-'}
-                  {o.coDriverIds && o.coDriverIds.length > 0 && (
-                    <span className="ml-1 text-info">+{o.coDriverIds.length} ร่วมส่ง</span>
-                  )}
-                </div>
+                {o.coDriverIds && o.coDriverIds.length > 0 ? (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    <DriverTeamBadges order={o} drivers={drivers} />
+                  </div>
+                ) : (
+                  <div className="mt-0.5 text-xs text-muted-foreground">
+                    คนขับ: {driver?.name ?? '-'}
+                  </div>
+                )}
                 <Progress value={65} className="mt-2 h-1.5" />
                 <div className="mt-1 text-[11px] text-muted-foreground">ถึงใน ~18 นาที</div>
               </div>

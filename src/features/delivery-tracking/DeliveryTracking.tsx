@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Ban,
   CheckCircle2,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -64,6 +65,7 @@ type TrackingChip = {
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
+  all_open: 0,
   awaiting_acceptance: 0,
   overdue: 0,
   in_transit: 0,
@@ -106,6 +108,7 @@ export function DeliveryTrackingPage({
     markReturned,
     cancelRoute,
     reassignRoute,
+    unassignOrder,
   } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [messengerCloseTargetId, setMessengerCloseTargetId] = useState<string | null>(null);
@@ -125,6 +128,8 @@ export function DeliveryTrackingPage({
   const [settlingOrders, setSettlingOrders] = useState<Record<string, string>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [routeActionError, setRouteActionError] = useState('');
+  const [unassignTarget, setUnassignTarget] = useState<Order | null>(null);
+  const [unassignError, setUnassignError] = useState('');
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     order: Order;
@@ -136,7 +141,7 @@ export function DeliveryTrackingPage({
   const settleTimers = useRef<number[]>([]);
   const parsedSearch = useMemo(() => parseTrackingSearch(locationSearch), [locationSearch]);
 
-  const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'overdue');
+  const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'all_open');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(parsedSearch.orderId);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
 
@@ -302,6 +307,33 @@ export function DeliveryTrackingPage({
 
   // ── ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งบนการ์ด inline และ footer ของ drawer ──
   function renderActions(order: Order) {
+    if (order.status === 'assigned' && !order.deliveryRoute) {
+      return (
+        <div className="space-y-2">
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={() => onOpenQueue(buildQueueSearch(order.id))}
+          >
+            <ClipboardList className="h-4 w-4" />
+            ไปจัด Route ใน Queue
+          </Button>
+          <Button
+            variant="outline"
+            className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            onClick={() => {
+              setUnassignError('');
+              setSelectedOrderId(null);
+              setUnassignTarget(order);
+            }}
+          >
+            <Undo2 className="h-4 w-4" />
+            ถอนการมอบหมาย
+          </Button>
+        </div>
+      );
+    }
+
     if (order.status === 'assigned' && order.deliveryRoute) {
       return (
         <div className="flex flex-wrap gap-2">
@@ -376,7 +408,7 @@ export function DeliveryTrackingPage({
             แก้ไข: M {messengerRevisionCount}/{messengerRevisionLimit} · A {adminRevisionCount}/
             {adminRevisionLimit}
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
               className="w-full"
@@ -446,6 +478,12 @@ export function DeliveryTrackingPage({
 
   // chip เดียวคุมทั้งหมด — ตัวเลขเป็น badge ใน chip (ไม่แยกการ์ด KPI เพื่อเลี่ยงความกำกวมว่าคลิกได้ไหม)
   const tabs: TrackingChip[] = [
+    {
+      view: 'all_open',
+      label: 'งานยังไม่ปิด',
+      icon: ClipboardList,
+      count: trackingCounts.all_open,
+    },
     { view: 'overdue', label: 'เลยกำหนด', icon: AlertCircle, count: trackingCounts.overdue },
     {
       view: 'awaiting_acceptance',
@@ -462,7 +500,9 @@ export function DeliveryTrackingPage({
   const currentViewDescription =
     view === 'closed'
       ? 'แสดงงานที่ปิดใน 24 ชั่วโมงล่าสุด — รายการเก่าย้ายไปดูที่ Tracking History'
-      : 'งานที่ยังไม่ปิดทั้งหมด ไม่จำกัดช่วงวันที่ — รายการจะค้างไว้จนกว่าจะจัดการเสร็จ';
+      : view === 'all_open'
+        ? 'รวมงานที่ยังไม่ปิดทุกขั้นตอน — งานที่ยังไม่มี Route กดกลับไปจัดต่อใน Queue ได้'
+        : 'งานที่ยังไม่ปิดทั้งหมด ไม่จำกัดช่วงวันที่ — รายการจะค้างไว้จนกว่าจะจัดการเสร็จ';
 
   return (
     // full-bleed map-first: หักล้าง padding ของ <main> แล้วกินความสูงที่เหลือใต้ topbar (h-14) พอดีจอ
@@ -604,6 +644,42 @@ export function DeliveryTrackingPage({
           settleAndRefresh(settlingId, 'บันทึกหลักฐานแล้ว');
         }}
       />
+
+      {unassignTarget && (
+        <ResolutionDialog
+          open
+          title={`ถอนการมอบหมาย ${unassignTarget.orderNo}`}
+          description="เอางานออกจาก Messenger และคืนเป็นงานรอมอบหมาย โดยไม่ยกเลิกออเดอร์"
+          error={unassignError}
+          reasons={PLANNING_CANCEL_REASONS}
+          notePlaceholder="เช่น เลือกคนขับผิด / ต้องจัดคิวใหม่"
+          confirmLabel="ยืนยันถอนการมอบหมาย"
+          confirmVariant="destructive"
+          onCancel={() => {
+            setUnassignError('');
+            setUnassignTarget(null);
+          }}
+          onConfirm={({ reason, note }) => {
+            const target = unassignTarget;
+            setUnassignError('');
+            void unassignOrder(target.id, {
+              reason: reason as PlanningCancelReason,
+              note,
+            })
+              .then(() => {
+                toast.success(`ถอนการมอบหมาย ${target.orderNo} แล้ว — คืนเข้าคิวรอมอบหมาย`);
+                setSelectedOrderId(null);
+                setUnassignTarget(null);
+                refreshTracking();
+              })
+              .catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                setUnassignError(message);
+                toast.error(`ถอนการมอบหมาย ${target.orderNo} ไม่สำเร็จ — ${message}`);
+              });
+          }}
+        />
+      )}
 
       {routeAction?.type === 'cancel' && routeAction.order.deliveryRoute && (
         <ResolutionDialog
@@ -772,6 +848,7 @@ export function DeliveryTrackingPage({
       <TrackingDetailDrawer
         order={selectedOrder}
         driver={selectedDriver}
+        drivers={drivers}
         isDetailLoading={isDetailLoading}
         onClose={() => setSelectedOrderId(null)}
         actions={selectedOrder ? renderActions(selectedOrder) : undefined}

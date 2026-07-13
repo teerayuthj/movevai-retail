@@ -35,11 +35,8 @@ import { useRetailStore } from '@/state/retailStore';
 import {
   Ban,
   BellRing,
-  CheckCircle2,
-  Clock,
   List,
   MapPin,
-  PlayCircle,
   Route,
   Search,
   Send,
@@ -75,9 +72,10 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
   const [query, setQuery] = useState('');
   const [paneView, setPaneView] = useState<'list' | 'map'>('list');
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
-  const [operationError, setOperationError] = useState('');
   const [routePreview, setRoutePreview] = useState<RoutePreview | null>(null);
   const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
+  const [routePreviewError, setRoutePreviewError] = useState('');
+  const [routePreviewRetry, setRoutePreviewRetry] = useState(0);
   const [urgentTarget, setUrgentTarget] = useState<{
     orderId: string;
     driverIds: string[];
@@ -199,14 +197,21 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     onOpenTracking(buildTrackingSearch(selectedOrderForFocus));
   };
 
-  const confirmUrgentDispatch = async (note?: string) => {
-    if (!urgentTarget) return;
+  // driverIds มาจาก dialog (สลับคนขับหลักได้ก่อนยืนยัน) — index 0 = คนขับหลัก
+  const confirmUrgentDispatch = async ({
+    note,
+    driverIds,
+  }: {
+    note?: string;
+    driverIds: string[];
+  }) => {
+    if (!urgentTarget || driverIds.length === 0) return;
     setUrgentLoading(true);
     setUrgentError('');
     try {
       await publishUrgentRoute(urgentTarget.orderId, {
-        driverCode: urgentTarget.driverIds[0],
-        coDriverCodes: urgentTarget.driverIds.slice(1),
+        driverCode: driverIds[0],
+        coDriverCodes: driverIds.slice(1),
         note,
       });
       const orderId = urgentTarget.orderId;
@@ -223,26 +228,6 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     }
   };
 
-  const simulateMessengerAccept = async () => {
-    if (!selectedOrder) return;
-    setOperationError('');
-    try {
-      await startDelivery(selectedOrder.id);
-      toast.success(`${selectedOrder.orderNo} จำลอง Messenger รับงานและเริ่มส่งแล้ว`);
-      onOpenTracking(`?tab=in_transit&order=${encodeURIComponent(selectedOrder.id)}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      setOperationError(message);
-      toast.error(`จำลองรับงานไม่สำเร็จ — ${message}`);
-    }
-  };
-
-  const openUrgentTimeoutView = () => {
-    if (!selectedOrder) return;
-    toast.message('เปิดมุมมองงานเลยกำหนดใน Tracking');
-    onOpenTracking(`?tab=overdue&order=${encodeURIComponent(selectedOrder.id)}`);
-  };
-
   const openOrderCsvEdit = (order: Order) => {
     onOpenInbox(buildInboxOrderEditSearch(order));
   };
@@ -257,18 +242,25 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     if (paneView !== 'map' || !selectedOrder) {
       setRoutePreview(null);
       setRoutePreviewLoading(false);
+      setRoutePreviewError('');
       return;
     }
     let cancelled = false;
     setRoutePreviewLoading(true);
+    setRoutePreviewError('');
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         const origin = await getAdminRouteOrigin();
         try {
           const preview = await previewPlanningRoute({ orderIds: [selectedOrder.id], origin });
           if (!cancelled) setRoutePreview(preview);
-        } catch {
-          if (!cancelled) setRoutePreview(null);
+        } catch (error) {
+          if (!cancelled) {
+            setRoutePreview(null);
+            setRoutePreviewError(
+              error instanceof Error ? error.message : 'คำนวณเส้นทางตามถนนไม่สำเร็จ',
+            );
+          }
         } finally {
           if (!cancelled) setRoutePreviewLoading(false);
         }
@@ -278,7 +270,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [paneView, selectedOrder]);
+  }, [paneView, selectedOrder, routePreviewRetry]);
 
   // ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งคอลัมน์ขวา (เดสก์ท็อป) และ footer ของ overlay มือถือ
   const assignmentActions = selectedOrder ? (
@@ -379,7 +371,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
         onCancel={() => {
           if (!urgentLoading) setUrgentTarget(null);
         }}
-        onConfirm={(note) => void confirmUrgentDispatch(note)}
+        onConfirm={(input) => void confirmUrgentDispatch(input)}
       />
 
       <ResolutionDialog
@@ -415,18 +407,12 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
         }}
       />
 
-      {operationError && (
-        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-          {operationError}
-        </div>
-      )}
-
       {fastMode && (
         <div className="grid gap-3 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm lg:grid-cols-[1fr_220px_220px]">
           <div>
             <div className="flex items-center gap-2 font-medium text-warning">
               <BellRing className="h-4 w-4" />
-              Fast Dispatch local demo
+              Fast Dispatch
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               งานจาก import ถูกเปิดเข้าคิวพร้อม focus order แล้ว ขั้นต่อไปคือเลือก Messenger,
@@ -568,12 +554,13 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                       setMobileDetailOpen(false);
                     }}
                     route={
-                      selectedOrder && (routePreview?.geometry.length || routePreviewLoading)
+                      selectedOrder
                         ? {
                             preview: true,
                             loading: routePreviewLoading && !routePreview?.geometry.length,
                             distanceMeters: routePreview?.distanceMeters,
                             durationSeconds: routePreview?.durationSeconds,
+                            error: routePreviewError,
                             geometry: routePreview?.geometry ?? [],
                           }
                         : null
@@ -582,6 +569,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                     selectedLabel="กำลังพรีวิวเส้นทางของ order นี้"
                     unselectedLabel="แตะเพื่อพรีวิวเส้นทางของ order นี้"
                     routePreviewTitle="พรีวิวเส้นทางก่อนส่งทันที"
+                    onRetryRoute={() => setRoutePreviewRetry((value) => value + 1)}
                   />
                 </div>
               </section>
@@ -668,86 +656,6 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
         </Card>
 
         <div className="hidden h-[calc(100vh-12rem)] space-y-4 overflow-auto lg:block">
-          {fastMode && (
-            <Card className="border-warning/30 bg-warning/5">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm text-warning">
-                  <PlayCircle className="h-4 w-4" />
-                  Local Route Simulator
-                </CardTitle>
-                <CardDescription>
-                  ใช้ action จริงของระบบเพื่อทดสอบภาพรวมก่อนต่อ Google Maps/automation
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid grid-cols-[20px_1fr] gap-x-2 gap-y-2 text-xs">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-success" />
-                  <div>
-                    <div className="font-medium">1. Import approved</div>
-                    <div className="text-muted-foreground">Order ถูกเปิดในคิวพร้อมจ่ายแล้ว</div>
-                  </div>
-                  <div
-                    className={cn(
-                      'mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border text-[10px]',
-                      selectedOrder?.status === 'assigned' ||
-                        selectedOrder?.status === 'in_transit' ||
-                        selectedOrder?.status === 'pending_confirmation'
-                        ? 'border-success text-success'
-                        : 'border-muted-foreground/40 text-muted-foreground',
-                    )}
-                  >
-                    2
-                  </div>
-                  <div>
-                    <div className="font-medium">Create urgent route</div>
-                    <div className="text-muted-foreground">เลือก Messenger แล้วกดส่งทันที</div>
-                  </div>
-                  <div
-                    className={cn(
-                      'mt-0.5 flex h-4 w-4 items-center justify-center rounded-full border text-[10px]',
-                      selectedOrder?.status === 'in_transit' ||
-                        selectedOrder?.status === 'pending_confirmation'
-                        ? 'border-success text-success'
-                        : 'border-muted-foreground/40 text-muted-foreground',
-                    )}
-                  >
-                    3
-                  </div>
-                  <div>
-                    <div className="font-medium">Messenger accepts</div>
-                    <div className="text-muted-foreground">จำลองการรับงานและเริ่มส่ง</div>
-                  </div>
-                </div>
-
-                {/* ปุ่มส่งทันทีของ order ที่พร้อมจ่าย อยู่ที่แผง "ยืนยันการมอบหมาย" ด้านล่างแล้ว
-                    (assignmentActions) — ไม่ต้องมีปุ่มซ้ำในการ์ด simulator */}
-                {selectedOrder?.status === 'ready' && (
-                  <div className="rounded-lg border border-dashed bg-background/70 p-3 text-center text-xs text-muted-foreground">
-                    เลือกคนขับด้านล่าง แล้วกด “ส่งทันที” ที่แผงยืนยันการมอบหมาย
-                  </div>
-                )}
-
-                {selectedOrder?.status === 'assigned' && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <Button variant="outline" onClick={() => void simulateMessengerAccept()}>
-                      <PlayCircle className="h-4 w-4" />
-                      รับงาน
-                    </Button>
-                    <Button variant="outline" onClick={openUrgentTimeoutView}>
-                      <Clock className="h-4 w-4" />
-                      ไม่รับงาน
-                    </Button>
-                  </div>
-                )}
-
-                {!selectedOrder && (
-                  <div className="rounded-lg border border-dashed bg-background/70 p-3 text-center text-xs text-muted-foreground">
-                    เลือก order เพื่อจำลอง route
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          )}
           <AssignmentPanel
             order={selectedOrder}
             drivers={selectedDrivers}

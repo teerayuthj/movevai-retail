@@ -68,7 +68,7 @@ export function ResolutionDialog<R extends string, A extends string = never>({
   const canSubmit = !!reason && (!actions || !!action);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 sm:items-center">
       <div className="w-full max-w-md overflow-hidden rounded-xl border bg-background shadow-xl">
         <div className="flex items-start justify-between border-b px-5 py-4">
           <div>

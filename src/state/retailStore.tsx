@@ -1,5 +1,13 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   assignOrderState,
   autoAssignReadyOrdersState,
@@ -64,6 +72,7 @@ import {
   submitMessengerOrder,
   syncAppOrder,
   syncAndAssignOrder,
+  unassignAppOrder,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
 import { MESSENGER_JOB_STATUSES, isMessengerOrderParticipant } from '@/lib/messengerJobs';
@@ -101,6 +110,34 @@ function preservePendingReview(
   const confirmedByCs = remoteOrder.activityLog?.some(
     (event) => event.type === 'delivery_confirmed',
   );
+  const localSubmittedAt = [...(local?.activityLog ?? [])]
+    .reverse()
+    .find(
+      (event) => event.type === 'delivery_submitted' || event.type === 'delivery_proof_revised',
+    )?.at;
+  const remoteRestartedAt = [...(remoteOrder.activityLog ?? [])]
+    .reverse()
+    .find((event) => event.type === 'delivery_retried' || event.type === 'delivery_started')?.at;
+
+  // A poll/focus refresh can start while the order is still in_transit, then finish
+  // after submitDelivery has already moved it to pending_confirmation. Do not let that
+  // older snapshot make the Messenger UI jump back to "in transit". A genuine retry is
+  // still accepted because the backend timeline will contain a newer retry/start event.
+  if (
+    local?.status === 'pending_confirmation' &&
+    (remoteOrder.status === 'assigned' || remoteOrder.status === 'in_transit') &&
+    localSubmittedAt &&
+    (!remoteRestartedAt || Date.parse(remoteRestartedAt) <= Date.parse(localSubmittedAt))
+  ) {
+    return {
+      ...remoteOrder,
+      status: local.status,
+      inTransitAt: local.inTransitAt,
+      proofOfDelivery: local.proofOfDelivery,
+      proofHistory: local.proofHistory,
+      activityLog: local.activityLog,
+    };
+  }
   if (
     local?.status === 'pending_confirmation' &&
     remoteOrder.status === 'delivered' &&
@@ -144,6 +181,8 @@ export function RetailProvider({
       ? { orders: [], drivers: defaultState.drivers, notifications: [] }
       : loadState(),
   );
+  const messengerRefreshRequestRef = useRef(0);
+  const messengerWorkflowRevisionRef = useRef(0);
 
   const commit = useCallback(
     (updater: (current: RetailState) => RetailState) => {
@@ -197,7 +236,28 @@ export function RetailProvider({
 
   const refreshMessengerJobs = useCallback(
     async (driverCode: string) => {
-      const remote = await fetchMessengerOrders(driverCode);
+      const requestId = ++messengerRefreshRequestRef.current;
+      const workflowRevision = messengerWorkflowRevisionRef.current;
+      let remote: Awaited<ReturnType<typeof fetchMessengerOrders>>;
+      try {
+        remote = await fetchMessengerOrders(driverCode);
+      } catch (error) {
+        // focus + visibilitychange + interval can overlap. An obsolete failed request
+        // must not replace the result/error state of the newest refresh.
+        if (
+          requestId !== messengerRefreshRequestRef.current ||
+          workflowRevision !== messengerWorkflowRevisionRef.current
+        ) {
+          return;
+        }
+        throw error;
+      }
+      if (
+        requestId !== messengerRefreshRequestRef.current ||
+        workflowRevision !== messengerWorkflowRevisionRef.current
+      ) {
+        return;
+      }
       commit((current) => ({
         ...current,
         orders: [
@@ -333,6 +393,14 @@ export function RetailProvider({
     [commit, state.orders],
   );
 
+  const unassignOrder = useCallback(
+    async (orderId: string, input: Parameters<RetailStore['unassignOrder']>[1]) => {
+      const canonical = await unassignAppOrder(orderId, input);
+      commit((current) => ({ ...current, orders: replaceOrder(current.orders, canonical) }));
+    },
+    [commit],
+  );
+
   const autoAssignReadyOrders = useCallback(
     async (orderIds?: string[]) => {
       const next = autoAssignReadyOrdersState(state, orderIds);
@@ -388,12 +456,13 @@ export function RetailProvider({
       const order = state.orders.find((item) => item.id === orderId);
       if (!order?.assignedDriverId) return;
       const canonical = await startMessengerOrder(orderId, order.assignedDriverId);
+      messengerWorkflowRevisionRef.current += 1;
       commit((current) => {
         const started = startDeliveryState(current, orderId);
         return { ...started, orders: replaceOrder(started.orders, canonical) };
       });
     },
-    [commit, mode, state.orders],
+    [commit, state.orders],
   );
 
   const submitDelivery = useCallback(
@@ -415,6 +484,7 @@ export function RetailProvider({
         editorRole === 'admin'
           ? await submitAppDeliveryProof(orderId, submitInput)
           : await submitMessengerOrder(orderId, order.assignedDriverId, submitInput);
+      if (editorRole === 'messenger') messengerWorkflowRevisionRef.current += 1;
       commit((current) => {
         const submitted = submitDeliveryState(current, orderId, submitInput);
         const submittedOrder = submitted.orders.find(
@@ -435,7 +505,7 @@ export function RetailProvider({
         return { ...submitted, orders: replaceOrder(submitted.orders, reviewCanonical) };
       });
     },
-    [commit, state.orders],
+    [commit, mode, state.orders],
   );
 
   const confirmDelivery = useCallback(
@@ -727,6 +797,7 @@ export function RetailProvider({
       rejectImportOrders,
       restoreImportOrders,
       assignOrder,
+      unassignOrder,
       autoAssignReadyOrders,
       autoAssignAndDispatchReadyOrders,
       startDelivery,
@@ -770,6 +841,7 @@ export function RetailProvider({
       rejectImportOrders,
       restoreImportOrders,
       assignOrder,
+      unassignOrder,
       autoAssignReadyOrders,
       autoAssignAndDispatchReadyOrders,
       startDelivery,

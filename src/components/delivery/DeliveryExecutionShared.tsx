@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNod
 import { Badge } from '@/components/ui/badge';
 import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { DriverAvatar } from '@/components/DriverAvatar';
+import { LineOrderSource } from '@/components/LineOrderSource';
 import {
   Ban,
   Bike,
@@ -11,11 +12,13 @@ import {
   Coins,
   IdCard,
   MapPin,
+  Navigation2,
   Package,
   Phone,
   Route,
   ShieldCheck,
   Truck as TruckIcon,
+  Users,
   X,
   ZoomIn,
   ZoomOut,
@@ -37,6 +40,7 @@ import {
   deriveDriverDisplayStatus,
   describeProof,
   getDriverWorkloadSummary,
+  getOrderDriverTeam,
   type DriverWorkloadSummary,
 } from '@/lib/deliveryExecution';
 import { formatFastDispatchDueAt, getFastDispatchSla } from '@/lib/fastDispatch';
@@ -52,6 +56,36 @@ function vehicleLabel(vehicle: Driver['vehicle']) {
   if (vehicle === 'motorcycle') return 'จักรยานยนต์';
   if (vehicle === 'van') return 'รถตู้';
   return 'รถกระบะ';
+}
+
+/** ป้ายทีมจัดส่งรายคนพร้อม role หลัก/ร่วม — ใช้แทน "+N ร่วมส่ง" เมื่อเป็นงาน co-delivery */
+export function DriverTeamBadges({
+  order,
+  drivers,
+}: {
+  order: Pick<Order, 'assignedDriverId' | 'assignedDriverName' | 'coDriverIds'>;
+  drivers: Pick<Driver, 'id' | 'name'>[];
+}) {
+  const team = getOrderDriverTeam(order, drivers);
+  if (team.length === 0) return null;
+  return (
+    <>
+      {team.map((member) => (
+        <Badge
+          key={member.code}
+          variant={member.role === 'main' ? 'info' : 'muted'}
+          className="gap-1"
+        >
+          {member.role === 'main' ? (
+            <Navigation2 className="h-3 w-3" />
+          ) : (
+            <Users className="h-3 w-3" />
+          )}
+          {member.name} · {member.role === 'main' ? 'คนขับหลัก' : 'คนขับร่วม'}
+        </Badge>
+      ))}
+    </>
+  );
 }
 
 export function DriverWorkloadChips({
@@ -202,11 +236,11 @@ export function QueueOrderCard({
   return (
     <div
       className={cn(
-        'w-full overflow-hidden rounded-lg border bg-card transition-all',
-        selected ? 'border-primary ring-1 ring-primary shadow-xs' : 'hover:border-primary/40',
+        'w-full overflow-hidden rounded-xl border bg-card transition-all',
+        selected ? 'border-primary bg-primary/5 ring-1 ring-primary' : 'hover:border-primary/40',
       )}
     >
-      <button onClick={onClick} className="w-full p-4 text-left">
+      <button onClick={onClick} aria-pressed={selected} className="w-full p-4 text-left">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -262,9 +296,16 @@ export function QueueOrderCard({
               )}
             </div>
             <div className="mt-1 truncate text-sm font-medium">{order.customer.name}</div>
+            <LineOrderSource order={order} className="mt-1" />
           </div>
-          <Badge variant="muted" className="shrink-0">
-            <Package className="h-3 w-3" /> {order.items.length}
+          <Badge variant={selected ? 'default' : 'muted'} className="shrink-0">
+            {selected ? (
+              'เลือกแล้ว'
+            ) : (
+              <>
+                <Package className="h-3 w-3" /> {order.items.length}
+              </>
+            )}
           </Badge>
         </div>
 

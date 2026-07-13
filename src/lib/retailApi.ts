@@ -337,6 +337,7 @@ function normalizeOrder(order: ApiOrderWire): Order {
     // draft LINE import ยังไม่มีเลข (null) — ห้าม fallback เป็น code เพราะช่องเลขต้องว่างจนกว่าจะอนุมัติ
     orderNo: order.orderNo ?? null,
     assignedDriverId: order.assignedDriver?.code,
+    assignedDriverName: order.assignedDriver?.name,
     coDriverIds: order.coDriverCodes,
     proofOfDelivery: order.proofOfDelivery
       ? {
@@ -377,7 +378,10 @@ function normalizePaymentForBackend(value: Order['payment']): Order['payment'] {
 function serializeOrderForBackend(order: Order) {
   return {
     id: order.id,
-    orderNo: order.orderNo,
+    // Draft LINE imports intentionally have no order number until approval.
+    // The backend schema treats orderNo as an optional string, so sending null
+    // from a stale pre-approval snapshot makes approve + dispatch fail.
+    ...(order.orderNo ? { orderNo: order.orderNo } : {}),
     code: order.code,
     source: order.source,
     status: order.status,
@@ -889,6 +893,18 @@ export async function cancelOrder(
   return normalizeOrder(result);
 }
 
+// ถอนการมอบหมายงานที่ยังไม่มี Route แล้วคืนเข้า ready queue
+export async function unassignAppOrder(
+  orderId: string,
+  input: { reason: PlanningCancelReason; note?: string },
+) {
+  const result = await request<ApiOrder>(
+    `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/unassign`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return normalizeOrder(result);
+}
+
 export async function syncAppOrder(order: Order) {
   const result = await request<ApiOrder>(`${APP_API_BASE}/orders/sync`, {
     method: 'POST',
@@ -933,10 +949,14 @@ export type RoutePreview = {
  * ใช้ origin จาก GPS ของ admin ถ้ามี ไม่งั้น backend จะ fallback ไปต้นทางใน env
  */
 export async function previewPlanningRoute(input: { orderIds: string[]; origin?: RouteOrigin }) {
-  return request<RoutePreview>(`${APP_API_BASE}/planning/routes/preview`, {
+  const preview = await request<RoutePreview>(`${APP_API_BASE}/planning/routes/preview`, {
     method: 'POST',
     body: JSON.stringify(input),
   });
+  if (preview.geometry.length < 2 || preview.distanceMeters == null) {
+    throw new Error('หาพิกัดปลายทางหรือเส้นทางถนนไม่พบ กรุณาตรวจสอบที่อยู่แล้วลองใหม่');
+  }
+  return preview;
 }
 
 export async function publishPlanningRoute(input: {
@@ -1398,6 +1418,10 @@ export type ImportBatchRow = {
   status: 'PENDING' | 'IMPORTED' | 'ERROR';
   errorMessage: string | null;
   orderId: string | null;
+  fileName?: string;
+  batchId?: string;
+  hasSourceImage?: boolean;
+  hasOcrText?: boolean;
 };
 
 export type ImportRejectReason = 'incomplete_data' | 'duplicate' | 'wrong_group' | 'other';
@@ -1517,6 +1541,26 @@ export type ImportBatchDetail = ImportBatch & {
   groupSuggestions?: ImportGroupSuggestion[];
 };
 
+export type ImportEntryTab = 'review' | 'approved' | 'cancelled' | 'rejected' | 'all';
+
+export type ImportEntryStats = {
+  review: number;
+  approved: number;
+  cancelled: number;
+  rejected: number;
+  error: number;
+  value: number;
+  total: number;
+  totalRows: number;
+  batchCount: number;
+};
+
+export type ImportEntry = {
+  batch: ImportBatch;
+  rows: ImportBatchRow[];
+  order: Order | null;
+};
+
 export async function fetchImportBatches(params?: {
   page?: number;
   limit?: number;
@@ -1546,6 +1590,43 @@ export async function fetchImportBatches(params?: {
 
 export async function fetchImportBatch(id: string) {
   return request<ImportBatchDetail>(`${APP_API_BASE}/import-batches/${encodeURIComponent(id)}`);
+}
+
+export async function fetchImportEntries(params: {
+  page?: number;
+  limit?: number;
+  tab?: ImportEntryTab;
+  q?: string;
+  batchId?: string;
+  days?: number;
+  from?: string;
+  to?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params.page) search.set('page', String(params.page));
+  if (params.limit) search.set('limit', String(params.limit));
+  if (params.tab) search.set('tab', params.tab);
+  if (params.q?.trim()) search.set('q', params.q.trim());
+  if (params.batchId) search.set('batchId', params.batchId);
+  if (params.days != null) search.set('days', String(params.days));
+  if (params.from) search.set('from', params.from);
+  if (params.to) search.set('to', params.to);
+  return request<{
+    entries: ImportEntry[];
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+    groupSuggestions: ImportGroupSuggestion[];
+    stats: ImportEntryStats;
+  }>(`${APP_API_BASE}/import-batches/entries?${search.toString()}`);
+}
+
+export async function fetchImportRowSource(rowId: string) {
+  return request<{
+    imageDataUrl: string | null;
+    imageMimeType: string | null;
+  }>(`${APP_API_BASE}/import-batches/row-source/${encodeURIComponent(rowId)}`);
 }
 
 function filenameFromContentDisposition(value: string | null) {

@@ -100,6 +100,11 @@ export type RetailStore = RetailState & {
   /** ดึงออเดอร์ที่ปฏิเสธกลับมาเป็น 'new' */
   restoreImportOrders: (orderIds: string[]) => Promise<void>;
   assignOrder: (orderId: string, driverId: string) => Promise<void>;
+  /** ถอนคนขับจากงาน assigned ที่ยังไม่มี Route แล้วคืนเป็น ready */
+  unassignOrder: (
+    orderId: string,
+    input: { reason: PlanningCancelReason; note?: string },
+  ) => Promise<void>;
   autoAssignReadyOrders: (orderIds?: string[]) => Promise<void>;
   /** จับคู่คนขับ + สร้าง route + เริ่มจัดส่ง ในคำสั่งเดียว — คืน id งานที่ส่งออก */
   autoAssignAndDispatchReadyOrders: (orderIds?: string[]) => Promise<string[]>;
