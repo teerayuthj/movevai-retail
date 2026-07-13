@@ -34,6 +34,7 @@ import {
   AlertCircle,
   Ban,
   CheckCircle2,
+  ClipboardList,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -64,6 +65,7 @@ type TrackingChip = {
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
+  all_open: 0,
   awaiting_acceptance: 0,
   overdue: 0,
   in_transit: 0,
@@ -136,7 +138,7 @@ export function DeliveryTrackingPage({
   const settleTimers = useRef<number[]>([]);
   const parsedSearch = useMemo(() => parseTrackingSearch(locationSearch), [locationSearch]);
 
-  const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'overdue');
+  const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'all_open');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(parsedSearch.orderId);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
 
@@ -302,6 +304,19 @@ export function DeliveryTrackingPage({
 
   // ── ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งบนการ์ด inline และ footer ของ drawer ──
   function renderActions(order: Order) {
+    if (order.status === 'assigned' && !order.deliveryRoute) {
+      return (
+        <Button
+          variant="outline"
+          className="w-full"
+          onClick={() => onOpenQueue(buildQueueSearch(order.id))}
+        >
+          <ClipboardList className="h-4 w-4" />
+          ไปจัด Route ใน Queue
+        </Button>
+      );
+    }
+
     if (order.status === 'assigned' && order.deliveryRoute) {
       return (
         <div className="flex flex-wrap gap-2">
@@ -446,6 +461,12 @@ export function DeliveryTrackingPage({
 
   // chip เดียวคุมทั้งหมด — ตัวเลขเป็น badge ใน chip (ไม่แยกการ์ด KPI เพื่อเลี่ยงความกำกวมว่าคลิกได้ไหม)
   const tabs: TrackingChip[] = [
+    {
+      view: 'all_open',
+      label: 'งานยังไม่ปิด',
+      icon: ClipboardList,
+      count: trackingCounts.all_open,
+    },
     { view: 'overdue', label: 'เลยกำหนด', icon: AlertCircle, count: trackingCounts.overdue },
     {
       view: 'awaiting_acceptance',
@@ -462,7 +483,9 @@ export function DeliveryTrackingPage({
   const currentViewDescription =
     view === 'closed'
       ? 'แสดงงานที่ปิดใน 24 ชั่วโมงล่าสุด — รายการเก่าย้ายไปดูที่ Tracking History'
-      : 'งานที่ยังไม่ปิดทั้งหมด ไม่จำกัดช่วงวันที่ — รายการจะค้างไว้จนกว่าจะจัดการเสร็จ';
+      : view === 'all_open'
+        ? 'รวมงานที่ยังไม่ปิดทุกขั้นตอน — งานที่ยังไม่มี Route กดกลับไปจัดต่อใน Queue ได้'
+        : 'งานที่ยังไม่ปิดทั้งหมด ไม่จำกัดช่วงวันที่ — รายการจะค้างไว้จนกว่าจะจัดการเสร็จ';
 
   return (
     // full-bleed map-first: หักล้าง padding ของ <main> แล้วกินความสูงที่เหลือใต้ topbar (h-14) พอดีจอ

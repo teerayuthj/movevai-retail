@@ -936,10 +936,14 @@ export type RoutePreview = {
  * ใช้ origin จาก GPS ของ admin ถ้ามี ไม่งั้น backend จะ fallback ไปต้นทางใน env
  */
 export async function previewPlanningRoute(input: { orderIds: string[]; origin?: RouteOrigin }) {
-  return request<RoutePreview>(`${APP_API_BASE}/planning/routes/preview`, {
+  const preview = await request<RoutePreview>(`${APP_API_BASE}/planning/routes/preview`, {
     method: 'POST',
     body: JSON.stringify(input),
   });
+  if (preview.geometry.length < 2 || preview.distanceMeters == null) {
+    throw new Error('หาพิกัดปลายทางหรือเส้นทางถนนไม่พบ กรุณาตรวจสอบที่อยู่แล้วลองใหม่');
+  }
+  return preview;
 }
 
 export async function publishPlanningRoute(input: {

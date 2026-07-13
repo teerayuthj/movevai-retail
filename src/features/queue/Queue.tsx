@@ -74,6 +74,8 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
   const [autoPreviewOpen, setAutoPreviewOpen] = useState(false);
   const [routePreview, setRoutePreview] = useState<RoutePreview | null>(null);
   const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
+  const [routePreviewError, setRoutePreviewError] = useState('');
+  const [routePreviewRetry, setRoutePreviewRetry] = useState(0);
   const [urgentTarget, setUrgentTarget] = useState<{
     orderId: string;
     driverIds: string[];
@@ -233,18 +235,25 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
     if (paneView !== 'map' || !selectedOrder) {
       setRoutePreview(null);
       setRoutePreviewLoading(false);
+      setRoutePreviewError('');
       return;
     }
     let cancelled = false;
     setRoutePreviewLoading(true);
+    setRoutePreviewError('');
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         const origin = await getAdminRouteOrigin();
         try {
           const preview = await previewPlanningRoute({ orderIds: [selectedOrder.id], origin });
           if (!cancelled) setRoutePreview(preview);
-        } catch {
-          if (!cancelled) setRoutePreview(null);
+        } catch (error) {
+          if (!cancelled) {
+            setRoutePreview(null);
+            setRoutePreviewError(
+              error instanceof Error ? error.message : 'คำนวณเส้นทางตามถนนไม่สำเร็จ',
+            );
+          }
         } finally {
           if (!cancelled) setRoutePreviewLoading(false);
         }
@@ -254,7 +263,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
       cancelled = true;
       window.clearTimeout(timeoutId);
     };
-  }, [paneView, selectedOrder]);
+  }, [paneView, selectedOrder, routePreviewRetry]);
 
   // ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งคอลัมน์ขวา (เดสก์ท็อป) และ footer ของ overlay มือถือ
   const assignmentActions = selectedOrder ? (
@@ -538,12 +547,13 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                       setMobileDetailOpen(false);
                     }}
                     route={
-                      selectedOrder && (routePreview?.geometry.length || routePreviewLoading)
+                      selectedOrder
                         ? {
                             preview: true,
                             loading: routePreviewLoading && !routePreview?.geometry.length,
                             distanceMeters: routePreview?.distanceMeters,
                             durationSeconds: routePreview?.durationSeconds,
+                            error: routePreviewError,
                             geometry: routePreview?.geometry ?? [],
                           }
                         : null
@@ -552,6 +562,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
                     selectedLabel="กำลังพรีวิวเส้นทางของ order นี้"
                     unselectedLabel="แตะเพื่อพรีวิวเส้นทางของ order นี้"
                     routePreviewTitle="พรีวิวเส้นทางก่อนส่งทันที"
+                    onRetryRoute={() => setRoutePreviewRetry((value) => value + 1)}
                   />
                 </div>
               </section>

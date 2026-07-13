@@ -8,6 +8,7 @@ import {
 
 export type DriverQueueTab = 'ready' | 'assigned';
 export type DeliveryTrackingTab =
+  | 'all_open'
   | 'awaiting_acceptance'
   | 'overdue'
   | 'in_transit'
@@ -21,6 +22,7 @@ export const driverQueueTabLabels: Record<DriverQueueTab, string> = {
 };
 
 export const deliveryTrackingTabLabels: Record<DeliveryTrackingTab, string> = {
+  all_open: 'งานยังไม่ปิด',
   awaiting_acceptance: 'รอคนขับรับ',
   overdue: 'เลยกำหนด',
   in_transit: 'กำลังจัดส่ง',

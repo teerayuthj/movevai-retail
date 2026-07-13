@@ -12,6 +12,7 @@ export function parseTrackingSearch(locationSearch: string): {
   const orderId = params.get('order');
 
   const view: TrackingView | null =
+    tab === 'all_open' ||
     tab === 'awaiting_acceptance' ||
     tab === 'overdue' ||
     tab === 'in_transit' ||

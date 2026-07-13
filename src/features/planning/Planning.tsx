@@ -104,6 +104,8 @@ export function PlanningPage({
   const [selectedRouteId, setSelectedRouteId] = useState<string | null>(null);
   const [routePreview, setRoutePreview] = useState<RoutePreview | null>(null);
   const [routePreviewLoading, setRoutePreviewLoading] = useState(false);
+  const [routePreviewError, setRoutePreviewError] = useState('');
+  const [routePreviewRetry, setRoutePreviewRetry] = useState(0);
   const [operationState, setOperationState] = useState<'idle' | 'saving' | 'publishing'>('idle');
   const [operationError, setOperationError] = useState('');
   const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
@@ -289,20 +291,26 @@ export function PlanningPage({
     if (paneView !== 'map' || selectedRoute || !previewOrderIdsKey) {
       setRoutePreview(null);
       setRoutePreviewLoading(false);
+      setRoutePreviewError('');
       return;
     }
     let cancelled = false;
     const orderIds = previewOrderIdsKey.split(',');
     setRoutePreviewLoading(true);
+    setRoutePreviewError('');
     const timeoutId = window.setTimeout(() => {
       void (async () => {
         const origin = await getAdminRouteOrigin();
         try {
           const preview = await previewPlanningRoute({ orderIds, origin });
           if (!cancelled) setRoutePreview(preview);
-        } catch {
-          // พรีวิวล้มเหลวไม่ใช่เรื่องคอขวด — ปล่อยให้ map แสดงแค่หมุด
-          if (!cancelled) setRoutePreview(null);
+        } catch (error) {
+          if (!cancelled) {
+            setRoutePreview(null);
+            setRoutePreviewError(
+              error instanceof Error ? error.message : 'คำนวณเส้นทางตามถนนไม่สำเร็จ',
+            );
+          }
         } finally {
           if (!cancelled) setRoutePreviewLoading(false);
         }
@@ -313,7 +321,7 @@ export function PlanningPage({
       window.clearTimeout(timeoutId);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paneView, previewOrderIdsKey]);
+  }, [paneView, previewOrderIdsKey, routePreviewRetry]);
 
   const selectOrder = (orderId: string) => {
     setSelectedRouteId(null);
@@ -723,17 +731,18 @@ export function PlanningPage({
                             distanceMeters: selectedRoute.plannedDistanceMeters,
                             geometry: selectedRoute.plannedGeometryJson,
                           }
-                        : selectedOrders.length > 0 &&
-                            (routePreview?.geometry.length || routePreviewLoading)
+                        : selectedOrders.length > 0
                           ? {
                               preview: true,
                               loading: routePreviewLoading && !routePreview?.geometry.length,
                               distanceMeters: routePreview?.distanceMeters,
                               durationSeconds: routePreview?.durationSeconds,
+                              error: routePreviewError,
                               geometry: routePreview?.geometry ?? [],
                             }
                           : null
                     }
+                    onRetryRoute={() => setRoutePreviewRetry((value) => value + 1)}
                   />
                 </div>
               </section>
