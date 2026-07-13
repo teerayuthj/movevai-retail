@@ -18,7 +18,7 @@ export function InTransitCard({ orders, drivers }: { orders: Order[]; drivers: D
             return (
               <div key={o.id} className="rounded-lg border p-3">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-medium">{o.code}</span>
+                  <span className="font-mono text-xs font-medium">{o.orderNo}</span>
                   <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
                     {statusLabel[o.status]}
                   </Badge>

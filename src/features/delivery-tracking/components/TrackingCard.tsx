@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import {
   type FailReason,
   type Order,
@@ -114,7 +115,8 @@ export function TrackingCard({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="font-mono text-xs font-medium">{order.code}</span>
+            <span className="font-mono text-xs font-medium">{order.orderNo}</span>
+            <CopyOrderNoButton orderNo={order.orderNo} />
             <Badge
               variant={
                 order.status === 'in_transit'

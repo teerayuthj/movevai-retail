@@ -504,7 +504,7 @@ export function CustomersPage({ locationSearch }: Props) {
                       {detail.orders.map((order) => (
                         <li key={order.id} className="flex flex-col gap-1 px-4 py-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-mono text-sm font-medium">{order.code}</span>
+                            <span className="font-mono text-sm font-medium">{order.orderNo}</span>
                             <div className="flex items-center gap-2">
                               <span className="text-sm font-medium">
                                 {formatBaht(order.totalValue)}

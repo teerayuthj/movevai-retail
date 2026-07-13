@@ -78,8 +78,8 @@ export type UpdateOrderDetailsInput = {
 };
 
 export type RetailStore = RetailState & {
-  createInternalChatOrder: (input: InternalChatOrderInput) => string;
-  createManualImportOrders: (inputs: ManualImportOrderInput[]) => string[];
+  createInternalChatOrder: (input: InternalChatOrderInput) => Promise<string>;
+  createManualImportOrders: (inputs: ManualImportOrderInput[]) => Promise<string[]>;
   refreshMessengerJobs: (driverCode: string) => Promise<void>;
   /** ดึง orders + drivers จาก backend (ฝั่ง web) — ใช้ refresh/poll */
   syncFromBackend: () => Promise<void>;

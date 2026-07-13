@@ -4,8 +4,8 @@ import { Input } from '@/components/ui/input';
 
 type Props = {
   onOpenMobileNav: () => void;
-  /** กด Enter ในช่องค้นหา — พาไปหน้าลูกค้าพร้อม query */
-  onSearch: (query: string) => void;
+  /** กด Enter เพื่อค้นหาเลขออเดอร์กลางก่อน แล้วค่อย fallback ไปค้นหาลูกค้า */
+  onSearch: (query: string) => void | Promise<void>;
 };
 
 export function Topbar({ onOpenMobileNav, onSearch }: Props) {
@@ -27,15 +27,21 @@ export function Topbar({ onOpenMobileNav, onSearch }: Props) {
           event.preventDefault();
           const query = q.trim();
           if (!query) return;
-          onSearch(query);
+          void onSearch(query);
           setQ('');
         }}
       >
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <button
+          type="submit"
+          aria-label="ค้นหา"
+          className="absolute left-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+        >
+          <Search className="h-4 w-4" />
+        </button>
         <Input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="ค้นหาลูกค้า ชื่อ, เบอร์โทร, ที่อยู่... (Enter)"
+          placeholder="ค้นหาเลขออเดอร์ ลูกค้า เบอร์โทร... (Enter)"
           className="pl-9"
         />
       </form>

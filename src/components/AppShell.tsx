@@ -15,6 +15,9 @@ import { NAV_SECTIONS } from '@/components/app-shell/navConfig';
 import { CollapsedSidebarTooltip } from '@/components/app-shell/CollapsedSidebarTooltip';
 import { SidebarUserMenu } from '@/components/app-shell/SidebarUserMenu';
 import { Topbar } from '@/components/app-shell/Topbar';
+import { fetchAppOrders } from '@/lib/retailApi';
+import { matchesOrderReference, normalizeOrderNumberInput } from '@/lib/orderNumber';
+import type { Order } from '@/data/orderTypes';
 
 type Props = {
   page: PageKey;
@@ -105,6 +108,58 @@ export function AppShell({ page, onChangePage, children }: Props) {
     event.preventDefault();
     setIsMobileNavOpen(false);
     onChangePage(nextPage);
+  };
+
+  const openOrderFromSearch = (order: Order) => {
+    const orderSearch = `order=${encodeURIComponent(order.id)}`;
+    if (['new', 'parsing', 'needs_review', 'ready'].includes(order.status)) {
+      if (order.shippingMethod === 'thai_post' && order.status === 'ready') {
+        onChangePage('postal', {
+          search: `?q=${encodeURIComponent(order.orderNo ?? order.code)}&${orderSearch}`,
+        });
+        return;
+      }
+      if (isUnreleasedPlannedOrder(order)) {
+        onChangePage('planning', { search: `?${orderSearch}` });
+        return;
+      }
+      if (order.status !== 'ready') {
+        onChangePage('inbox', { search: `?tab=orders&${orderSearch}` });
+        return;
+      }
+    }
+
+    const trackingTab = getDeliveryTrackingTab(order);
+    if (trackingTab) {
+      onChangePage('delivery_tracking', {
+        search: `?tab=${encodeURIComponent(trackingTab)}&${orderSearch}`,
+      });
+      return;
+    }
+
+    onChangePage('queue', { search: `?${orderSearch}` });
+  };
+
+  const handleGlobalSearch = async (query: string) => {
+    const normalizedQuery = normalizeOrderNumberInput(query);
+    const localMatch = orders.find((order) => matchesOrderReference(order, normalizedQuery));
+    if (localMatch) {
+      openOrderFromSearch(localMatch);
+      return;
+    }
+
+    try {
+      const { orders: remoteOrders } = await fetchAppOrders({ q: normalizedQuery, take: 10 });
+      const exact = remoteOrders.find((order) => matchesOrderReference(order, normalizedQuery));
+      if (exact) {
+        openOrderFromSearch(exact);
+        return;
+      }
+    } catch {
+      // fallback ด้านล่างยังช่วยค้นด้วยชื่อ/เบอร์จากหน้า Customers ได้
+    }
+
+    onChangePage('customers', { search: `?q=${encodeURIComponent(query)}` });
   };
 
   return (
@@ -224,12 +279,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
             collapsed ? 'lg:pl-16' : 'lg:pl-60',
           )}
         >
-          <Topbar
-            onOpenMobileNav={() => setIsMobileNavOpen(true)}
-            onSearch={(query) =>
-              onChangePage('customers', { search: `?q=${encodeURIComponent(query)}` })
-            }
-          />
+          <Topbar onOpenMobileNav={() => setIsMobileNavOpen(true)} onSearch={handleGlobalSearch} />
           <main className="p-4 sm:p-6">{children}</main>
         </div>
       </div>

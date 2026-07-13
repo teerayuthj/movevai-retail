@@ -86,7 +86,7 @@ export function UrgentDispatchDialog({
             </div>
           )}
           <div className="rounded-lg border bg-muted/20 p-3 text-sm">
-            <div className="font-mono text-xs font-medium">{order.code}</div>
+            <div className="font-mono text-xs font-medium">{order.orderNo}</div>
             <div className="mt-1 font-medium">{order.customer.name}</div>
             <div className="mt-1 text-xs text-muted-foreground">Messenger: {messengerLabel}</div>
           </div>

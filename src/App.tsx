@@ -167,7 +167,7 @@ export default function App() {
               onOpenInbox={(search) => navigateToPage('inbox', { search })}
             />
           )}
-          {page === 'postal' && <PostalQueuePage />}
+          {page === 'postal' && <PostalQueuePage locationSearch={locationSearch} />}
           {page === 'drivers' && <DriversPage />}
           {page === 'customers' && <CustomersPage locationSearch={locationSearch} />}
         </Suspense>

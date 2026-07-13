@@ -45,6 +45,7 @@ import type {
 } from '@/state/retail/types';
 import {
   approveImportOrders as approveImportOrdersApi,
+  createAppOrder,
   cancelOrder as cancelOrderApi,
   cancelPlanningRoute,
   clearPlanning as clearPlanningApi,
@@ -70,10 +71,19 @@ import { MESSENGER_JOB_STATUSES, isMessengerOrderParticipant } from '@/lib/messe
 const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
 
 function replaceOrder(orders: RetailState['orders'], canonical: RetailState['orders'][number]) {
-  const exists = orders.some((order) => order.id === canonical.id || order.code === canonical.code);
+  const exists = orders.some(
+    (order) =>
+      order.id === canonical.id ||
+      order.orderNo === canonical.orderNo ||
+      order.code === canonical.code,
+  );
   return exists
     ? orders.map((order) =>
-        order.id === canonical.id || order.code === canonical.code ? canonical : order,
+        order.id === canonical.id ||
+        order.orderNo === canonical.orderNo ||
+        order.code === canonical.code
+          ? canonical
+          : order,
       )
     : [...orders, canonical];
 }
@@ -83,7 +93,10 @@ function preservePendingReview(
   remoteOrder: RetailState['orders'][number],
 ): RetailState['orders'][number] {
   const local = current.orders.find(
-    (order) => order.id === remoteOrder.id || order.code === remoteOrder.code,
+    (order) =>
+      order.id === remoteOrder.id ||
+      order.orderNo === remoteOrder.orderNo ||
+      order.code === remoteOrder.code,
   );
   const confirmedByCs = remoteOrder.activityLog?.some(
     (event) => event.type === 'delivery_confirmed',
@@ -151,33 +164,35 @@ export function RetailProvider({
   );
 
   const createInternalChatOrder = useCallback(
-    (input: Parameters<RetailStore['createInternalChatOrder']>[0]) => {
-      let createdId = '';
-
-      commit((current) => {
-        const result = createInternalChatOrderState(current, input);
-        createdId = result.createdId;
-        return result.nextState;
-      });
-
-      return createdId;
+    async (input: Parameters<RetailStore['createInternalChatOrder']>[0]) => {
+      const result = createInternalChatOrderState(state, input);
+      const draft = result.nextState.orders.find((order) => order.id === result.createdId)!;
+      const canonical = await createAppOrder(draft);
+      commit((current) => ({
+        ...current,
+        orders: [canonical, ...current.orders.filter((order) => order.id !== draft.id)],
+      }));
+      return canonical.id;
     },
-    [commit],
+    [commit, state],
   );
 
   const createManualImportOrders = useCallback(
-    (inputs: Parameters<RetailStore['createManualImportOrders']>[0]) => {
-      let createdIds: string[] = [];
-
-      commit((current) => {
-        const result = createManualImportOrdersState(current, inputs);
-        createdIds = result.createdIds;
-        return result.nextState;
-      });
-
-      return createdIds;
+    async (inputs: Parameters<RetailStore['createManualImportOrders']>[0]) => {
+      const result = createManualImportOrdersState(state, inputs);
+      const createdIdSet = new Set(result.createdIds);
+      const drafts = result.nextState.orders.filter((order) => createdIdSet.has(order.id));
+      const canonicalOrders = await Promise.all(drafts.map(createAppOrder));
+      commit((current) => ({
+        ...current,
+        orders: [
+          ...canonicalOrders,
+          ...current.orders.filter((order) => !createdIdSet.has(order.id)),
+        ],
+      }));
+      return canonicalOrders.map((order) => order.id);
     },
-    [commit],
+    [commit, state],
   );
 
   const refreshMessengerJobs = useCallback(
@@ -211,12 +226,12 @@ export function RetailProvider({
     ]);
     commit((current) => {
       const remoteIds = new Set(remoteOrders.map((order) => order.id));
-      const remoteCodes = new Set(remoteOrders.map((order) => order.code));
+      const remoteCodes = new Set(remoteOrders.map((order) => order.orderNo));
       const localDrafts = current.orders.filter(
         (order) =>
           LOCAL_DRAFT_STATUSES.includes(order.status) &&
           !remoteIds.has(order.id) &&
-          !remoteCodes.has(order.code),
+          !remoteCodes.has(order.orderNo),
       );
       return {
         ...current,
@@ -403,7 +418,10 @@ export function RetailProvider({
       commit((current) => {
         const submitted = submitDeliveryState(current, orderId, submitInput);
         const submittedOrder = submitted.orders.find(
-          (item) => item.id === canonical.id || item.code === canonical.code,
+          (item) =>
+            item.id === canonical.id ||
+            item.orderNo === canonical.orderNo ||
+            item.code === canonical.code,
         );
         const reviewCanonical = submittedOrder
           ? {

@@ -25,6 +25,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Search,
   Send,
   Split,
   Trash2,
@@ -37,24 +38,21 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import {
   fetchImportBatches,
-  fetchImportBatch,
   downloadImportBatchCsv,
   updateImportedOrder,
   mergeImportOrders,
   splitImportOrderRows,
   addOrderActivity,
   parseAddress,
-  fetchAddressSubdistricts,
   syncAppOrder,
   type ImportBatch,
-  type ImportBatchDetail,
-  type ImportBatchRow,
   type ImportOrderItemInput,
   type ImportRejectReason,
 } from '@/lib/retailApi';
@@ -63,36 +61,60 @@ import { formatTHB, shippingMethodLabel, type Order, type ShippingMethod } from 
 import { useRetailStore } from '@/state/retailStore';
 import { importRejectReasonLabel } from '@/state/retail/moderation';
 import { cn } from '@/lib/utils';
+import { normalizeOrderNumberInput } from '@/lib/orderNumber';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import {
   buildNoteWithRequestedDelivery,
   formatRequestedDelivery,
   getRequestedDeliveryDraft,
-  parseDeliveryFromText,
 } from '@/features/inbox/utils/orderSchedule';
 import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import { composeThaiAddress, extractStreet, type ThaiAddressValue } from '@/lib/thaiAddress';
 import {
-  EMPTY_THAI_ADDRESS,
-  composeThaiAddress,
-  extractStreet,
-  type ThaiAddressValue,
-} from '@/lib/thaiAddress';
-
-// order ที่ยังอยู่ขั้นตรวจใน Inbox (ยังไม่ปล่อยเข้าคิว)
-const REVIEW_STATUSES: Order['status'][] = ['new', 'needs_review', 'parsing'];
-const ALL_SCOPE = 'all';
+  ALL_SCOPE,
+  canOpenFastDispatch,
+  canOpenPlanning,
+  displayOcrText,
+  getDeliveryQueueBadge,
+  orderItemStats,
+  type CardVM,
+  type RowVM,
+  type Tab,
+} from '@/features/inbox/utils/importCardModel';
+import {
+  EMPTY_ITEM_DRAFT,
+  draftFromRow,
+  fillMissingPostalCode,
+  getRowRequestedDelivery,
+  normalizePaymentMethod,
+  toNonNegativeNumber,
+  toPositiveInt,
+  type ImportEditDraft,
+  type ImportItemDraft,
+} from '@/features/inbox/utils/importEditDraft';
+import {
+  copyTextToClipboard,
+  ocrDisplayLines,
+  ocrPlainText,
+} from '@/features/inbox/utils/importOcr';
+import {
+  SOURCE_EXTRACTION_CONFIDENCE_COLUMN,
+  SOURCE_MISSING_FIELDS_COLUMN,
+  visibleRawEntries,
+} from '@/features/inbox/utils/importRawFields';
+import { useImportBatchDetails } from '@/features/inbox/hooks/useImportBatchDetails';
+import { useImportCards } from '@/features/inbox/hooks/useImportCards';
+import { BatchListItem } from '@/features/inbox/components/import/BatchListItem';
+import { OrderItemPreviewList } from '@/features/inbox/components/import/OrderItemPreviewList';
+import { RowStatusBadge } from '@/features/inbox/components/import/RowStatusBadge';
+import { TabChip, TabEmptyState } from '@/features/inbox/components/import/TabChip';
 
 // ดึงทีละหน้า แล้ว infinite scroll ต่อ — ค่า default 30 วันย้อนหลัง (0 = ทั้งหมด)
 const BATCH_PAGE_SIZE = 20;
 const DEFAULT_DAYS = 30;
 // ค่าพิเศษใน dropdown = โหมดเลือกช่วงวันที่เอง (from–to)
 const CUSTOM_DAYS = -1;
-const SOURCE_IMAGE_DATA_URL_COLUMN = 'sourceImageDataUrl';
-const SOURCE_IMAGE_MIME_TYPE_COLUMN = 'sourceImageMimeType';
-const SOURCE_OCR_TEXT_COLUMN = 'sourceOcrText';
-const SOURCE_PARSE_WARNINGS_COLUMN = 'parseWarnings';
-const SOURCE_MISSING_FIELDS_COLUMN = 'missingFields';
-const SOURCE_EXTRACTION_CONFIDENCE_COLUMN = 'extractionConfidence';
 const DAY_WINDOW_OPTIONS: { value: number; label: string }[] = [
   { value: 30, label: '30 วันล่าสุด' },
   { value: 90, label: '90 วันล่าสุด' },
@@ -144,802 +166,6 @@ function writeStoredListCollapsed(collapsed: boolean) {
     // localStorage may be disabled or full; keep the in-memory collapsed state for this session.
   }
 }
-
-function BatchListItem({
-  batch,
-  selected,
-  unread,
-  onClick,
-}: {
-  batch: ImportBatch;
-  selected: boolean;
-  unread: boolean;
-  onClick: () => void;
-}) {
-  const senderName = batch.lineSenderDisplayName?.trim();
-  const senderId = batch.lineSenderUserId?.trim();
-  const senderLabel = senderName || (senderId ? `LINE ${senderId.slice(0, 8)}...` : null);
-  const isProcessing = batch.status === 'PENDING' || batch.status === 'PROCESSING';
-
-  return (
-    <div
-      className={cn(
-        'rounded-lg border p-3 transition-colors',
-        selected ? 'border-border bg-muted' : 'border-transparent hover:bg-muted/60',
-      )}
-    >
-      <button type="button" onClick={onClick} className="w-full text-left">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5">
-            {unread && <span className="h-2 w-2 shrink-0 rounded-full bg-primary" />}
-            <FileSpreadsheet
-              className={cn(
-                'h-3.5 w-3.5 shrink-0',
-                unread ? 'text-primary' : 'text-muted-foreground',
-              )}
-            />
-            <span className={cn('truncate text-xs font-medium', unread && 'font-semibold')}>
-              {batch.fileName}
-            </span>
-          </div>
-          {isProcessing ? (
-            <Badge variant="info" className="h-5 shrink-0 gap-1 px-1.5 text-[10px]">
-              <Loader2 className="h-2.5 w-2.5 animate-spin" />
-              กำลังนำเข้า
-            </Badge>
-          ) : (
-            unread && (
-              <Badge variant="info" className="h-5 shrink-0 px-1.5 text-[10px]">
-                รายการใหม่
-              </Badge>
-            )
-          )}
-        </div>
-
-        <div className="mt-1.5 flex items-center gap-2 text-[11px] text-muted-foreground">
-          {senderLabel && (
-            <>
-              <span className="inline-flex min-w-0 items-center gap-1">
-                {batch.lineSenderPictureUrl ? (
-                  <img
-                    src={batch.lineSenderPictureUrl}
-                    alt=""
-                    className="h-4 w-4 shrink-0 rounded-full object-cover"
-                  />
-                ) : (
-                  <UserRound className="h-3 w-3 shrink-0" />
-                )}
-                <span className="truncate">{senderLabel}</span>
-              </span>
-              <span>·</span>
-            </>
-          )}
-          <span>
-            {new Date(batch.createdAt).toLocaleString('th', {
-              day: '2-digit',
-              month: 'short',
-              year: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </span>
-        </div>
-
-        {isProcessing && (
-          <div className="mt-2 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[11px] text-info">
-              <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
-              <span>
-                {batch.status === 'PENDING' ? 'รอเข้าคิวประมวลผล…' : 'กำลังอ่านข้อมูลจากไฟล์…'}
-              </span>
-              {batch.totalRows > 0 && (
-                <span className="text-muted-foreground">
-                  {batch.importedRows}/{batch.totalRows} แถว
-                </span>
-              )}
-            </div>
-            <div className="h-1 overflow-hidden rounded-full bg-info/15">
-              <div
-                className={cn(
-                  'h-full rounded-full bg-info transition-all',
-                  batch.totalRows > 0 ? '' : 'w-1/3 animate-pulse',
-                )}
-                style={
-                  batch.totalRows > 0
-                    ? {
-                        width: `${Math.min(100, Math.round((batch.importedRows / batch.totalRows) * 100))}%`,
-                      }
-                    : undefined
-                }
-              />
-            </div>
-          </div>
-        )}
-
-        {(batch.status === 'DONE' || batch.status === 'ERROR') && (
-          <div className="mt-2 flex items-center gap-3 text-[11px]">
-            <span className="text-success">✓ {batch.importedRows} orders</span>
-            {batch.errorRows > 0 && (
-              <span className="text-destructive">✗ {batch.errorRows} error</span>
-            )}
-            {batch.totalRows > 0 && (
-              <span className="text-muted-foreground">/ {batch.totalRows} แถว</span>
-            )}
-          </div>
-        )}
-      </button>
-    </div>
-  );
-}
-
-type Tab = 'review' | 'approved' | 'rejected' | 'all';
-type RowKind = 'error' | 'review' | 'approved' | 'rejected';
-
-type RowVM = {
-  rowId: string;
-  rowIndex: number;
-  fileName: string;
-  rawData: Record<string, string>;
-  kind: RowKind;
-  orderId?: string;
-  name: string;
-  address: string;
-  value?: number;
-  item?: string;
-  imageDataUrl?: string;
-  imageMimeType?: string;
-  ocrText?: string;
-  parseWarnings?: string[];
-  missingFields?: string[];
-  extractionConfidence?: number;
-  ocrOnly?: boolean;
-  errorMessage?: string | null;
-};
-
-// 1 card = 1 draft order (อาจมาจากหลายแถวต้นทาง เมื่อ CSV มี orderNo เดียวกันหรือ admin กดรวม)
-// แถว ERROR ไม่มี order → card เดี่ยวของตัวเอง
-type CardVM = {
-  key: string;
-  orderId?: string;
-  kind: RowKind;
-  rows: RowVM[];
-  primary: RowVM;
-};
-
-function buildCards(rows: RowVM[]): CardVM[] {
-  const byOrder = new Map<string, CardVM>();
-  const cards: CardVM[] = [];
-  for (const row of rows) {
-    if (!row.orderId) {
-      cards.push({ key: row.rowId, kind: row.kind, rows: [row], primary: row });
-      continue;
-    }
-    const existing = byOrder.get(row.orderId);
-    if (existing) {
-      existing.rows.push(row);
-      continue;
-    }
-    const card: CardVM = {
-      key: row.orderId,
-      orderId: row.orderId,
-      kind: row.kind,
-      rows: [row],
-      primary: row,
-    };
-    byOrder.set(row.orderId, card);
-    cards.push(card);
-  }
-  return cards;
-}
-
-function orderItemStats(order: Order | undefined) {
-  const skuCount = order?.items.length ?? 0;
-  const totalQty = order?.items.reduce((sum, item) => sum + item.qty, 0) ?? 0;
-  return { skuCount, totalQty };
-}
-
-// สรุปสินค้าให้สั้น: "ชื่อสินค้า ×2 (+1)" — โชว์ชิ้นแรก แล้วบอกจำนวนรายการที่เหลือ
-function itemSummary(order: Order | undefined, raw: Record<string, string>): string | undefined {
-  if (isOcrOnlyRaw(raw)) return undefined;
-  const first = order?.items[0];
-  const name = first?.name || rawField(raw, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า');
-  if (!name) return undefined;
-  const qty = first?.qty ?? (Number(rawField(raw, 'qty', 'quantity', 'จำนวน')) || 0);
-  const extra = order && order.items.length > 1 ? ` (+${order.items.length - 1})` : '';
-  return `${name}${qty > 1 ? ` ×${qty}` : ''}${extra}`;
-}
-
-// ค่า placeholder จาก import ("-", "0", ว่าง) ไม่มีข้อมูลจริง — ไม่ต้องโชว์ให้รก
-function hasItemValue(value: string | undefined | null) {
-  const trimmed = value?.trim();
-  return !!trimmed && trimmed !== '-' && trimmed !== '0';
-}
-
-function OrderItemPreviewList({ order }: { order: Order }) {
-  const visibleItems = order.items.slice(0, 4);
-  const hiddenCount = Math.max(0, order.items.length - visibleItems.length);
-
-  return (
-    <div className="mt-2 rounded-md border bg-background">
-      <div className="divide-y">
-        {visibleItems.map((item, index) => (
-          <div
-            key={`${item.sku}-${index}`}
-            className="grid grid-cols-[1fr_auto] items-center gap-2 px-3 py-2"
-          >
-            <div className="min-w-0">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                <span className="truncate text-xs font-medium">{item.name}</span>
-                {hasItemValue(item.purity) && (
-                  <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
-                    {item.purity}
-                  </Badge>
-                )}
-              </div>
-              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
-                {hasItemValue(item.sku) && <span className="font-mono">{item.sku}</span>}
-                {hasItemValue(item.weight) && <span>นน. {item.weight}</span>}
-                <span>ราคา/ชิ้น {formatTHB(item.unitPrice)}</span>
-              </div>
-            </div>
-            <div className="text-right text-xs tabular-nums">
-              <div className="font-semibold">× {item.qty}</div>
-              <div className="text-[11px] text-muted-foreground">
-                {formatTHB(item.qty * item.unitPrice)}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      {hiddenCount > 0 && (
-        <div className="border-t px-3 py-2 text-[11px] text-muted-foreground">
-          อีก {hiddenCount.toLocaleString('th-TH')} SKU
-        </div>
-      )}
-    </div>
-  );
-}
-
-type ImportItemDraft = {
-  name: string;
-  sku: string;
-  purity: string;
-  weight: string;
-  qty: string;
-  unitPrice: string;
-  note: string;
-};
-
-const EMPTY_ITEM_DRAFT: ImportItemDraft = {
-  name: '',
-  sku: '',
-  purity: '',
-  weight: '',
-  qty: '1',
-  unitPrice: '0',
-  note: '',
-};
-
-type ImportEditDraft = {
-  rawData: Record<string, string>;
-  customerName: string;
-  customerPhone: string;
-  customerAddress: string;
-  addr: ThaiAddressValue;
-  customerIdCard: string;
-  totalValue: string;
-  payment: Order['payment'];
-  note: string;
-  deliveryDate: string;
-  deliveryTime: string;
-  items: ImportItemDraft[];
-};
-
-function rawField(raw: Record<string, string>, ...keys: string[]) {
-  for (const key of keys) {
-    const found = Object.entries(raw).find(([k]) => k.toLowerCase() === key.toLowerCase());
-    if (found && found[1]) return found[1];
-  }
-  return '';
-}
-
-function sourceImageDataUrl(raw: Record<string, string>) {
-  const value = raw[SOURCE_IMAGE_DATA_URL_COLUMN]?.trim();
-  return value?.startsWith('data:image/') ? value : undefined;
-}
-
-function sourceImageMimeType(raw: Record<string, string>) {
-  return raw[SOURCE_IMAGE_MIME_TYPE_COLUMN]?.trim() || undefined;
-}
-
-function sourceOcrText(raw: Record<string, string>) {
-  return raw[SOURCE_OCR_TEXT_COLUMN]?.trim() || undefined;
-}
-
-function sourceList(raw: Record<string, string>, key: string) {
-  return (raw[key] ?? '')
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function sourceConfidence(raw: Record<string, string>) {
-  const value = Number(raw[SOURCE_EXTRACTION_CONFIDENCE_COLUMN]);
-  return Number.isFinite(value) ? Math.max(0, Math.min(100, Math.round(value))) : undefined;
-}
-
-function isOcrOnlyRaw(raw: Record<string, string>) {
-  const warnings = sourceList(raw, SOURCE_PARSE_WARNINGS_COLUMN).join(' ').toLowerCase();
-  const missing = new Set(sourceList(raw, SOURCE_MISSING_FIELDS_COLUMN));
-  return (
-    !!sourceOcrText(raw) &&
-    ((missing.has('customerName') &&
-      missing.has('customerPhone') &&
-      missing.has('customerAddress')) ||
-      warnings.includes('no customer') ||
-      warnings.includes('no order'))
-  );
-}
-
-function visibleRawEntries(raw: Record<string, string>) {
-  return Object.entries(raw).filter(([key, value]) => {
-    if (
-      key === SOURCE_IMAGE_DATA_URL_COLUMN ||
-      key === SOURCE_IMAGE_MIME_TYPE_COLUMN ||
-      key === SOURCE_OCR_TEXT_COLUMN ||
-      key === SOURCE_PARSE_WARNINGS_COLUMN ||
-      key === SOURCE_MISSING_FIELDS_COLUMN ||
-      key === SOURCE_EXTRACTION_CONFIDENCE_COLUMN
-    ) {
-      return false;
-    }
-    if (isOcrOnlyRaw(raw)) {
-      return (
-        value.trim() !== '' &&
-        !['qty', 'payment', 'unitPrice', 'totalValue', 'itemName', 'note'].includes(key)
-      );
-    }
-    return true;
-  });
-}
-
-function rowKindForOrder(order: Order | undefined): RowKind {
-  if (!order) return 'review';
-  if (order.status === 'rejected') return 'rejected';
-  if (REVIEW_STATUSES.includes(order.status)) return 'review';
-  return 'approved';
-}
-
-function hasPublishedDeliveryJob(order: Order | undefined) {
-  return (
-    !!order &&
-    (order.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-    (order.deliveryRoute ||
-      order.deliveryPlan?.releaseState === 'released' ||
-      order.assignedDriverId ||
-      [
-        'assigned',
-        'in_transit',
-        'pending_confirmation',
-        'delivered',
-        'failed',
-        'returning',
-        'returned',
-      ].includes(order.status))
-  );
-}
-
-function canOpenFastDispatch(card: CardVM, order: Order | undefined) {
-  // แสดง "ส่งทันที" คู่กับ "จัดรอบส่ง" เสมอ ตราบใดที่ยังไม่มีคิวส่งมอบจริง —
-  // order ที่จัดรอบไว้แล้ว (releaseState 'planned') ก็ยังกดส่งทันทีได้ (จะถอดออกจากรอบให้ก่อน)
-  return (
-    !!card.orderId &&
-    card.kind !== 'error' &&
-    card.kind !== 'rejected' &&
-    !hasPublishedDeliveryJob(order)
-  );
-}
-
-function canOpenPlanning(card: CardVM, order: Order | undefined) {
-  return (
-    !!card.orderId &&
-    card.kind !== 'error' &&
-    card.kind !== 'rejected' &&
-    !hasPublishedDeliveryJob(order)
-  );
-}
-
-function getDeliveryQueueBadge(order: Order | undefined) {
-  if (hasPublishedDeliveryJob(order)) return 'มีคิวส่งมอบแล้ว';
-  if (order && isUnreleasedPlannedOrder(order)) return 'อยู่ใน Planning แล้ว';
-  return null;
-}
-
-function toRowVM(row: ImportBatchRow, fileName: string, ordersById: Map<string, Order>): RowVM {
-  const ocrOnly = isOcrOnlyRaw(row.rawData);
-  if (row.status === 'ERROR' || !row.orderId) {
-    return {
-      rowId: row.id,
-      rowIndex: row.rowIndex,
-      fileName,
-      rawData: row.rawData,
-      kind: 'error',
-      name: ocrOnly
-        ? 'ข้อความ OCR จากรูป'
-        : rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') || '(ไม่ระบุชื่อ)',
-      address: ocrOnly
-        ? 'เปิดกล่อง OCR เพื่อดูข้อความที่ถอดได้'
-        : rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') || '—',
-      item: ocrOnly ? undefined : itemSummary(undefined, row.rawData),
-      imageDataUrl: sourceImageDataUrl(row.rawData),
-      imageMimeType: sourceImageMimeType(row.rawData),
-      ocrText: sourceOcrText(row.rawData),
-      parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
-      missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),
-      extractionConfidence: sourceConfidence(row.rawData),
-      ocrOnly,
-      errorMessage: row.errorMessage,
-    };
-  }
-  const order = ordersById.get(row.orderId);
-  return {
-    rowId: row.id,
-    rowIndex: row.rowIndex,
-    fileName,
-    rawData: row.rawData,
-    kind: rowKindForOrder(order),
-    orderId: row.orderId,
-    name: ocrOnly
-      ? 'ข้อความ OCR จากรูป'
-      : order?.customer.name ||
-        rawField(row.rawData, 'customerName', 'ชื่อลูกค้า', 'ชื่อ', 'name') ||
-        '(รอโหลด)',
-    address: ocrOnly
-      ? 'เปิดกล่อง OCR เพื่อดูข้อความที่ถอดได้'
-      : order?.customer.address ||
-        rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่') ||
-        '—',
-    value: ocrOnly ? undefined : order?.totalValue,
-    item: ocrOnly ? undefined : itemSummary(order, row.rawData),
-    imageDataUrl: sourceImageDataUrl(row.rawData),
-    imageMimeType: sourceImageMimeType(row.rawData),
-    ocrText: sourceOcrText(row.rawData),
-    parseWarnings: sourceList(row.rawData, SOURCE_PARSE_WARNINGS_COLUMN),
-    missingFields: sourceList(row.rawData, SOURCE_MISSING_FIELDS_COLUMN),
-    extractionConfidence: sourceConfidence(row.rawData),
-    ocrOnly,
-  };
-}
-
-// items ของออเดอร์ → ตารางแก้ไข: ใช้ของจริงจาก order ทุก SKU (รองรับออเดอร์หลายแถว/รวมแล้ว)
-// ถ้ายังไม่มี order (แถว error) fallback เป็น item เดียวจาก rawData
-function itemDraftsFromRow(
-  row: RowVM,
-  order: Order | undefined,
-  ocrOnly: boolean,
-): ImportItemDraft[] {
-  if (order && order.items.length > 0) {
-    return order.items.map((item) => ({
-      name: ocrOnly && item.name === 'สินค้าจากรูป LINE' ? '' : item.name,
-      sku: item.sku || '-',
-      purity: item.purity || '-',
-      weight: item.weight || '0',
-      qty: String(item.qty),
-      unitPrice: String(item.unitPrice),
-      note: item.note ?? '',
-    }));
-  }
-  const rawItemQty = Number(rawField(row.rawData, 'qty', 'quantity', 'จำนวน'));
-  const rawItemUnitPrice = Number(rawField(row.rawData, 'price', 'unitPrice', 'itemPrice', 'ราคา'));
-  return [
-    {
-      name: ocrOnly
-        ? ''
-        : rawField(row.rawData, 'itemName', 'item', 'product', 'สินค้า', 'ชื่อสินค้า'),
-      sku: rawField(row.rawData, 'sku', 'itemSku', 'รหัสสินค้า') || '-',
-      purity: rawField(row.rawData, 'purity', 'ความบริสุทธิ์') || '-',
-      weight: rawField(row.rawData, 'weight', 'น้ำหนัก') || '0',
-      qty: String(Number.isFinite(rawItemQty) && rawItemQty > 0 ? rawItemQty : 1),
-      unitPrice: String(Number.isFinite(rawItemUnitPrice) ? rawItemUnitPrice : 0),
-      note: '',
-    },
-  ];
-}
-
-function draftFromRow(row: RowVM, order: Order | undefined): ImportEditDraft {
-  const ocrOnly = row.ocrOnly || isOcrOnlyRaw(row.rawData);
-  const rawTotalValue = Number(rawField(row.rawData, 'totalValue', 'total', 'ราคารวม', 'มูลค่า'));
-  const rawPayment = rawField(row.rawData, 'payment', 'การชำระ', 'ชำระ');
-  const rawDelivery = parseDeliveryFromText(
-    [
-      rawField(row.rawData, 'deliveryDate', 'delivery_date', 'นัดส่ง', 'วันส่ง'),
-      rawField(row.rawData, 'deliveryTime', 'delivery_time', 'เวลา', 'เวลาส่ง'),
-      rawField(row.rawData, 'note', 'หมายเหตุ'),
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-  const requestedDelivery = order ? getRequestedDeliveryDraft(order) : rawDelivery;
-  const orderCustomerName =
-    ocrOnly && order?.customer.name === '(รอตรวจจากรูป LINE)' ? '' : order?.customer.name;
-  const orderCustomerAddress = ocrOnly ? '' : order?.customer.address;
-  return {
-    rawData: row.rawData,
-    customerName:
-      orderCustomerName ??
-      rawField(row.rawData, 'customerName', 'customer_name', 'ชื่อลูกค้า', 'ชื่อ', 'name'),
-    customerPhone:
-      order?.customer.phone ??
-      rawField(row.rawData, 'customerPhone', 'phone', 'tel', 'เบอร์โทร', 'เบอร์'),
-    customerAddress:
-      orderCustomerAddress ?? rawField(row.rawData, 'customerAddress', 'address', 'ที่อยู่'),
-    customerIdCard:
-      order?.customer.idCard ?? rawField(row.rawData, 'idCard', 'เลขบัตร', 'บัตรประชาชน'),
-    totalValue: String(order?.totalValue ?? (Number.isFinite(rawTotalValue) ? rawTotalValue : 0)),
-    payment: normalizePaymentMethod(order?.payment ?? rawPayment),
-    note:
-      ocrOnly && (order?.note === row.ocrText || rawField(row.rawData, 'note', 'หมายเหตุ'))
-        ? ''
-        : (order?.note ?? rawField(row.rawData, 'note', 'หมายเหตุ')),
-    deliveryDate: requestedDelivery.date,
-    deliveryTime: requestedDelivery.time,
-    items: itemDraftsFromRow(row, order, ocrOnly),
-    addr: EMPTY_THAI_ADDRESS,
-  };
-}
-
-function getRowRequestedDelivery(row: RowVM, order: Order | undefined) {
-  if (order) return getRequestedDeliveryDraft(order);
-  return parseDeliveryFromText(
-    [
-      rawField(row.rawData, 'deliveryDate', 'delivery_date', 'scheduledDate', 'นัดส่ง', 'วันส่ง'),
-      rawField(row.rawData, 'deliveryTime', 'delivery_time', 'scheduledTime', 'เวลา', 'เวลาส่ง'),
-      rawField(row.rawData, 'note', 'หมายเหตุ'),
-    ]
-      .filter(Boolean)
-      .join(' '),
-  );
-}
-
-function displayOcrText(row: RowVM) {
-  const parts = [row.ocrText?.trim()];
-  if (row.parseWarnings && row.parseWarnings.length > 0) {
-    parts.push(`ข้อสังเกต: ${row.parseWarnings.join(' · ')}`);
-  }
-  return parts.filter(Boolean).join('\n\n');
-}
-
-type OcrDisplayLine = { kind: 'heading' | 'bullet' | 'text' | 'blank'; text: string };
-
-function stripInlineMarkdown(text: string) {
-  return text
-    .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/\*([^*]+)\*/g, '$1')
-    .replace(/`([^`]+)`/g, '$1')
-    .trim();
-}
-
-// OCR จาก typhoon-ocr กลับมาเป็น markdown — แปลงเป็นบรรทัดอ่านง่ายสำหรับ user โดยไม่แตะข้อมูลดิบใน rawData
-function ocrDisplayLines(text: string): OcrDisplayLine[] {
-  const out: OcrDisplayLine[] = [];
-  for (const rawLine of text.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) {
-      out.push({ kind: 'blank', text: '' });
-      continue;
-    }
-    if (line.includes('|') && line.includes('-') && /^[|\s:-]+$/.test(line)) continue;
-    const heading = line.match(/^#{1,6}\s+(.*)$/);
-    if (heading) {
-      out.push({ kind: 'heading', text: stripInlineMarkdown(heading[1]) });
-      continue;
-    }
-    const bullet = line.match(/^[-*•]\s+(.*)$/);
-    if (bullet) {
-      out.push({ kind: 'bullet', text: stripInlineMarkdown(bullet[1]) });
-      continue;
-    }
-    if (line.includes('|')) {
-      const cells = line
-        .split('|')
-        .map((cell) => stripInlineMarkdown(cell))
-        .filter(Boolean);
-      out.push({ kind: 'text', text: cells.join('  ·  ') });
-      continue;
-    }
-    out.push({ kind: 'text', text: stripInlineMarkdown(line) });
-  }
-  return out.filter(
-    (line, index, all) => line.kind !== 'blank' || all[index - 1]?.kind !== 'blank',
-  );
-}
-
-function ocrPlainText(text: string) {
-  return ocrDisplayLines(text)
-    .map((line) => (line.kind === 'bullet' ? `• ${line.text}` : line.text))
-    .join('\n')
-    .trim();
-}
-
-async function copyTextToClipboard(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    // clipboard API ใช้ไม่ได้บน http ที่ไม่ใช่ localhost / document ไม่มี focus — fallback เป็น execCommand
-    const scratch = document.createElement('textarea');
-    scratch.value = text;
-    scratch.style.position = 'fixed';
-    scratch.style.opacity = '0';
-    document.body.appendChild(scratch);
-    scratch.select();
-    try {
-      return document.execCommand('copy');
-    } catch {
-      return false;
-    } finally {
-      scratch.remove();
-    }
-  }
-}
-
-function normalizePaymentMethod(value: unknown): Order['payment'] {
-  if (typeof value !== 'string') return 'prepaid';
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'cod' || normalized.includes('ปลายทาง')) return 'cod';
-  if (normalized.includes('โอนตอนส่ง') || normalized.includes('โอนเมื่อส่ง')) {
-    return 'transfer_on_delivery';
-  }
-  if (
-    normalized === 'transfer_on_delivery' ||
-    normalized === 'prepaid' ||
-    normalized === 'transfer' ||
-    normalized === 'paid' ||
-    normalized === 'โอน' ||
-    normalized === 'โอนแล้ว' ||
-    normalized.includes('ชำระแล้ว')
-  ) {
-    return normalized === 'transfer_on_delivery' ? 'transfer_on_delivery' : 'prepaid';
-  }
-  return 'prepaid';
-}
-
-function toPositiveInt(value: string, fallback = 1) {
-  const next = Number.parseInt(value, 10);
-  return Number.isFinite(next) && next > 0 ? next : fallback;
-}
-
-function toNonNegativeNumber(value: string, fallback = 0) {
-  const next = Number(value.replace(/,/g, ''));
-  return Number.isFinite(next) && next >= 0 ? next : fallback;
-}
-
-async function fillMissingPostalCode(addr: ThaiAddressValue): Promise<ThaiAddressValue> {
-  if (/^\d{5}$/.test(addr.postalCode.trim())) return addr;
-  if (!addr.province.trim() || !addr.district.trim() || !addr.subdistrict.trim()) return addr;
-  const subdistricts = await fetchAddressSubdistricts(addr.province, addr.district);
-  const match = subdistricts.find((item) => item.subdistrict === addr.subdistrict);
-  return match?.postalCode ? { ...addr, postalCode: match.postalCode } : addr;
-}
-
-function TabChip({
-  active,
-  onClick,
-  label,
-  count,
-  tone,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  count: number;
-  tone: 'accent' | 'muted' | 'success';
-}) {
-  const activeClass =
-    tone === 'success'
-      ? 'border-success bg-success/10 text-success'
-      : tone === 'muted'
-        ? 'border-foreground/40 text-foreground'
-        : 'border-primary bg-primary/5 text-primary';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
-        active ? activeClass : 'border-border text-muted-foreground hover:text-foreground',
-      )}
-    >
-      {label} {count}
-    </button>
-  );
-}
-
-// เมื่อ filter ของแท็บปัจจุบันว่าง ให้ชี้ว่ารายการไปอยู่แท็บไหน (ไม่ได้หาย — แค่เปลี่ยนสถานะ)
-function TabEmptyState({
-  tab,
-  stats,
-  onJump,
-}: {
-  tab: Tab;
-  stats: { review: number; approved: number; rejected: number; error: number; total: number };
-  onJump: (tab: Tab) => void;
-}) {
-  const reviewCount = stats.review + stats.error;
-  const suggestions: { tab: Tab; label: string; count: number }[] = [];
-  if (tab !== 'approved' && stats.approved > 0)
-    suggestions.push({ tab: 'approved', label: 'อนุมัติแล้ว', count: stats.approved });
-  if (tab !== 'review' && reviewCount > 0)
-    suggestions.push({ tab: 'review', label: 'รอตรวจ', count: reviewCount });
-  if (tab !== 'rejected' && stats.rejected > 0)
-    suggestions.push({ tab: 'rejected', label: 'ปฏิเสธ', count: stats.rejected });
-
-  // ตรวจครบแล้ว (ไม่เหลือรอตรวจ แต่มีของในไฟล์) → เป็นสถานะที่ดี ไม่ใช่ error
-  const reviewedClean = tab === 'review' && stats.total > 0;
-  const title = reviewedClean
-    ? 'ตรวจครบแล้ว — ไม่มีรายการรอตรวจ'
-    : tab === 'approved'
-      ? 'ยังไม่มีรายการที่อนุมัติเข้าคิว'
-      : tab === 'rejected'
-        ? 'ไม่มีรายการที่ปฏิเสธ'
-        : 'ไม่มีรายการในกลุ่มนี้';
-
-  return (
-    <div className="flex flex-col items-center gap-2">
-      {reviewedClean ? (
-        <CheckCircle2 className="h-6 w-6 text-success/70" />
-      ) : (
-        <Clock className="h-6 w-6 text-muted-foreground/50" />
-      )}
-      <div className="text-sm text-muted-foreground">{title}</div>
-      {suggestions.length > 0 && (
-        <div className="flex flex-wrap items-center justify-center gap-1.5 text-[11px] text-muted-foreground">
-          <span>รายการอยู่ที่:</span>
-          {suggestions.map((s) => (
-            <button
-              key={s.tab}
-              type="button"
-              onClick={() => onJump(s.tab)}
-              className="rounded-full border border-border px-2.5 py-1 font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
-            >
-              {s.label} {s.count}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RowStatusBadge({ kind }: { kind: RowKind }) {
-  if (kind === 'error') {
-    return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
-        <XCircle className="h-3 w-3 shrink-0" /> ผิดพลาด
-      </span>
-    );
-  }
-  if (kind === 'review') {
-    return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-        <Clock className="h-3 w-3 shrink-0" /> รอตรวจ
-      </span>
-    );
-  }
-  if (kind === 'rejected') {
-    return (
-      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-        <XCircle className="h-3 w-3 shrink-0" /> ปฏิเสธ
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
-      <CheckCircle2 className="h-3 w-3 shrink-0" /> อนุมัติแล้ว
-    </span>
-  );
-}
-
 const REJECT_REASONS: ImportRejectReason[] = [
   'incomplete_data',
   'duplicate',
@@ -974,8 +200,6 @@ function BatchWorkspace({
     clearPlannedOrders,
     syncFromBackend,
   } = useRetailStore();
-  const [details, setDetails] = useState<ImportBatchDetail[]>([]);
-  const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('review');
   // ผู้ใช้กดเลือกแท็บเองหรือยัง — ถ้ายัง ให้ระบบเลือก default ที่มีของให้
   const [tabTouched, setTabTouched] = useState(false);
@@ -984,6 +208,7 @@ function BatchWorkspace({
     setTab(next);
   };
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState('');
   const [method, setMethod] = useState<ShippingMethod>('internal_driver');
   const [reason, setReason] = useState<ImportRejectReason | ''>('');
   const [busy, setBusy] = useState(false);
@@ -998,78 +223,13 @@ function BatchWorkspace({
   } | null>(null);
   const autoOpenedOrderRef = useRef<string | null>(null);
 
-  const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
-  const targetBatchIds = useMemo(
-    () => (scope === ALL_SCOPE ? batches.map((b) => b.id) : [scope]),
-    [scope, batches],
-  );
+  const { details, loading, processingBatches, reloadDetails } = useImportBatchDetails({
+    scope,
+    batches,
+    onResetSelection: () => setSelected(new Set()),
+  });
 
-  // batch ที่ยังประมวลผลอยู่ในสโคปนี้ — driver ของ processing state + refetch เมื่อ backend อ่านเสร็จ
-  const processingBatches = useMemo(
-    () =>
-      targetBatchIds
-        .map((id) => batchById.get(id))
-        .filter(
-          (b): b is ImportBatch => !!b && (b.status === 'PENDING' || b.status === 'PROCESSING'),
-        ),
-    [targetBatchIds, batchById],
-  );
-
-  // signature เปลี่ยนเฉพาะเมื่อ batch ที่เกี่ยวข้องมี progress ขยับ (status/แถวนำเข้า) →
-  // ให้ refetch rows ใหม่อัตโนมัติตอน PENDING/PROCESSING → DONE โดยไม่ต้องกด refresh
-  const batchStatusKey = useMemo(
-    () =>
-      targetBatchIds
-        .map((id) => {
-          const b = batchById.get(id);
-          return b ? `${id}:${b.status}:${b.importedRows}:${b.errorRows}` : id;
-        })
-        .join('|'),
-    [targetBatchIds, batchById],
-  );
-
-  // โหลดครั้งแรกให้ขึ้น spinner เต็มพาเนล; refetch เบื้องหลัง (poll → DONE) ไม่ต้อง flash
-  const initialLoadRef = useRef(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    if (!initialLoadRef.current) {
-      setLoading(true);
-      setSelected(new Set());
-    }
-    Promise.all(targetBatchIds.map((id) => fetchImportBatch(id)))
-      .then((res) => {
-        if (!cancelled) setDetails(res);
-      })
-      .catch((error) => {
-        console.error(error);
-        if (!cancelled) toast.error('โหลดรายการนำเข้าไม่สำเร็จ');
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false);
-          initialLoadRef.current = true;
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-    // targetBatchIds ถูกจับผ่าน batchStatusKey แล้ว (id อยู่ใน key)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batchStatusKey]);
-
-  const ordersById = useMemo(() => new Map(orders.map((o) => [o.id, o])), [orders]);
-
-  const rows = useMemo<RowVM[]>(
-    () =>
-      details.flatMap((detail) =>
-        detail.rows.map((row) => toRowVM(row, detail.fileName, ordersById)),
-      ),
-    [details, ordersById],
-  );
-
-  // 1 card = 1 draft order — CSV ที่มี orderNo เดียวกันหลายแถว (หรือถูก merge แล้ว) รวมเป็น card เดียว
-  const cards = useMemo(() => buildCards(rows), [rows]);
+  const { ordersById, cards, stats } = useImportCards(details, orders);
 
   useEffect(() => {
     if (!focusedOrderId || !editOnOpen) return;
@@ -1081,53 +241,63 @@ function BatchWorkspace({
     autoOpenedOrderRef.current = focusedOrderId;
   }, [cards, editOnOpen, focusedOrderId]);
 
-  const stats = useMemo(() => {
-    let review = 0;
-    let approved = 0;
-    let rejected = 0;
-    let error = 0;
-    let value = 0;
-    for (const card of cards) {
-      if (card.kind === 'review') review += 1;
-      else if (card.kind === 'approved') approved += 1;
-      else if (card.kind === 'rejected') rejected += 1;
-      else error += 1;
-      if (card.primary.value) value += card.primary.value;
-    }
-    return {
-      review,
-      approved,
-      rejected,
-      error,
-      value,
-      total: cards.length,
-      totalRows: rows.length,
-    };
-  }, [cards, rows.length]);
-
   // ถ้าผู้ใช้ยังไม่กดแท็บเอง ให้เด้งไปแท็บแรกที่มีรายการ (ตรวจครบแล้ว → ไปดู "อนุมัติแล้ว" แทนหน้าว่าง)
   useEffect(() => {
     if (loading || tabTouched) return;
     if (stats.review + stats.error > 0) setTab('review');
     else if (stats.approved > 0) setTab('approved');
+    else if (stats.cancelled > 0) setTab('cancelled');
     else if (stats.rejected > 0) setTab('rejected');
     else setTab('all');
-  }, [loading, tabTouched, stats.review, stats.error, stats.approved, stats.rejected]);
+  }, [
+    loading,
+    tabTouched,
+    stats.review,
+    stats.error,
+    stats.approved,
+    stats.cancelled,
+    stats.rejected,
+  ]);
 
   const visibleCards = useMemo(() => {
     if (tab === 'all') return cards;
     if (tab === 'review') return cards.filter((c) => c.kind === 'review' || c.kind === 'error');
     if (tab === 'approved') return cards.filter((c) => c.kind === 'approved');
+    if (tab === 'cancelled') return cards.filter((c) => c.kind === 'cancelled');
     return cards.filter((c) => c.kind === 'rejected');
   }, [cards, tab]);
 
-  // เลือกได้เฉพาะออเดอร์ที่ยังรอตรวจ (มี order อยู่ใน store)
+  // ค้นหาในแท็บปัจจุบัน — รองรับเลขออเดอร์ (MV-ORD-000042 / mvord42), legacy code (IMP-...),
+  // ชื่อ/เบอร์/ที่อยู่ลูกค้า และชื่อไฟล์ต้นทาง
+  const searchedCards = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return visibleCards;
+    const qOrderNo = normalizeOrderNumberInput(search).toLowerCase();
+    return visibleCards.filter((card) => {
+      const order = card.orderId ? ordersById.get(card.orderId) : undefined;
+      const haystack = [
+        order?.orderNo,
+        order?.code,
+        order?.customer.phone,
+        card.primary.name,
+        card.primary.address,
+        card.primary.item,
+        card.primary.fileName,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return haystack.includes(q) || (qOrderNo !== q && haystack.includes(qOrderNo));
+    });
+  }, [visibleCards, search, ordersById]);
+
+  // เลือกได้เฉพาะออเดอร์ที่ยังรอตรวจ (มี order อยู่ใน store) — จำกัดตามผลค้นหาที่เห็นอยู่
   const selectableIds = useMemo(
     () =>
-      visibleCards
+      searchedCards
         .filter((c) => c.kind === 'review' && c.orderId && ordersById.has(c.orderId))
         .map((c) => c.orderId!),
-    [visibleCards, ordersById],
+    [searchedCards, ordersById],
   );
 
   // รอตรวจทั้งหมดในสโคปนี้ (ไม่ผูกกับแท็บที่เปิดอยู่) — ใช้กับปุ่ม "อนุมัติทั้งหมด"
@@ -1267,11 +437,6 @@ function BatchWorkspace({
 
   const bulkReject = () => {
     void rejectOrders([...selected], reason ? { reason } : undefined);
-  };
-
-  const reloadDetails = async () => {
-    const res = await Promise.all(targetBatchIds.map((id) => fetchImportBatch(id)));
-    setDetails(res);
   };
 
   // รวมหลาย draft orders เป็นออเดอร์เดียว (ตัวแรกเป็นหลัก) — ย้อนกลับได้ด้วย "แยกตามแถวต้นทาง"
@@ -1636,6 +801,15 @@ function BatchWorkspace({
           count={stats.approved}
           tone="success"
         />
+        {stats.cancelled > 0 && (
+          <TabChip
+            active={tab === 'cancelled'}
+            onClick={() => selectTab('cancelled')}
+            label="ยกเลิกแล้ว"
+            count={stats.cancelled}
+            tone="destructive"
+          />
+        )}
         <TabChip
           active={tab === 'rejected'}
           onClick={() => selectTab('rejected')}
@@ -1687,8 +861,8 @@ function BatchWorkspace({
           editingRow && 'max-h-72 flex-none',
         )}
       >
-        <div className="sticky top-0 z-10 -mx-2 -mt-2 flex items-center justify-between gap-2 border-b bg-muted/90 px-3 py-2 text-xs backdrop-blur">
-          <label className="flex items-center gap-2 text-muted-foreground">
+        <div className="sticky top-0 z-10 -mx-2 -mt-2 flex flex-wrap items-center gap-2 border-b bg-muted/90 px-3 py-2 text-xs backdrop-blur">
+          <label className="flex shrink-0 items-center gap-2 text-muted-foreground">
             <input
               type="checkbox"
               aria-label="เลือกทั้งหมดที่รอตรวจ"
@@ -1699,14 +873,31 @@ function BatchWorkspace({
             />
             เลือกออเดอร์รอตรวจ
           </label>
-          <span className="text-muted-foreground">
-            {visibleCards.length.toLocaleString('th-TH')} รายการ
+          <div className="relative min-w-[180px] flex-1">
+            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="ค้นหาเลขออเดอร์ / ชื่อ / เบอร์ / ที่อยู่..."
+              className="h-7 bg-background pl-8 text-xs"
+            />
+          </div>
+          <span className="shrink-0 text-muted-foreground">
+            {searchedCards.length.toLocaleString('th-TH')} รายการ
           </span>
         </div>
 
-        {visibleCards.length === 0 && (
+        {searchedCards.length === 0 && (
           <div className="px-3 py-10 text-center">
-            {processingBatches.length > 0 ? (
+            {search.trim() ? (
+              <div className="flex flex-col items-center gap-1.5 text-muted-foreground">
+                <Search className="h-6 w-6 text-muted-foreground/50" />
+                <div className="text-sm">ไม่พบออเดอร์ที่ตรงกับ “{search.trim()}”</div>
+                <div className="text-[11px]">
+                  ลองค้นด้วยเลขออเดอร์ (MV-ORD-... / mvord42) ชื่อ เบอร์ หรือที่อยู่ลูกค้า
+                </div>
+              </div>
+            ) : processingBatches.length > 0 ? (
               <div className="flex flex-col items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-6 w-6 animate-spin text-info" />
                 <div className="text-sm">กำลังประมวลผลไฟล์นำเข้า…</div>
@@ -1720,12 +911,13 @@ function BatchWorkspace({
           </div>
         )}
 
-        {visibleCards.map((card) => {
+        {searchedCards.map((card) => {
           const r = card.primary;
           const order = card.orderId ? ordersById.get(card.orderId) : undefined;
           const selectable = card.kind === 'review' && !!card.orderId && !!order;
           const checked = !!card.orderId && selected.has(card.orderId);
-          const editable = !!card.orderId && card.kind !== 'error';
+          // ยกเลิกแล้วเป็นสถานะสุดทาง — แก้ไขไม่ได้ (ต่างจากปฏิเสธที่ยังดึงกลับมาแก้ได้)
+          const editable = !!card.orderId && card.kind !== 'error' && card.kind !== 'cancelled';
           const showFastDispatchAction = !!card.orderId && canOpenFastDispatch(card, order);
           const showPlanningAction = !!card.orderId && canOpenPlanning(card, order);
           const plannedAlready = !!order && isUnreleasedPlannedOrder(order);
@@ -1750,7 +942,8 @@ function BatchWorkspace({
               className={cn(
                 'rounded-lg border bg-background p-3 transition-colors hover:border-border',
                 checked && 'border-primary/40 bg-primary/5',
-                card.kind === 'rejected' && 'bg-muted/40 text-muted-foreground',
+                (card.kind === 'rejected' || card.kind === 'cancelled') &&
+                  'bg-muted/40 text-muted-foreground',
               )}
             >
               <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
@@ -1765,6 +958,12 @@ function BatchWorkspace({
                       className="h-3.5 w-3.5 disabled:opacity-30"
                     />
                     <RowStatusBadge kind={card.kind} />
+                    {order?.orderNo && (
+                      <span className="inline-flex items-center gap-0.5 font-mono text-[11px] font-semibold">
+                        {order.orderNo}
+                        <CopyOrderNoButton orderNo={order.orderNo} className="h-4 w-4" />
+                      </span>
+                    )}
                     {deliveryQueueBadge && (
                       <Badge variant="success" className="h-5 gap-1 px-1.5 text-[10px]">
                         <Route className="h-3 w-3" />
@@ -1797,7 +996,7 @@ function BatchWorkspace({
                   <div
                     className={cn(
                       'mt-2 truncate text-sm font-semibold',
-                      card.kind === 'rejected' && 'line-through',
+                      (card.kind === 'rejected' || card.kind === 'cancelled') && 'line-through',
                     )}
                   >
                     {r.name}
@@ -2377,12 +1576,18 @@ function BatchWorkspace({
         </div>
       )}
 
-      {errorSummary && stats.error > 0 && tab !== 'approved' && tab !== 'rejected' && (
-        <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5">
-          <div className="mb-1 text-[11px] font-medium text-destructive">สาเหตุข้อผิดพลาด</div>
-          <pre className="whitespace-pre-wrap text-[10px] text-destructive/80">{errorSummary}</pre>
-        </div>
-      )}
+      {errorSummary &&
+        stats.error > 0 &&
+        tab !== 'approved' &&
+        tab !== 'cancelled' &&
+        tab !== 'rejected' && (
+          <div className="mt-2 rounded-lg border border-destructive/30 bg-destructive/5 p-2.5">
+            <div className="mb-1 text-[11px] font-medium text-destructive">สาเหตุข้อผิดพลาด</div>
+            <pre className="whitespace-pre-wrap text-[10px] text-destructive/80">
+              {errorSummary}
+            </pre>
+          </div>
+        )}
 
       {/* bulk action bar */}
       {selected.size > 0 && (

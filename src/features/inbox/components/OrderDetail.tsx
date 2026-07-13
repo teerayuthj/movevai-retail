@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Separator } from '@/components/ui/separator';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import {
   Order,
@@ -165,7 +166,8 @@ export default function OrderDetail({
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-base font-semibold">{order.code}</span>
+            <span className="font-mono text-base font-semibold">{order.orderNo}</span>
+            <CopyOrderNoButton orderNo={order.orderNo} />
             <Badge variant="muted">
               <SourceIcon source={order.source} />
               <span className="ml-1">{sourceLabel[order.source]}</span>

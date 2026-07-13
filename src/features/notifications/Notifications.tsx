@@ -216,6 +216,7 @@ export function NotificationsPage() {
     if (!q) return eligibleOrders;
     return eligibleOrders.filter(
       (order) =>
+        order.orderNo?.toLowerCase().includes(q) ||
         order.code.toLowerCase().includes(q) ||
         order.customer.name.toLowerCase().includes(q) ||
         order.customer.phone.includes(q),
@@ -539,7 +540,7 @@ export function NotificationsPage() {
             </span>
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-2">
-                <span className="font-medium">{order.code}</span>
+                <span className="font-medium">{order.orderNo}</span>
                 {isNew && (
                   <Badge variant="warning" className="px-1.5 py-0 text-[10px]">
                     ใหม่
@@ -632,7 +633,7 @@ export function NotificationsPage() {
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="ค้นหาด้วยรหัสออเดอร์ / ชื่อ / เบอร์"
+                placeholder="ค้นหาด้วยเลขออเดอร์ / ชื่อ / เบอร์"
                 className="pl-9"
               />
             </div>
@@ -730,7 +731,7 @@ export function NotificationsPage() {
                 <div className="rounded-lg bg-muted p-3 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-medium">
-                      {primaryOrder.code}
+                      {primaryOrder.orderNo}
                       {selectedOrders.length > 1 ? ` +${selectedOrders.length - 1}` : ''}
                     </span>
                     <Badge variant="secondary">{statusLabel[primaryOrder.status]}</Badge>
@@ -984,7 +985,7 @@ export function NotificationsPage() {
                                 >
                                   <button
                                     type="button"
-                                    aria-label={`เลือก ${order.code}`}
+                                    aria-label={`เลือก ${order.orderNo}`}
                                     onClick={() => toggleOrder(order)}
                                     className={cn(
                                       'flex size-5 items-center justify-center rounded border md:justify-self-center',
@@ -1000,7 +1001,7 @@ export function NotificationsPage() {
                                       {order.customer.name}
                                     </p>
                                     <p className="truncate text-xs text-muted-foreground">
-                                      {maskPhone(order.customer.phone)} · {order.code}
+                                      {maskPhone(order.customer.phone)} · {order.orderNo}
                                     </p>
                                   </div>
                                   {latest ? (

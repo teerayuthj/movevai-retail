@@ -409,7 +409,10 @@ function synthesizeBaseline(order: Order): Order {
 
 export function migrateOrders(orders: Order[]): Order[] {
   return orders.map((order) => {
-    const withPlanning = normalizeOrderPlanning(order);
+    const withPlanning = normalizeOrderPlanning({
+      ...order,
+      orderNo: order.orderNo || order.code,
+    });
     return withPlanning.activityLog && withPlanning.activityLog.length > 0
       ? {
           ...withPlanning,

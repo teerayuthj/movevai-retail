@@ -605,7 +605,7 @@ export function MessengerCloseJobDialog({
 
     writeCloseJobDraft({
       orderId: order.id,
-      orderCode: order.code,
+      orderCode: order.orderNo ?? order.code,
       editorRole,
       photos,
       signatureDataUrl,
@@ -739,7 +739,7 @@ export function MessengerCloseJobDialog({
                 signatureMode && 'truncate text-[11px]',
               )}
             >
-              {order.code} · {order.customer.name}
+              {order.orderNo} · {order.customer.name}
             </p>
           </div>
           <button

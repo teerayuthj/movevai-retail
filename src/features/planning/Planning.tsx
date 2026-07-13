@@ -694,7 +694,7 @@ export function PlanningPage({
                       {selectedRoute
                         ? `${selectedRoute.code} · ${selectedRoute.driver.name}`
                         : singleSelectedOrder
-                          ? `${singleSelectedOrder.code} · ${singleSelectedOrder.customer.address}`
+                          ? `${singleSelectedOrder.orderNo} · ${singleSelectedOrder.customer.address}`
                           : selectedOrders.length > 1
                             ? `แสดงเฉพาะ ${selectedOrders.length} งานที่เลือกอยู่`
                             : 'เลือก order จากแท็บรายการเพื่อดูปลายทาง'}

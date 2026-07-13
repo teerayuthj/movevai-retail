@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Order } from '@/data/orderTypes';
 import { buildOrderSearchText } from '@/features/inbox/utils/orderFormatting';
+import { normalizeOrderNumberInput } from '@/lib/orderNumber';
 
 export const INBOX_FILTERS = ['all', 'needs_review', 'new', 'ready'] as const;
 
@@ -23,11 +24,16 @@ export function useOrderFiltering(orders: Order[], filter: InboxFilter, query: s
 
   const filteredOrders = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    // รองรับพิมพ์เลขออเดอร์แบบย่อ เช่น mvord42 → MV-ORD-000042
+    const normalizedOrderNo = normalizeOrderNumberInput(query).toLowerCase();
 
     return inboxOrders.filter((order) => {
       const matchesFilter = filter === 'all' ? true : order.status === filter;
+      const searchText = buildOrderSearchText(order);
       const matchesQuery =
-        !normalizedQuery || buildOrderSearchText(order).includes(normalizedQuery);
+        !normalizedQuery ||
+        searchText.includes(normalizedQuery) ||
+        (normalizedOrderNo !== normalizedQuery && searchText.includes(normalizedOrderNo));
 
       return matchesFilter && matchesQuery;
     });

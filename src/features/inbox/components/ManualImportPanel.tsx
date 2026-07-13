@@ -251,7 +251,7 @@ export default function ManualImportPanel({
     });
   };
 
-  const importRows = () => {
+  const importRows = async () => {
     const invalid = rows.filter((row) => rowIssues(row).length > 0);
     if (invalid.length > 0) {
       toast.error(`ยังมีรายการไม่ครบ ${invalid.length} แถว กรุณาแก้หรือลบออกก่อนนำเข้า`);
@@ -259,11 +259,14 @@ export default function ManualImportPanel({
     }
     setImporting(true);
     try {
-      const createdIds = createManualImportOrders(rows.map(toManualInput));
+      const createdIds = await createManualImportOrders(rows.map(toManualInput));
       toast.success(`นำเข้า Manual Import ${createdIds.length} รายการแล้ว`);
       setRows([newRow()]);
       setCsvText('');
       if (createdIds[0]) onOpenOrder?.(createdIds[0]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(`นำเข้า Manual Import ไม่สำเร็จ — ${message}`);
     } finally {
       setImporting(false);
     }

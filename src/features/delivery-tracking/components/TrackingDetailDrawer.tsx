@@ -40,7 +40,7 @@ export function TrackingDetailDrawer({
   return (
     <DetailDrawer
       open={!!order}
-      title={<span className="font-mono">{order?.code}</span>}
+      title={<span className="font-mono">{order?.orderNo}</span>}
       subtitle={order ? statusLabel[order.status] : undefined}
       onClose={onClose}
       footer={order ? actions : undefined}

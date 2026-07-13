@@ -390,7 +390,7 @@ export function DeliveryTrackingPage({
               onClick={async () => {
                 try {
                   await confirmDelivery(order.id);
-                  toast.success(`ปิดงาน ${order.code} เรียบร้อย`);
+                  toast.success(`ปิดงาน ${order.orderNo} เรียบร้อย`);
                   settleAndRefresh(order.id, 'ปิดงานแล้ว');
                 } catch (error) {
                   toast.error(
@@ -427,7 +427,7 @@ export function DeliveryTrackingPage({
           className="w-full"
           onClick={() => {
             markReturned(order.id);
-            toast.success(`รับคืน ${order.code} เข้าสาขาแล้ว`);
+            toast.success(`รับคืน ${order.orderNo} เข้าสาขาแล้ว`);
             settleAndRefresh(order.id, 'รับคืนเข้าสาขาแล้ว');
           }}
         >
@@ -534,7 +534,7 @@ export function DeliveryTrackingPage({
         title="บันทึกการส่งไม่สำเร็จ"
         description={
           failTargetId
-            ? `${trackingOrders.find((o) => o.id === failTargetId)?.code ?? orders.find((o) => o.id === failTargetId)?.code ?? ''} — เลือกเหตุผลและขั้นตอนต่อไป`
+            ? `${trackingOrders.find((o) => o.id === failTargetId)?.orderNo ?? orders.find((o) => o.id === failTargetId)?.orderNo ?? ''} — เลือกเหตุผลและขั้นตอนต่อไป`
             : undefined
         }
         reasons={FAIL_REASONS}
@@ -555,8 +555,8 @@ export function DeliveryTrackingPage({
           if (!failTargetId || !action) return;
 
           const code =
-            trackingOrders.find((o) => o.id === failTargetId)?.code ??
-            orders.find((o) => o.id === failTargetId)?.code ??
+            trackingOrders.find((o) => o.id === failTargetId)?.orderNo ??
+            orders.find((o) => o.id === failTargetId)?.orderNo ??
             '';
           failDelivery(failTargetId, { reason, nextAction: action, note });
           toast.success(
@@ -594,8 +594,8 @@ export function DeliveryTrackingPage({
         onSubmit={async (input) => {
           if (!messengerCloseTargetId) return;
           const code =
-            trackingOrders.find((o) => o.id === messengerCloseTargetId)?.code ??
-            orders.find((o) => o.id === messengerCloseTargetId)?.code ??
+            trackingOrders.find((o) => o.id === messengerCloseTargetId)?.orderNo ??
+            orders.find((o) => o.id === messengerCloseTargetId)?.orderNo ??
             '';
           await submitDelivery(messengerCloseTargetId, input);
           toast.success(`บันทึกหลักฐานการส่ง ${code} แล้ว — รอยืนยันปิดงาน`);

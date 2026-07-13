@@ -304,7 +304,7 @@ function CustomerTrackingNotScheduled({ order }: { order: Order }) {
         <CalendarClock className="mx-auto h-10 w-10 text-info" />
         <h1 className="mt-3 text-lg font-semibold">ออเดอร์ยังไม่ถูกจัดรอบส่ง</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          เราได้รับคำสั่งซื้อ <span className="font-mono">{order.code}</span> แล้ว
+          เราได้รับคำสั่งซื้อ <span className="font-mono">{order.orderNo}</span> แล้ว
           และกำลังจัดเตรียมรอบจัดส่ง ระบบติดตามจะเปิดให้ใช้งานเมื่อมีการวางแผนจัดส่งเรียบร้อย
         </p>
         <div className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs text-muted-foreground">
@@ -399,7 +399,7 @@ export function CustomerTrackingPage({ pathname }: CustomerTrackingPageProps) {
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-xs font-medium text-muted-foreground">Ausiris Delivery</div>
-              <h1 className="mt-1 truncate font-mono text-xl font-semibold">{order.code}</h1>
+              <h1 className="mt-1 truncate font-mono text-xl font-semibold">{order.orderNo}</h1>
             </div>
             <Badge variant={getStatusVariant(order.status)} className="shrink-0">
               {publicStatusLabel}

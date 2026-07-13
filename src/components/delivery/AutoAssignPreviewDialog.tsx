@@ -137,7 +137,7 @@ export function AutoAssignPreviewDialog({
                     <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
                       #{proposal.rank}
                     </span>
-                    <span className="font-mono text-xs font-medium">{proposal.order.code}</span>
+                    <span className="font-mono text-xs font-medium">{proposal.order.orderNo}</span>
                     <span className="truncate text-xs text-muted-foreground">
                       {proposal.order.customer.name}
                     </span>
@@ -193,7 +193,7 @@ export function AutoAssignPreviewDialog({
                   className="flex items-center justify-between gap-2 text-[11px]"
                 >
                   <span className="flex items-center gap-2">
-                    <span className="font-mono font-medium">{proposal.order.code}</span>
+                    <span className="font-mono font-medium">{proposal.order.orderNo}</span>
                     <span className="text-muted-foreground">{proposal.order.customer.name}</span>
                   </span>
                   <Badge variant="warning" className="shrink-0 text-[10px]">

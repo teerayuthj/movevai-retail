@@ -178,7 +178,7 @@ export function TemplateManagerDialog({
             {preview && sampleOrder && (
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-muted-foreground">
-                  ตัวอย่างเมื่อส่งจริง (ออเดอร์ {sampleOrder.code})
+                  ตัวอย่างเมื่อส่งจริง (ออเดอร์ {sampleOrder.orderNo})
                 </p>
                 <div className="whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-sm">
                   {preview}

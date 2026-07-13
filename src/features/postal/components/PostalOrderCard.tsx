@@ -55,7 +55,7 @@ export function PostalOrderCard({
         )}
         <button onClick={onClick} className="min-w-0 flex-1 text-left">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-xs font-medium">{order.code}</span>
+            <span className="font-mono text-xs font-medium">{order.orderNo}</span>
             <Badge
               variant={
                 order.status === 'failed'

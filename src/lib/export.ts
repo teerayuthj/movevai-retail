@@ -54,7 +54,7 @@ export function buildPostalCsv(orders: Order[], service: PostalService): string 
     const codAmount = order.payment === 'cod' ? order.totalValue : 0;
     const row = [
       index + 1,
-      order.code.replace(/^#/, ''),
+      (order.orderNo ?? order.code).replace(/^#/, ''),
       postalServiceLabel[service],
       order.customer.name,
       order.customer.phone,

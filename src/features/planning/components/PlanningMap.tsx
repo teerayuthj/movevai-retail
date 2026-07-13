@@ -181,7 +181,7 @@ export function PlanningMap({
               <Popup>
                 <div className="space-y-1 text-[13px]">
                   <div className="font-mono text-[11px] text-muted-foreground">
-                    {stop.order.code}
+                    {stop.order.orderNo}
                   </div>
                   <div className="font-semibold">{stop.order.customer.name}</div>
                   <div className="text-muted-foreground">{stop.order.customer.address}</div>

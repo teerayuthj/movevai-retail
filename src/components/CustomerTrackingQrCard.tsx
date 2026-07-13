@@ -21,10 +21,10 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState(false);
   // ลิงก์สั้น /t/:trackingCode เมื่อ backend สุ่มโค้ดให้แล้ว; ออเดอร์เก่าที่ยังไม่มีโค้ด
-  // fallback เป็น /track/{order code} (ORD-...) ที่ลูกค้ารู้จัก — backend resolve ได้ทั้งคู่
+  // fallback เป็น /track/{orderNo} (MV-ORD-...) ที่ลูกค้ารู้จัก — backend resolve ได้ทั้งคู่
   const trackingRef = useMemo(
-    () => ({ id: order.code, trackingCode: order.trackingCode }),
-    [order.code, order.trackingCode],
+    () => ({ id: order.orderNo ?? order.id, trackingCode: order.trackingCode }),
+    [order.orderNo, order.trackingCode],
   );
   const trackingUrl = useMemo(() => buildCustomerTrackingUrl(trackingRef), [trackingRef]);
   const trackingPath = useMemo(() => getCustomerTrackingPath(trackingRef), [trackingRef]);
@@ -77,7 +77,7 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
     const dataUrl = await buildHiResQr();
     const link = document.createElement('a');
     link.href = dataUrl;
-    link.download = `tracking-${order.code}.png`;
+    link.download = `tracking-${order.orderNo}.png`;
     link.click();
     toast.success('บันทึก QR ติดตามแล้ว');
   }
@@ -86,14 +86,14 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
   async function shareTracking() {
     const shareData: ShareData = {
-      title: `ติดตามพัสดุ ${order.code}`,
-      text: `ติดตามสถานะการจัดส่งของคุณ (${order.code})`,
+      title: `ติดตามพัสดุ ${order.orderNo}`,
+      text: `ติดตามสถานะการจัดส่งของคุณ (${order.orderNo})`,
       url: trackingUrl,
     };
     try {
       const dataUrl = await buildHiResQr();
       const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], `tracking-${order.code}.png`, { type: 'image/png' });
+      const file = new File([blob], `tracking-${order.orderNo}.png`, { type: 'image/png' });
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ ...shareData, files: [file] });
         return;
@@ -119,7 +119,7 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
       <div className="flex items-start gap-3">
         <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-md border bg-background">
           {qrDataUrl ? (
-            <img src={qrDataUrl} alt={`QR สำหรับติดตาม ${order.code}`} className="h-22 w-22" />
+            <img src={qrDataUrl} alt={`QR สำหรับติดตาม ${order.orderNo}`} className="h-22 w-22" />
           ) : (
             <QrCode className="h-8 w-8 text-muted-foreground" />
           )}
