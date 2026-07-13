@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
-import { DriverAvatar } from '@/components/DriverAvatar';
+import { ReassignRouteDialog } from '@/components/delivery/ReassignRouteDialog';
 import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
 import {
   AlertTriangle,
@@ -54,7 +54,7 @@ import {
   type RoutePreview,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
-import { formatDriverActiveJobs, getDriverWorkloadSummary } from '@/lib/deliveryExecution';
+import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
 import { buildInboxOrderEditSearch } from '@/lib/orderSourceLink';
 import { cn } from '@/lib/utils';
 import { PublishedRoutesCard } from './components/PublishedRoutesCard';
@@ -444,7 +444,10 @@ export function PlanningPage({
     }
   };
 
-  const confirmRouteAction = async (value: string, note?: string) => {
+  const confirmRouteAction = async (
+    value: string | { driverCode: string; coDriverCodes: string[]; note?: string },
+    note?: string,
+  ) => {
     if (!routeAction) return;
     setRouteActionError('');
     try {
@@ -461,7 +464,8 @@ export function PlanningPage({
           },
         );
       } else {
-        await reassignRoute(routeAction.route.id, { driverCode: value, note });
+        if (typeof value === 'string') return;
+        await reassignRoute(routeAction.route.id, value);
       }
       const stopCount = routeAction.route.stops.length;
       toast.success(
@@ -1014,24 +1018,19 @@ export function PlanningPage({
       )}
 
       {routeAction?.type === 'reassign' && (
-        <ResolutionDialog
+        <ReassignRouteDialog
           open
           title={`เปลี่ยนคนขับ Route ${routeAction.route.code}`}
           description={`ย้ายงานที่ยังรอส่ง ${routeAction.route.stops.length} จุดไปคนขับใหม่`}
           error={routeActionError}
-          reasons={drivers
-            .filter((driver) => driver.id !== routeAction.route.driver.id)
-            .map((driver) => ({
-              value: driver.id,
-              label: driver.name,
-              leading: <DriverAvatar driver={driver} className="h-9 w-9" />,
-              description: `${driver.phone} · ${formatDriverActiveJobs(driver, orders)}`,
-            }))}
-          reasonLabel="คนขับใหม่"
-          notePlaceholder="เช่น คนขับเดิมไม่สามารถรับงานได้"
-          confirmLabel="ย้ายงาน"
+          drivers={drivers}
+          orders={orders}
+          initialDriverIds={[
+            routeAction.route.driver.id,
+            ...(routeAction.route.stops[0]?.order.coDriverIds ?? []),
+          ]}
           onCancel={() => setRouteAction(null)}
-          onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
+          onConfirm={(input) => void confirmRouteAction(input)}
         />
       )}
     </div>
