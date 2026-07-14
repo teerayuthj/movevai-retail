@@ -945,6 +945,24 @@ export async function createRouteTemplateRun(
   );
 }
 
+export async function createAdHocRouteRun(input: {
+  name: string;
+  stops: RouteTemplate['stops'];
+  plannedDate: string;
+  plannedTime?: string;
+  driverId?: string;
+  dispatchMode: 'planning' | 'immediate';
+  jobType?: RouteTemplate['jobType'];
+  acceptWithinMinutes?: number;
+  startWithinMinutes?: number;
+  startPolicy?: RouteTemplate['startPolicy'];
+}) {
+  return request<RouteTemplateRun>(`${APP_API_BASE}/route-runs`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 // ยกเลิกออเดอร์ก่อนออกเดินทาง — backend ปฏิเสธ (409) ถ้าออเดอร์อยู่บน Route active หรือปิดงานแล้ว
 export async function cancelOrder(
   orderId: string,

@@ -305,7 +305,7 @@ export type OrderMetadata = {
   import?: OrderImportMeta;
   dispatch?: {
     jobType: 'order' | 'document' | 'parcel' | 'other';
-    createdVia: 'intake' | 'quick_create' | 'route_template';
+    createdVia: 'intake' | 'quick_create' | 'route_template' | 'ad_hoc_route';
     title?: string;
     pickup?: {
       name: string;
