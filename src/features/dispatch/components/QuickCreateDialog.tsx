@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { CalendarClock, MapPin, Repeat2, Send, Timer, X, Zap } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowRight, CalendarClock, MapPin, Repeat2, Send, Timer, X, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,11 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import type { Driver } from '@/data/orderTypes';
 import { createDispatchJobs } from '@/features/dispatch/dispatchJobs';
-import { loadRouteTemplates } from '@/features/dispatch/routeTemplateStorage';
+import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
+import {
+  getRoutePickupTasks,
+  stopsForSelectedPickupTasks,
+} from '@/features/dispatch/routeTemplateStops';
 import type {
   DispatchJobType,
   DispatchMethod,
@@ -16,6 +20,7 @@ import type {
 } from '@/features/dispatch/types';
 import { dispatchJobTypeLabel } from '@/features/dispatch/types';
 import { getNextHourTime, getTodayDateKey } from '@/lib/deliveryPlanning';
+import { createRouteTemplateRun, fetchRouteTemplates } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 
 type Props = {
@@ -32,6 +37,7 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
   const [templates, setTemplates] = useState<RouteTemplate[]>([]);
   const [mode, setMode] = useState<'single' | 'template'>('single');
   const [templateId, setTemplateId] = useState('');
+  const [selectedPickupStopIds, setSelectedPickupStopIds] = useState<string[]>([]);
   const [jobType, setJobType] = useState<Exclude<DispatchJobType, 'order'>>('document');
   const [title, setTitle] = useState('ส่งเอกสาร');
   const [pickupName, setPickupName] = useState('');
@@ -52,10 +58,22 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
 
   const selectedTemplate = templates.find((template) => template.id === templateId);
   const selectedDriver = drivers.find((driver) => driver.id === driverId);
+  const templateTasks = useMemo(
+    () => getRoutePickupTasks(selectedTemplate?.stops ?? []),
+    [selectedTemplate],
+  );
+  const selectedTemplateStops = useMemo(
+    () => stopsForSelectedPickupTasks(selectedTemplate?.stops ?? [], selectedPickupStopIds),
+    [selectedPickupStopIds, selectedTemplate],
+  );
 
   useEffect(() => {
     if (open) {
-      setTemplates(loadRouteTemplates().filter((template) => template.active));
+      void fetchRouteTemplates()
+        .then((items) => setTemplates(items.filter((template) => template.active)))
+        .catch((error) =>
+          toast.error(error instanceof Error ? error.message : 'โหลด Route Templates ไม่สำเร็จ'),
+        );
     }
   }, [open]);
 
@@ -64,6 +82,7 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
     if (initialTemplateId && templates.some((template) => template.id === initialTemplateId)) {
       setMode('template');
       setTemplateId(initialTemplateId);
+      setMethod('planning');
       return;
     }
     setMode('single');
@@ -72,16 +91,14 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
 
   useEffect(() => {
     if (!selectedTemplate) return;
+    setSelectedPickupStopIds([]);
     setTitle(selectedTemplate.name);
     setJobType(selectedTemplate.jobType);
     setDriverId(selectedTemplate.defaultDriverId ?? '');
-    setPlannedTime(selectedTemplate.plannedTime);
+    setPlannedTime(selectedTemplate.plannedTime ?? '');
     setAcceptWithinMinutes(selectedTemplate.acceptWithinMinutes);
     setStartWithinMinutes(selectedTemplate.startWithinMinutes);
     setStartPolicy(selectedTemplate.startPolicy);
-    setPickupName(selectedTemplate.stops[0]?.name ?? '');
-    setPickupPhone(selectedTemplate.stops[0]?.phone ?? '');
-    setPickupAddress(selectedTemplate.stops[0]?.address ?? '');
   }, [selectedTemplate]);
 
   if (!open) return null;
@@ -89,13 +106,29 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
   const submit = async () => {
     if (!title.trim()) return toast.error('กรุณาระบุชื่องาน');
     if (mode === 'template' && !selectedTemplate) return toast.error('กรุณาเลือก Route Template');
+    if (mode === 'template' && selectedPickupStopIds.length === 0)
+      return toast.error('เลือกอย่างน้อย 1 คู่รับ → ส่งสำหรับเที่ยวนี้');
     if (mode === 'single' && (!pickupAddress.trim() || !destinationAddress.trim())) {
       return toast.error('กรุณาระบุจุดรับและจุดส่ง');
     }
-    if (method === 'immediate' && !selectedDriver) return toast.error('กรุณาเลือกคนขับ');
+    if (mode === 'single' && method === 'immediate' && !selectedDriver) {
+      return toast.error('กรุณาเลือกคนขับ');
+    }
 
     setSubmitting(true);
     try {
+      if (mode === 'template' && selectedTemplate) {
+        await createRouteTemplateRun(selectedTemplate.id, {
+          selectedPickupStopIds,
+          plannedDate,
+          driverId: driverId || undefined,
+          dispatchMode: 'planning',
+        });
+        await onCreated();
+        toast.success(`สร้าง Route Run ของ ${selectedTemplate.name} เข้า Planning แล้ว`);
+        onClose();
+        return;
+      }
       await createDispatchJobs({
         mode,
         title,
@@ -106,7 +139,6 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
         destinationName,
         destinationPhone,
         destinationAddress,
-        template: selectedTemplate,
         method,
         driver: selectedDriver,
         plannedDate,
@@ -170,7 +202,10 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
                 </button>
                 <button
                   type="button"
-                  onClick={() => setMode('template')}
+                  onClick={() => {
+                    setMode('template');
+                    setMethod('planning');
+                  }}
                   className={cn(
                     'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
                     mode === 'template' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40',
@@ -179,7 +214,9 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
                   <Repeat2 className="mt-0.5 h-4 w-4" />
                   <span>
                     <span className="block text-sm font-medium">ใช้ Route เดิม</span>
-                    <span className="text-xs text-muted-foreground">โหลดจุดแวะและค่าเริ่มต้น</span>
+                    <span className="text-xs text-muted-foreground">
+                      เลือกเฉพาะคู่รับ → ส่งที่ต้องวิ่งในเที่ยวนี้
+                    </span>
                   </span>
                 </button>
               </div>
@@ -194,11 +231,15 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
                   className="mt-1"
                 >
                   <option value="">เลือกเส้นทางประจำ</option>
-                  {templates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name} · {template.stops.length} จุด
-                    </option>
-                  ))}
+                  {templates.map((template) => {
+                    const pickups = template.stops.filter((stop) => stop.kind === 'pickup').length;
+                    return (
+                      <option key={template.id} value={template.id}>
+                        {template.routeGroup} · {template.name} — {pickups} รับ ·{' '}
+                        {template.stops.length - pickups} ส่ง
+                      </option>
+                    );
+                  })}
                 </Select>
                 {templates.length === 0 && (
                   <p className="mt-2 text-xs text-warning">
@@ -292,16 +333,46 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
               </div>
               {mode === 'template' && selectedTemplate && (
                 <div className="mt-3 rounded-lg border bg-muted/20 p-3">
-                  <div className="text-xs font-medium">
-                    {selectedTemplate.stops.length} จุดใน Route
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-medium">เลือกงานของเที่ยวนี้</div>
+                    <span className="text-[11px] text-info">
+                      {selectedPickupStopIds.length}/{templateTasks.length} งาน
+                    </span>
                   </div>
-                  <ol className="mt-2 space-y-1 text-xs text-muted-foreground">
-                    {selectedTemplate.stops.map((stop, index) => (
-                      <li key={stop.id}>
-                        {index + 1}. {stop.name} — {stop.address}
-                      </li>
-                    ))}
-                  </ol>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    ระบบไม่เลือกทุกจุดให้อัตโนมัติ
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {templateTasks.map((task) => {
+                      const checked = selectedPickupStopIds.includes(task.pickup.id);
+                      return (
+                        <label
+                          key={task.pickup.id}
+                          className={`flex cursor-pointer items-start gap-2 rounded-md border bg-background p-2 text-xs ${checked ? 'border-primary' : ''}`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={checked}
+                            onChange={() =>
+                              setSelectedPickupStopIds((current) =>
+                                current.includes(task.pickup.id)
+                                  ? current.filter((id) => id !== task.pickup.id)
+                                  : [...current, task.pickup.id],
+                              )
+                            }
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate text-info">รับ {task.pickup.name}</span>
+                            <span className="mt-0.5 flex items-center gap-1 truncate text-success">
+                              <ArrowRight className="h-3 w-3 shrink-0" /> ส่ง {task.dropoff.name}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  <RouteStopsMap stops={selectedTemplateStops} className="mt-3 h-48" />
                 </div>
               )}
             </section>
@@ -315,6 +386,7 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
                     value={method}
                     onChange={(event) => setMethod(event.target.value as DispatchMethod)}
                     className="mt-1"
+                    disabled={mode === 'template'}
                   >
                     <option value="immediate">ส่งทันที</option>
                     <option value="planning">เข้า Planning</option>
@@ -442,20 +514,26 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
                   <div className="font-medium">{title || 'ยังไม่ได้ระบุชื่องาน'}</div>
                   <div className="text-xs text-muted-foreground">
                     {mode === 'template'
-                      ? `${selectedTemplate?.stops.length ?? 0} จุดแวะ`
+                      ? selectedTemplate
+                        ? `${selectedTemplate.name} · ${selectedTemplate.stops.length} จุดแวะ`
+                        : 'เลือกสายวิ่งประจำ'
                       : '1 จุดรับ → 1 จุดส่ง'}
                   </div>
                 </div>
               </div>
               <div className="flex gap-2">
-                {method === 'immediate' ? (
-                  <Zap className="mt-0.5 h-4 w-4 text-warning" />
-                ) : (
+                {mode === 'template' || method === 'planning' ? (
                   <CalendarClock className="mt-0.5 h-4 w-4 text-info" />
+                ) : (
+                  <Zap className="mt-0.5 h-4 w-4 text-warning" />
                 )}
                 <div>
                   <div className="font-medium">
-                    {method === 'immediate' ? 'ส่งทันที' : 'เข้า Planning'}
+                    {mode === 'template'
+                      ? 'สร้าง Route Run เข้า Planning'
+                      : method === 'immediate'
+                        ? 'ส่งทันที'
+                        : 'เข้า Planning'}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {selectedDriver ? `มอบหมายให้ ${selectedDriver.name}` : 'เลือกคนขับภายหลัง'}
@@ -478,9 +556,11 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
               <Send className="h-4 w-4" />
               {submitting
                 ? 'กำลังสร้างงาน…'
-                : method === 'immediate'
-                  ? 'สร้างและส่งให้คนขับ'
-                  : 'สร้างเข้า Planning'}
+                : mode === 'template'
+                  ? 'สร้าง Route Run เข้า Planning'
+                  : method === 'immediate'
+                    ? 'สร้างและส่งให้คนขับ'
+                    : 'สร้างเข้า Planning'}
             </Button>
           </aside>
         </div>

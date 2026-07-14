@@ -11,6 +11,7 @@ import type {
 } from '@/data/orderTypes';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
+import type { RouteTemplate } from '@/features/dispatch/types';
 
 // running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
 const IS_NATIVE_APP = Capacitor.isNativePlatform();
@@ -885,6 +886,63 @@ export async function createAppOrder(order: Order) {
     body: JSON.stringify(serializeOrderForBackend(order)),
   });
   return normalizeOrder(result);
+}
+
+export type RouteTemplateRun = {
+  id: string;
+  plannedDate: string;
+  orderIds: string[];
+  status: 'planned' | 'dispatched' | 'failed' | 'creating';
+  routeId?: string;
+};
+
+export async function fetchRouteTemplates() {
+  return request<RouteTemplate[]>(`${APP_API_BASE}/route-templates`);
+}
+
+export async function createRouteTemplate(
+  input: Omit<RouteTemplate, 'id' | 'createdAt' | 'updatedAt'>,
+) {
+  return request<RouteTemplate>(`${APP_API_BASE}/route-templates`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateRouteTemplate(
+  templateId: string,
+  input: Partial<Omit<RouteTemplate, 'id' | 'createdAt' | 'updatedAt'>>,
+) {
+  return request<RouteTemplate>(
+    `${APP_API_BASE}/route-templates/${encodeURIComponent(templateId)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    },
+  );
+}
+
+export async function deleteRouteTemplate(templateId: string) {
+  return request<{ deleted: true }>(
+    `${APP_API_BASE}/route-templates/${encodeURIComponent(templateId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export async function createRouteTemplateRun(
+  templateId: string,
+  input: {
+    /** เลือกเฉพาะงานรับ → ส่งที่จะวิ่งในเที่ยวนี้ ป้องกันการส่งทั้งสายโดยไม่ตั้งใจ */
+    selectedPickupStopIds: string[];
+    plannedDate?: string;
+    driverId?: string;
+    dispatchMode?: 'planning' | 'immediate';
+  },
+) {
+  return request<RouteTemplateRun>(
+    `${APP_API_BASE}/route-templates/${encodeURIComponent(templateId)}/runs`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
 }
 
 // ยกเลิกออเดอร์ก่อนออกเดินทาง — backend ปฏิเสธ (409) ถ้าออเดอร์อยู่บน Route active หรือปิดงานแล้ว

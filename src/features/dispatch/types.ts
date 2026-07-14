@@ -4,27 +4,38 @@ export type DispatchJobType = 'order' | 'document' | 'parcel' | 'other';
 export type DispatchMethod = 'immediate' | 'planning';
 export type DispatchStartPolicy = 'manual' | 'accept_starts';
 
-export type RouteTemplateStop = {
+export type RouteStopKind = 'pickup' | 'dropoff';
+
+// จุดแวะ 1 จุดในสาย — จุดรับต้องผูก deliverToStopId ว่าของไปลงจุดส่งไหน (ต้องอยู่ลำดับหลัง)
+export type RouteStop = {
   id: string;
+  kind: RouteStopKind;
   name: string;
+  contact?: string;
   phone?: string;
   address: string;
+  lat?: number;
+  lng?: number;
+  deliverToStopId?: string;
 };
 
+export type RouteRunDispatchMode = 'planning' | 'immediate';
+
+// 1 template = 1 สายวิ่ง: ลำดับจุดแวะอิสระ ไม่มีจุดเริ่มต้น (messenger เริ่มจากที่ที่ตัวเองอยู่)
 export type RouteTemplate = {
   id: string;
+  routeGroup: string;
   name: string;
+  stops: RouteStop[];
   active: boolean;
-  autoCreate: boolean;
   weekdays: number[];
-  plannedTime: string;
+  /** เวลาวิ่งประจำ; เว้นว่างได้สำหรับ Route ที่ไม่มีเวลา fix */
+  plannedTime?: string;
   defaultDriverId?: string;
   jobType: Exclude<DispatchJobType, 'order'>;
   acceptWithinMinutes: number;
   startWithinMinutes: number;
   startPolicy: DispatchStartPolicy;
-  stops: RouteTemplateStop[];
-  generatedDateKeys: string[];
   createdAt: string;
   updatedAt: string;
 };
@@ -39,7 +50,6 @@ export type CreateDispatchJobInput = {
   destinationName: string;
   destinationPhone?: string;
   destinationAddress: string;
-  template?: RouteTemplate;
   method: DispatchMethod;
   driver?: Driver;
   plannedDate: string;
