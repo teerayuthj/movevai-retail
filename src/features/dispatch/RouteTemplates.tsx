@@ -2,23 +2,23 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Card } from '@/components/ui/card';
 import { FreeRouteBuilderPreview } from '@/features/dispatch/components/FreeRouteBuilderPreview';
-import type { RouteTemplate } from '@/features/dispatch/types';
-import { fetchRouteTemplates } from '@/lib/retailApi';
+import { fetchRouteAddresses, type RouteAddress } from '@/lib/retailApi';
 import { useRetailStore } from '@/state/retailStore';
 
 type Props = { onOpenDispatch: (search?: string) => void };
 
 export function RouteTemplates({ onOpenDispatch }: Props) {
   const { drivers, syncFromBackend } = useRetailStore();
-  const [templates, setTemplates] = useState<RouteTemplate[]>([]);
+  const [addresses, setAddresses] = useState<RouteAddress[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
 
-    void fetchRouteTemplates()
-      .then((items) => {
-        if (active) setTemplates(items.filter((template) => template.active));
+    void fetchRouteAddresses()
+      .then((addressItems) => {
+        if (!active) return;
+        setAddresses(addressItems);
       })
       .catch((error) => {
         toast.error(error instanceof Error ? error.message : 'โหลดคลังที่อยู่เดิมไม่สำเร็จ');
@@ -45,7 +45,16 @@ export function RouteTemplates({ onOpenDispatch }: Props) {
         <Card className="p-8 text-sm text-muted-foreground">กำลังโหลดคลังที่อยู่…</Card>
       ) : (
         <FreeRouteBuilderPreview
-          templates={templates}
+          savedAddresses={addresses}
+          onAddressCreated={(address) => setAddresses((current) => [...current, address])}
+          onAddressDeleted={(addressId) =>
+            setAddresses((current) => current.filter((address) => address.id !== addressId))
+          }
+          onAddressUpdated={(address) =>
+            setAddresses((current) =>
+              current.map((item) => (item.id === address.id ? address : item)),
+            )
+          }
           drivers={drivers}
           onCreated={async () => {
             await syncFromBackend();

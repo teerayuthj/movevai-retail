@@ -11,7 +11,7 @@ import type {
 } from '@/data/orderTypes';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
-import type { RouteTemplate } from '@/features/dispatch/types';
+import type { RouteStop, RouteTemplate } from '@/features/dispatch/types';
 
 // running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
 const IS_NATIVE_APP = Capacitor.isNativePlatform();
@@ -896,8 +896,45 @@ export type RouteTemplateRun = {
   routeId?: string;
 };
 
+export type RouteAddress = Omit<RouteStop, 'deliverToStopId'> & {
+  routeGroup: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export async function fetchRouteTemplates() {
   return request<RouteTemplate[]>(`${APP_API_BASE}/route-templates`);
+}
+
+export async function fetchRouteAddresses() {
+  return request<RouteAddress[]>(`${APP_API_BASE}/route-addresses`);
+}
+
+export async function createRouteAddress(
+  input: Omit<RouteAddress, 'id' | 'active' | 'createdAt' | 'updatedAt'>,
+) {
+  return request<RouteAddress>(`${APP_API_BASE}/route-addresses`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateRouteAddress(
+  addressId: string,
+  input: Partial<Omit<RouteAddress, 'id' | 'active' | 'createdAt' | 'updatedAt'>>,
+) {
+  return request<RouteAddress>(`${APP_API_BASE}/route-addresses/${encodeURIComponent(addressId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteRouteAddress(addressId: string) {
+  return request<{ deleted: true }>(
+    `${APP_API_BASE}/route-addresses/${encodeURIComponent(addressId)}`,
+    { method: 'DELETE' },
+  );
 }
 
 export async function createRouteTemplate(
