@@ -1,11 +1,12 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, Marker, Polyline, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { Loader2, MapPin, Route } from 'lucide-react';
 import { BaseTileLayer } from '@/components/map/BaseTileLayer';
-import { BANGKOK_CENTER } from '@/features/messenger/geocode';
+import { BANGKOK_CENTER, isPlausibleThaiCoord } from '@/features/messenger/geocode';
 import { useRoadRoute } from '@/features/messenger/hooks/useRoadRoute';
 import type { RouteStop, RouteStopKind } from '@/features/dispatch/types';
+import { geocodeAddress, type GeoCoordinate } from '@/lib/retailApi';
 import { formatRouteDistance } from '@/lib/routeDistance';
 
 function stopIcon(order: number, kind: RouteStopKind) {
@@ -16,6 +17,14 @@ function stopIcon(order: number, kind: RouteStopKind) {
     iconAnchor: [13, 13],
     html: `<div style="width:26px;height:26px;border-radius:50%;background:${background};color:#fff;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;font:600 12px/1 sans-serif;">${order}</div>`,
   });
+}
+
+function hasValidCoordinates(stop: RouteStop): stop is RouteStop & GeoCoordinate {
+  return (
+    stop.lat !== undefined &&
+    stop.lng !== undefined &&
+    isPlausibleThaiCoord({ lat: stop.lat, lng: stop.lng })
+  );
 }
 
 /** แก้ Leaflet สูง 0px เมื่อ mount ใน dialog/แผงที่เพิ่งเปิด — invalidate หลัง layout เสร็จ */
@@ -51,20 +60,81 @@ function FitStops({ points }: { points: [number, number][] }) {
 }
 
 /**
+ * จุดจากคลังที่อยู่เก่าอาจยังไม่มี lat/lng จึงค้นหาพิกัดชั่วคราวสำหรับแผนที่
+ * เพื่อให้ admin เห็นทุกจุดและคำนวณเส้นทางได้ทันที โดยไม่เดาพิกัดเองบน client
+ */
+function useRouteStopsWithCoordinates(stops: RouteStop[]) {
+  const cacheRef = useRef<Map<string, GeoCoordinate | null>>(new Map());
+  const [tick, setTick] = useState(0);
+  const addressesToLookup = useMemo(() => {
+    const pending = new Set<string>();
+    for (const stop of stops) {
+      if (hasValidCoordinates(stop)) continue;
+      const address = stop.address.trim();
+      if (address && !cacheRef.current.has(address)) pending.add(address);
+    }
+    return [...pending];
+  }, [stops]);
+  const lookupKey = addressesToLookup.join('|');
+
+  useEffect(() => {
+    if (!lookupKey) return;
+    let cancelled = false;
+
+    void (async () => {
+      for (const address of addressesToLookup) {
+        if (cancelled || cacheRef.current.has(address)) continue;
+        const coordinates = await geocodeAddress(address).catch(() => null);
+        if (cancelled) return;
+        cacheRef.current.set(address, coordinates);
+        setTick((value) => value + 1);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [addressesToLookup, lookupKey]);
+
+  return useMemo(() => {
+    const resolvedStops = stops.map((stop) => {
+      if (hasValidCoordinates(stop)) return stop;
+      const coordinates = cacheRef.current.get(stop.address.trim());
+      return coordinates && isPlausibleThaiCoord(coordinates) ? { ...stop, ...coordinates } : stop;
+    });
+    const missing = resolvedStops.filter((stop) => !hasValidCoordinates(stop)).length;
+    const pending = resolvedStops.filter(
+      (stop) =>
+        !hasValidCoordinates(stop) &&
+        Boolean(stop.address.trim()) &&
+        !cacheRef.current.has(stop.address.trim()),
+    ).length;
+    return { stops: resolvedStops, missing, pending };
+    // tick เปลี่ยนเมื่อ geocoder คืนผลและบังคับให้ใช้พิกัดจาก cache ใหม่
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stops, lookupKey, tick]);
+}
+
+/**
  * แผนที่พรีวิวสายวิ่ง: หมุดเลขลำดับ (น้ำเงิน=รับ เขียว=ส่ง) + เส้นทางตามถนน
- * โชว์เฉพาะจุดที่มีพิกัดแล้ว — จุดที่ geocode ไม่ติดจะนับแจ้งไว้บน overlay
+ * ค้นหาพิกัดจุดที่ยังไม่มีจากที่อยู่ แล้ววาดหมุดและเส้นทางตามลำดับเดียวกับรายการ
  */
 export function RouteStopsMap({ stops, className }: { stops: RouteStop[]; className?: string }) {
-  const stopById = useMemo(() => new Map(stops.map((stop) => [stop.id, stop])), [stops]);
+  const resolved = useRouteStopsWithCoordinates(stops);
+  const resolvedStops = resolved.stops;
+  const stopById = useMemo(
+    () => new Map(resolvedStops.map((stop) => [stop.id, stop])),
+    [resolvedStops],
+  );
   const located = useMemo(
     () =>
-      stops
+      resolvedStops
         .map((stop, index) => ({ stop, order: index + 1 }))
         .filter(
           (entry): entry is { stop: RouteStop & { lat: number; lng: number }; order: number } =>
-            entry.stop.lat !== undefined && entry.stop.lng !== undefined,
+            hasValidCoordinates(entry.stop),
         ),
-    [stops],
+    [resolvedStops],
   );
   const points = useMemo(
     () => located.map((entry) => [entry.stop.lat, entry.stop.lng] as [number, number]),
@@ -84,15 +154,21 @@ export function RouteStopsMap({ stops, className }: { stops: RouteStop[]; classN
     () => roadRoute?.geometry.map((point) => [point.lat, point.lng] as [number, number]) ?? [],
     [roadRoute],
   );
-  const missing = stops.length - located.length;
+  const { missing, pending } = resolved;
 
   if (located.length === 0) {
     return (
       <div
         className={`flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed bg-muted/30 text-xs text-muted-foreground ${className ?? 'h-56'}`}
       >
-        <MapPin className="h-5 w-5 opacity-50" />
-        ยังไม่มีจุดแวะที่ปักหมุดได้ — ใส่ที่อยู่แล้วกดค้นหาพิกัด
+        {pending > 0 ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <MapPin className="h-5 w-5 opacity-50" />
+        )}
+        {pending > 0
+          ? `กำลังค้นหาพิกัด ${pending} จุด…`
+          : 'ยังไม่มีจุดแวะที่ปักหมุดได้ — ใส่ที่อยู่แล้วกดค้นหาพิกัด'}
       </div>
     );
   }
@@ -128,7 +204,7 @@ export function RouteStopsMap({ stops, className }: { stops: RouteStop[]; classN
             : undefined;
           const inbound =
             entry.stop.kind === 'dropoff'
-              ? stops.filter(
+              ? resolvedStops.filter(
                   (stop) => stop.kind === 'pickup' && stop.deliverToStopId === entry.stop.id,
                 )
               : [];
@@ -175,7 +251,9 @@ export function RouteStopsMap({ stops, className }: { stops: RouteStop[]; classN
       )}
       {missing > 0 && (
         <div className="pointer-events-none absolute bottom-1.5 left-1.5 z-[500] rounded-md border border-warning/30 bg-background/90 px-2 py-1 text-[10px] text-warning shadow-xs">
-          {missing} จุดยังไม่มีพิกัด — ไม่แสดงบนแผนที่
+          {pending > 0
+            ? `กำลังค้นหาพิกัด ${pending} จุด…`
+            : `${missing} จุดค้นหาพิกัดไม่พบ — ไม่แสดงบนแผนที่`}
         </div>
       )}
     </div>

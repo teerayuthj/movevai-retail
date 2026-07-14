@@ -284,7 +284,11 @@ export function AppShell({ page, onChangePage, children }: Props) {
             collapsed ? 'lg:pl-16' : 'lg:pl-60',
           )}
         >
-          <Topbar onOpenMobileNav={() => setIsMobileNavOpen(true)} onSearch={handleGlobalSearch} />
+          <Topbar
+            onOpenMobileNav={() => setIsMobileNavOpen(true)}
+            onSearch={handleGlobalSearch}
+            showSearch={page !== 'route_templates'}
+          />
           <main className="p-4 sm:p-6">{children}</main>
         </div>
       </div>

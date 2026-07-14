@@ -18,6 +18,7 @@ import {
   Play,
   Plus,
   Route,
+  Search,
   Send,
   Trash2,
   UserRound,
@@ -87,13 +88,27 @@ function groupStopsByKind<T extends RouteStop>(stops: T[]) {
   ];
 }
 
+// จับคู่จุดรับและจุดส่งตามลำดับที่ผู้ใช้จัดในรายการ เพื่อไม่ให้ต้องเลือกจุดส่งซ้ำ
+function pairStopsByOrder(stops: BuilderStop[]) {
+  const grouped = groupStopsByKind(stops);
+  const dropoffs = grouped.filter((stop) => stop.kind === 'dropoff');
+  let pickupIndex = 0;
+
+  return grouped.map((stop) => {
+    if (stop.kind === 'dropoff') return { ...stop, deliverToStopId: undefined };
+    const deliverToStopId = dropoffs[pickupIndex]?.id;
+    pickupIndex += 1;
+    return { ...stop, deliverToStopId };
+  });
+}
+
 function stopError(stops: BuilderStop[]) {
   if (!stops.some((stop) => stop.kind === 'pickup')) return 'เพิ่มจุดรับอย่างน้อย 1 จุด';
   if (!stops.some((stop) => stop.kind === 'dropoff')) return 'เพิ่มจุดส่งอย่างน้อย 1 จุด';
   const indexById = new Map(stops.map((stop, index) => [stop.id, index]));
   for (const stop of stops) {
     if (stop.kind !== 'pickup') continue;
-    if (!stop.deliverToStopId) return `จุดรับ “${stop.name}” ยังไม่ได้เลือกจุดส่ง`;
+    if (!stop.deliverToStopId) return `จุดรับ “${stop.name}” ยังไม่มีจุดส่งในลำดับเดียวกัน`;
     const destinationIndex = indexById.get(stop.deliverToStopId);
     const pickupIndex = indexById.get(stop.id) ?? -1;
     if (destinationIndex === undefined) return `จุดส่งของ “${stop.name}” ไม่อยู่ในเที่ยวนี้`;
@@ -142,6 +157,10 @@ export function FreeRouteBuilderPreview({
   onCreated: () => Promise<void> | void;
 }) {
   const [stops, setStops] = useState<BuilderStop[]>(seedStops);
+  const [searchByKind, setSearchByKind] = useState<Record<RouteStopKind, string>>({
+    pickup: '',
+    dropoff: '',
+  });
   const [dropActive, setDropActive] = useState(false);
   const [addingKind, setAddingKind] = useState<RouteStopKind | null>(null);
   const [newName, setNewName] = useState('');
@@ -169,20 +188,21 @@ export function FreeRouteBuilderPreview({
     () => new Set(savedAddresses.map((address) => address.id)),
     [savedAddresses],
   );
-  const pickupStops = stops.filter((stop) => stop.kind === 'pickup');
-  const dropoffStops = stops.filter((stop) => stop.kind === 'dropoff');
+  const routeStops = useMemo(() => pairStopsByOrder(stops), [stops]);
+  const pickupStops = routeStops.filter((stop) => stop.kind === 'pickup');
+  const dropoffStops = routeStops.filter((stop) => stop.kind === 'dropoff');
   const selectedDriver = drivers.find((driver) => driver.id === driverId);
   const availableDrivers = drivers.filter((driver) => driver.status !== 'off_duty');
-  const validationError = stopError(stops);
+  const validationError = stopError(routeStops);
   const pickupPreviews = useMemo(
     () =>
-      stops
+      routeStops
         .filter((stop) => stop.kind === 'pickup')
         .map((pickup) => ({
           pickup,
-          dropoff: stops.find((stop) => stop.id === pickup.deliverToStopId),
+          dropoff: routeStops.find((stop) => stop.id === pickup.deliverToStopId),
         })),
-    [stops],
+    [routeStops],
   );
 
   const addAddress = (addressId: string) => {
@@ -191,32 +211,11 @@ export function FreeRouteBuilderPreview({
     setStops((current) => {
       const nextStop: BuilderStop = {
         ...address,
-        deliverToStopId:
-          address.kind === 'pickup' && address.pairedAddressId
-            ? current.find((stop) => stop.id === address.pairedAddressId)?.id
-            : undefined,
+        deliverToStopId: undefined,
         sourceLabel: address.source,
       };
-      const next = [...current, nextStop];
-      if (address.kind === 'dropoff') {
-        return groupStopsByKind(
-          next.map((stop) =>
-            stop.kind === 'pickup' &&
-            !stop.deliverToStopId &&
-            addresses.find((entry) => entry.id === stop.id)?.pairedAddressId === address.id
-              ? { ...stop, deliverToStopId: address.id }
-              : stop,
-          ),
-        );
-      }
-      return groupStopsByKind(next);
+      return groupStopsByKind([...current, nextStop]);
     });
-  };
-
-  const patchStop = (stopId: string, patch: Partial<BuilderStop>) => {
-    setStops((current) =>
-      current.map((stop) => (stop.id === stopId ? { ...stop, ...patch } : stop)),
-    );
   };
 
   const removeStop = (stopId: string) => {
@@ -224,9 +223,7 @@ export function FreeRouteBuilderPreview({
       groupStopsByKind(
         current
           .filter((stop) => stop.id !== stopId)
-          .map((stop) =>
-            stop.deliverToStopId === stopId ? { ...stop, deliverToStopId: undefined } : stop,
-          ),
+          .map((stop) => ({ ...stop, deliverToStopId: undefined })),
       ),
     );
   };
@@ -351,7 +348,7 @@ export function FreeRouteBuilderPreview({
       const last = stops[stops.length - 1]?.name ?? 'จุดส่ง';
       const result = await createAdHocRouteRun({
         name: `เที่ยว ${first} → ${last}`,
-        stops: stops.map(({ sourceLabel: _sourceLabel, ...stop }) => stop),
+        stops: routeStops.map(({ sourceLabel: _sourceLabel, ...stop }) => stop),
         plannedDate,
         plannedTime: plannedTime || undefined,
         driverId: driverId || undefined,
@@ -388,14 +385,22 @@ export function FreeRouteBuilderPreview({
         </div>
 
         {(['pickup', 'dropoff'] as RouteStopKind[]).map((kind) => {
-          const entries = addresses.filter((entry) => entry.kind === kind);
+          const kindEntries = addresses.filter((entry) => entry.kind === kind);
+          const search = searchByKind[kind].trim().toLowerCase();
+          const entries = search
+            ? kindEntries.filter((entry) =>
+                [entry.name, entry.address, entry.contact, entry.phone, entry.source]
+                  .filter(Boolean)
+                  .some((field) => field!.toLowerCase().includes(search)),
+              )
+            : kindEntries;
           return (
             <div key={kind} className="mt-3">
               <div className="flex items-center justify-between gap-2">
                 <div
                   className={`text-xs font-semibold ${kind === 'pickup' ? 'text-info' : 'text-success'}`}
                 >
-                  {kind === 'pickup' ? 'จุดรับของ' : 'จุดส่งของ'} · {entries.length}
+                  {kind === 'pickup' ? 'จุดรับของ' : 'จุดส่งของ'} · {kindEntries.length}
                 </div>
                 <Button
                   type="button"
@@ -411,7 +416,23 @@ export function FreeRouteBuilderPreview({
                   <Plus /> เพิ่มใหม่
                 </Button>
               </div>
+              <div className="relative mt-1.5">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchByKind[kind]}
+                  onChange={(event) =>
+                    setSearchByKind((current) => ({ ...current, [kind]: event.target.value }))
+                  }
+                  placeholder={`ค้นหา${kind === 'pickup' ? 'จุดรับ' : 'จุดส่ง'} ชื่อ ที่อยู่ เบอร์…`}
+                  className="h-8 pl-8 text-[11px]"
+                />
+              </div>
               <div className="app-scroll relative mt-1.5 max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                {entries.length === 0 && (
+                  <div className="rounded-md border border-dashed bg-muted/20 px-3 py-3 text-center text-[10px] text-muted-foreground">
+                    {search ? 'ไม่พบที่อยู่ที่ตรงกับคำค้น' : 'ยังไม่มีที่อยู่ในกลุ่มนี้'}
+                  </div>
+                )}
                 {entries.map((entry) => {
                   const used = usedAddressIds.has(entry.id);
                   const editable = savedAddressIds.has(entry.id);
@@ -760,7 +781,7 @@ export function FreeRouteBuilderPreview({
               const showSectionDivider = !isPickup && (index === 0 || previousKind === 'pickup');
               const stopsOfSameKind = isPickup ? pickupStops : dropoffStops;
               const indexWithinKind = stopsOfSameKind.findIndex((item) => item.id === stop.id);
-              const linkedPickups = stops.filter(
+              const linkedPickups = routeStops.filter(
                 (pickup) => pickup.kind === 'pickup' && pickup.deliverToStopId === stop.id,
               );
               return (
@@ -839,28 +860,7 @@ export function FreeRouteBuilderPreview({
                             {stop.phone ? ` · ${stop.phone}` : ''}
                           </div>
                         )}
-                        {isPickup ? (
-                          <label className="mt-2 flex items-center gap-1.5 rounded-md border border-info/20 bg-info/10 px-2 py-1.5 text-[10px] font-medium text-info">
-                            <ArrowRight className="h-3 w-3 shrink-0" /> ส่งไปที่
-                            <Select
-                              containerClassName="min-w-0 flex-1"
-                              className="h-7 bg-background text-[11px] text-foreground"
-                              value={stop.deliverToStopId ?? ''}
-                              onChange={(event) =>
-                                patchStop(stop.id, {
-                                  deliverToStopId: event.target.value || undefined,
-                                })
-                              }
-                            >
-                              <option value="">— เลือกจุดส่ง —</option>
-                              {dropoffStops.map((dropoff) => (
-                                <option key={dropoff.id} value={dropoff.id}>
-                                  {dropoff.name}
-                                </option>
-                              ))}
-                            </Select>
-                          </label>
-                        ) : (
+                        {!isPickup && (
                           <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-md border border-success/20 bg-success/10 px-2 py-1.5 text-[10px] font-medium text-success">
                             <Package className="h-3 w-3 shrink-0" /> รับมาจาก
                             {linkedPickups.length > 0 ? (
@@ -975,7 +975,7 @@ export function FreeRouteBuilderPreview({
           </Badge>
         </div>
         {stops.length > 0 ? (
-          <RouteStopsMap stops={stops} className="mt-3 h-72" />
+          <RouteStopsMap stops={routeStops} className="mt-3 h-96" />
         ) : (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
             <MapPin className="h-4 w-4 shrink-0" />
