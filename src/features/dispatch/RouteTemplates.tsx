@@ -55,6 +55,7 @@ export function RouteTemplates({ onOpenDispatch }: Props) {
               current.map((item) => (item.id === address.id ? address : item)),
             )
           }
+          onAddressesReordered={(next) => setAddresses(next)}
           drivers={drivers}
           onCreated={async () => {
             await syncFromBackend();

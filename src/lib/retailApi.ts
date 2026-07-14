@@ -11,7 +11,7 @@ import type {
 } from '@/data/orderTypes';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
-import type { RouteStop, RouteTemplate } from '@/features/dispatch/types';
+import type { RouteStop, RouteStopKind, RouteTemplate } from '@/features/dispatch/types';
 
 // running inside a Capacitor native shell (iOS/Android) — there is no vite/reverse proxy here
 const IS_NATIVE_APP = Capacitor.isNativePlatform();
@@ -927,6 +927,7 @@ export type RouteTemplateRun = {
 export type RouteAddress = Omit<RouteStop, 'deliverToStopId'> & {
   routeGroup: string;
   active: boolean;
+  sortOrder: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -940,7 +941,7 @@ export async function fetchRouteAddresses() {
 }
 
 export async function createRouteAddress(
-  input: Omit<RouteAddress, 'id' | 'active' | 'createdAt' | 'updatedAt'>,
+  input: Omit<RouteAddress, 'id' | 'active' | 'sortOrder' | 'createdAt' | 'updatedAt'>,
 ) {
   return request<RouteAddress>(`${APP_API_BASE}/route-addresses`, {
     method: 'POST',
@@ -950,7 +951,7 @@ export async function createRouteAddress(
 
 export async function updateRouteAddress(
   addressId: string,
-  input: Partial<Omit<RouteAddress, 'id' | 'active' | 'createdAt' | 'updatedAt'>>,
+  input: Partial<Omit<RouteAddress, 'id' | 'active' | 'sortOrder' | 'createdAt' | 'updatedAt'>>,
 ) {
   return request<RouteAddress>(`${APP_API_BASE}/route-addresses/${encodeURIComponent(addressId)}`, {
     method: 'PATCH',
@@ -963,6 +964,14 @@ export async function deleteRouteAddress(addressId: string) {
     `${APP_API_BASE}/route-addresses/${encodeURIComponent(addressId)}`,
     { method: 'DELETE' },
   );
+}
+
+// จัดลำดับคลังที่อยู่ใหม่ภายในกลุ่ม kind เดียว (drag-and-drop) — คืนคลังทั้งหมดที่เรียงใหม่แล้ว
+export async function reorderRouteAddresses(input: { kind: RouteStopKind; orderedIds: string[] }) {
+  return request<RouteAddress[]>(`${APP_API_BASE}/route-addresses/reorder`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function createRouteTemplate(

@@ -28,8 +28,10 @@ import { toast } from 'sonner';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { TimePicker } from '@/components/ui/time-picker';
 import type { Driver } from '@/data/orderTypes';
 import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
 import type { RouteStop, RouteStopKind } from '@/features/dispatch/types';
@@ -38,6 +40,7 @@ import {
   createRouteAddress,
   deleteRouteAddress,
   geocodeAddress,
+  reorderRouteAddresses,
   updateRouteAddress,
   type RouteAddress,
 } from '@/lib/retailApi';
@@ -146,6 +149,7 @@ export function FreeRouteBuilderPreview({
   onAddressCreated,
   onAddressDeleted,
   onAddressUpdated,
+  onAddressesReordered,
   drivers,
   onCreated,
 }: {
@@ -153,6 +157,7 @@ export function FreeRouteBuilderPreview({
   onAddressCreated: (address: RouteAddress) => void;
   onAddressDeleted: (addressId: string) => void;
   onAddressUpdated: (address: RouteAddress) => void;
+  onAddressesReordered: (addresses: RouteAddress[]) => void;
   drivers: Driver[];
   onCreated: () => Promise<void> | void;
 }) {
@@ -162,6 +167,9 @@ export function FreeRouteBuilderPreview({
     dropoff: '',
   });
   const [dropActive, setDropActive] = useState(false);
+  const [libraryDragId, setLibraryDragId] = useState<string | null>(null);
+  const [libraryDragOverId, setLibraryDragOverId] = useState<string | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
   const [addingKind, setAddingKind] = useState<RouteStopKind | null>(null);
   const [newName, setNewName] = useState('');
   const [newAddress, setNewAddress] = useState('');
@@ -339,6 +347,39 @@ export function FreeRouteBuilderPreview({
     addAddress(event.dataTransfer.getData('application/x-movevai-address'));
   };
 
+  // จัดลำดับคลังที่อยู่ใหม่ภายในกลุ่ม kind เดียว: วางการ์ดที่ลากไว้ "ก่อน" การ์ดปลายทาง
+  // อัปเดตหน้าจอทันที (optimistic) แล้วยิง API เก็บลำดับถาวร ถ้าพลาดค่อยดึงกลับ
+  const reorderLibrary = async (kind: RouteStopKind, draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return;
+    const kindIds = savedAddresses
+      .filter((address) => address.kind === kind)
+      .map((address) => address.id);
+    const from = kindIds.indexOf(draggedId);
+    const target = kindIds.indexOf(targetId);
+    if (from < 0 || target < 0) return;
+    const nextIds = [...kindIds];
+    const [moved] = nextIds.splice(from, 1);
+    nextIds.splice(from < target ? target - 1 : target, 0, moved);
+    if (nextIds.every((id, index) => id === kindIds[index])) return;
+
+    const previous = savedAddresses;
+    const byId = new Map(savedAddresses.map((address) => [address.id, address]));
+    const reorderedKind = nextIds.map((id) => byId.get(id)!);
+    const others = savedAddresses.filter((address) => address.kind !== kind);
+    onAddressesReordered([...reorderedKind, ...others]);
+
+    setSavingOrder(true);
+    try {
+      const saved = await reorderRouteAddresses({ kind, orderedIds: nextIds });
+      onAddressesReordered(saved);
+    } catch (error) {
+      onAddressesReordered(previous);
+      toast.error(error instanceof Error ? error.message : 'บันทึกลำดับใหม่ไม่สำเร็จ');
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
   const submit = async () => {
     if (validationError) return toast.error(validationError);
     if (mode === 'immediate' && !selectedDriver) return toast.error('เลือกคนขับก่อนส่งงานทันที');
@@ -379,7 +420,15 @@ export function FreeRouteBuilderPreview({
         <div className="flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold">1. คลังที่อยู่แยกประเภท</div>
-            <div className="text-[10px] text-muted-foreground">ลากทีละจุดหรือกดเพิ่ม</div>
+            <div className="text-[10px] text-muted-foreground">
+              {savingOrder ? (
+                <span className="inline-flex items-center gap-1 text-primary">
+                  <Loader2 className="h-3 w-3 animate-spin" /> กำลังบันทึกลำดับ…
+                </span>
+              ) : (
+                'ลากจัดลำดับในคลัง หรือลากไปเที่ยว/กดเพิ่ม'
+              )}
+            </div>
           </div>
           <Badge variant="secondary">{addresses.length} จุด</Badge>
         </div>
@@ -436,15 +485,61 @@ export function FreeRouteBuilderPreview({
                 {entries.map((entry) => {
                   const used = usedAddressIds.has(entry.id);
                   const editable = savedAddressIds.has(entry.id);
+                  // จัดลำดับได้เฉพาะจุดที่บันทึกในคลัง และตอนไม่ได้ค้นหา (ลำดับที่เห็นตรงกับที่เก็บ)
+                  const reorderable = editable && !search;
+                  const isDragging = libraryDragId === entry.id;
+                  const isDragOver = libraryDragOverId === entry.id && libraryDragId !== entry.id;
                   return (
                     <article
                       key={entry.id}
-                      draggable={!used}
+                      draggable
                       onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = 'copy';
+                        event.dataTransfer.effectAllowed = 'copyMove';
                         event.dataTransfer.setData('application/x-movevai-address', entry.id);
+                        if (reorderable) {
+                          event.dataTransfer.setData(
+                            'application/x-movevai-address-sort',
+                            entry.id,
+                          );
+                          setLibraryDragId(entry.id);
+                        }
                       }}
-                      className={`flex items-start gap-2 rounded-lg border bg-background p-2 ${used ? 'opacity-60' : 'cursor-grab hover:border-primary/40'}`}
+                      onDragEnd={() => {
+                        setLibraryDragId(null);
+                        setLibraryDragOverId(null);
+                      }}
+                      onDragOver={(event) => {
+                        if (
+                          !reorderable ||
+                          !event.dataTransfer.types.includes('application/x-movevai-address-sort')
+                        )
+                          return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = 'move';
+                        if (libraryDragOverId !== entry.id) setLibraryDragOverId(entry.id);
+                      }}
+                      onDragLeave={(event) => {
+                        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                          setLibraryDragOverId((current) =>
+                            current === entry.id ? null : current,
+                          );
+                      }}
+                      onDrop={(event) => {
+                        const draggedId = event.dataTransfer.getData(
+                          'application/x-movevai-address-sort',
+                        );
+                        setLibraryDragOverId(null);
+                        setLibraryDragId(null);
+                        if (!reorderable || !draggedId) return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        void reorderLibrary(kind, draggedId, entry.id);
+                      }}
+                      className={`flex items-start gap-2 rounded-lg border bg-background p-2 transition-colors ${
+                        used ? 'opacity-60' : 'hover:border-primary/40'
+                      } ${isDragging ? 'opacity-40' : ''} ${
+                        isDragOver ? 'border-primary ring-1 ring-primary' : ''
+                      } cursor-grab`}
                     >
                       <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
                       <div className="min-w-0 flex-1">
@@ -988,24 +1083,18 @@ export function FreeRouteBuilderPreview({
             <span className="inline-flex items-center gap-1">
               <CalendarDays className="h-3.5 w-3.5" /> วันที่
             </span>
-            <Input
-              type="date"
-              className="mt-1"
-              min={todayDateKey()}
+            <DatePicker
               value={plannedDate}
-              onChange={(event) => setPlannedDate(event.target.value)}
+              onChange={setPlannedDate}
+              className="mt-1 w-full"
+              disablePastDates
             />
           </label>
           <label className="text-xs font-medium">
             <span className="inline-flex items-center gap-1">
               <Clock3 className="h-3.5 w-3.5" /> เวลา
             </span>
-            <Input
-              type="time"
-              className="mt-1"
-              value={plannedTime}
-              onChange={(event) => setPlannedTime(event.target.value)}
-            />
+            <TimePicker value={plannedTime} onChange={setPlannedTime} className="mt-1 w-full" />
           </label>
         </div>
 

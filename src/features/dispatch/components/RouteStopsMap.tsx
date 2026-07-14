@@ -235,14 +235,16 @@ export function RouteStopsMap({ stops, className }: { stops: RouteStop[]; classN
         })}
       </MapContainer>
       {points.length > 1 && (
-        <div className="pointer-events-none absolute right-1.5 top-1.5 z-[500] rounded-md border bg-background/92 px-2 py-1 text-[10px] shadow-xs backdrop-blur-sm">
+        <div className="pointer-events-none absolute right-3 top-3 z-[500] min-w-[128px] rounded-xl border border-info/20 bg-background/95 px-3 py-2 text-xs shadow-md backdrop-blur-sm">
           {roadStatus === 'ready' && roadRoute?.distanceMeters != null ? (
-            <span className="inline-flex items-center gap-1 font-medium text-info">
-              <Route className="h-3 w-3" /> ตามถนน {formatRouteDistance(roadRoute.distanceMeters)}
+            <span className="inline-flex items-center gap-1.5 font-semibold text-info">
+              <Route className="h-4 w-4 shrink-0" />
+              <span>ตามถนน</span>
+              <strong className="text-sm">{formatRouteDistance(roadRoute.distanceMeters)}</strong>
             </span>
           ) : roadStatus === 'loading' ? (
-            <span className="inline-flex items-center gap-1 text-muted-foreground">
-              <Loader2 className="h-3 w-3 animate-spin" /> กำลังคำนวณเส้นทางถนน…
+            <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> กำลังคำนวณเส้นทางถนน…
             </span>
           ) : (
             <span className="text-warning">แสดงลำดับชั่วคราว · รอเส้นทางถนน</span>

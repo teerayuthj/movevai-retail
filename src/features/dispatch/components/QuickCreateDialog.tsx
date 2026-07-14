@@ -3,8 +3,10 @@ import { ArrowRight, CalendarClock, MapPin, Repeat2, Send, Timer, X, Zap } from 
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { TimePicker } from '@/components/ui/time-picker';
 import type { Driver } from '@/data/orderTypes';
 import { createDispatchJobs } from '@/features/dispatch/dispatchJobs';
 import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
@@ -416,20 +418,18 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
                   <>
                     <label className="text-xs font-medium">
                       วันที่ส่ง
-                      <Input
-                        type="date"
+                      <DatePicker
                         value={plannedDate}
-                        onChange={(event) => setPlannedDate(event.target.value)}
-                        className="mt-1"
+                        onChange={setPlannedDate}
+                        className="mt-1 w-full"
                       />
                     </label>
                     <label className="text-xs font-medium">
                       เวลาออก
-                      <Input
-                        type="time"
+                      <TimePicker
                         value={plannedTime}
-                        onChange={(event) => setPlannedTime(event.target.value)}
-                        className="mt-1"
+                        onChange={setPlannedTime}
+                        className="mt-1 w-full"
                       />
                     </label>
                   </>
