@@ -6,9 +6,11 @@ type Props = {
   onOpenMobileNav: () => void;
   /** กด Enter เพื่อค้นหาเลขออเดอร์กลางก่อน แล้วค่อย fallback ไปค้นหาลูกค้า */
   onSearch: (query: string) => void | Promise<void>;
+  /** ซ่อนช่องค้นหากลางในบางหน้าที่มีช่องค้นหาเฉพาะของตัวเองแล้ว */
+  showSearch?: boolean;
 };
 
-export function Topbar({ onOpenMobileNav, onSearch }: Props) {
+export function Topbar({ onOpenMobileNav, onSearch, showSearch = true }: Props) {
   const [q, setQ] = useState('');
 
   return (
@@ -21,30 +23,32 @@ export function Topbar({ onOpenMobileNav, onSearch }: Props) {
       >
         <Menu className="h-5 w-5" />
       </button>
-      <form
-        className="relative w-full max-w-md sm:w-96"
-        onSubmit={(event) => {
-          event.preventDefault();
-          const query = q.trim();
-          if (!query) return;
-          void onSearch(query);
-          setQ('');
-        }}
-      >
-        <button
-          type="submit"
-          aria-label="ค้นหา"
-          className="absolute left-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+      {showSearch && (
+        <form
+          className="relative w-full max-w-md sm:w-96"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const query = q.trim();
+            if (!query) return;
+            void onSearch(query);
+            setQ('');
+          }}
         >
-          <Search className="h-4 w-4" />
-        </button>
-        <Input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="ค้นหาเลขออเดอร์ ลูกค้า เบอร์โทร... (Enter)"
-          className="pl-9"
-        />
-      </form>
+          <button
+            type="submit"
+            aria-label="ค้นหา"
+            className="absolute left-2 top-1/2 inline-flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+          >
+            <Search className="h-4 w-4" />
+          </button>
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="ค้นหาเลขออเดอร์ ลูกค้า เบอร์โทร... (Enter)"
+            className="pl-9"
+          />
+        </form>
+      )}
       <div className="ml-auto flex items-center gap-2">
         <button className="relative inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-accent">
           <Bell className="h-4 w-4" />

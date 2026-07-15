@@ -132,6 +132,19 @@ export function formatDriverActiveJobs(driver: Pick<Driver, 'id'>, orders: Order
   return `งานที่รับอยู่ ${total} (รอเริ่ม ${waitingToStart} · กำลังส่ง ${inTransit})`;
 }
 
+/**
+ * ป้ายสถานะคนขับใน dropdown เลือกคนขับตอน dispatch — derive จากงานจริง
+ * ให้ตรงกับ badge ฝั่ง messenger (งานรอตรวจ/assigned ถือว่า "ว่าง")
+ */
+export function formatDriverDispatchStatus(driver: Driver, orders: Order[]): string {
+  const status = deriveDriverDisplayStatus(driver, orders);
+  if (status === 'on_delivery') {
+    const { inTransit } = getDriverWorkloadSummary(driver, orders);
+    return `กำลังส่ง ${inTransit || 1} งาน`;
+  }
+  return status === 'available' ? 'ว่าง พร้อมรับงาน' : 'พักงาน';
+}
+
 export function getDeliveryTrackingTab(order: Order): DeliveryTrackingTab | null {
   if (
     order.status === 'assigned' &&

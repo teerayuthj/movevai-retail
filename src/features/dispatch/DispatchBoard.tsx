@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarClock,
   CheckCircle2,
@@ -26,18 +26,13 @@ import { Select } from '@/components/ui/select';
 import type { Order } from '@/data/orderTypes';
 import { statusLabel } from '@/data/orderTypes';
 import { QuickCreateDialog } from '@/features/dispatch/components/QuickCreateDialog';
-import { createTemplateRun } from '@/features/dispatch/dispatchJobs';
-import {
-  loadRouteTemplates,
-  markTemplateGenerated,
-} from '@/features/dispatch/routeTemplateStorage';
 import {
   dispatchJobTypeLabel,
   getDispatchJobTitle,
   getDispatchJobType,
   getPickup,
 } from '@/features/dispatch/types';
-import { getTodayDateKey, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';
 
@@ -95,10 +90,6 @@ function countdown(iso: string | undefined, nowMs: number) {
   return diff >= 0 ? `เหลือ ${minutes} นาที` : `เกิน ${minutes} นาที`;
 }
 
-function todayWeekday() {
-  return new Date(`${getTodayDateKey()}T12:00:00+07:00`).getDay();
-}
-
 export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }: Props) {
   const { orders, drivers, publishUrgentRoute, syncFromBackend } = useRetailStore();
   const [query, setQuery] = useState('');
@@ -112,7 +103,6 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
   const [startPolicy, setStartPolicy] = useState<'manual' | 'accept_starts'>('manual');
   const [dispatching, setDispatching] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
-  const generatedRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowMs(Date.now()), 30_000);
@@ -126,40 +116,6 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
     const orderId = params.get('order');
     if (orderId) setSelectedId(orderId);
   }, [locationSearch]);
-
-  useEffect(() => {
-    if (generatedRef.current || drivers.length === 0) return;
-    generatedRef.current = true;
-    const today = getTodayDateKey();
-    const weekday = todayWeekday();
-    const due = loadRouteTemplates().filter(
-      (template) =>
-        template.active &&
-        template.autoCreate &&
-        template.weekdays.includes(weekday) &&
-        !template.generatedDateKeys?.includes(today),
-    );
-    if (due.length === 0) return;
-    void (async () => {
-      let created = 0;
-      for (const template of due) {
-        try {
-          const driver = drivers.find((item) => item.id === template.defaultDriverId);
-          await createTemplateRun(template, driver);
-          markTemplateGenerated(template.id, today);
-          created += 1;
-        } catch (error) {
-          toast.error(
-            `สร้างรอบ ${template.name} ไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
-      if (created > 0) {
-        await syncFromBackend();
-        toast.success(`สร้าง Route Run ประจำวันนี้ ${created} รอบเข้า Planning แล้ว`);
-      }
-    })();
-  }, [drivers, syncFromBackend]);
 
   const workflowOrders = useMemo(
     () =>
@@ -621,6 +577,7 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
       <QuickCreateDialog
         open={quickCreateOpen}
         drivers={drivers}
+        orders={orders}
         initialTemplateId={initialTemplateId}
         onClose={() => setQuickCreateOpen(false)}
         onCreated={syncFromBackend}

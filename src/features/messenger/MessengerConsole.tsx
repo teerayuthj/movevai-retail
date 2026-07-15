@@ -68,7 +68,6 @@ import {
   type MessengerSession,
 } from '@/lib/retailApi';
 import { MessengerLogin } from './components/MessengerLogin';
-import { TestRouteDialog } from './components/TestRouteDialog';
 import { useMessengerTracking } from './hooks/useMessengerTracking';
 import { useMessengerLocation } from './hooks/useMessengerLocation';
 import { navigationUrl } from './geocode';
@@ -295,7 +294,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     refreshMessengerJobs,
   } = useRetailStore();
   const [closeTargetId, setCloseTargetId] = useState<string | null>(null);
-  const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [assignedView, setAssignedView] = useState<'list' | 'map'>('list');
   const [deliverySheetExpanded, setDeliverySheetExpanded] = useState(false);
@@ -326,7 +324,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
   const resetSessionUi = useCallback(() => {
     setCloseTargetId(null);
-    setTestDialogOpen(false);
     setProfileOpen(false);
     setAssignedView('list');
     setDeliverySheetExpanded(false);
@@ -340,7 +337,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     (tab: MessengerTab) => {
       setProfileOpen(false);
       setCloseTargetId(null);
-      setTestDialogOpen(false);
       setTab(tab);
     },
     [setTab],
@@ -628,7 +624,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const showTrackingMap = activeTab === 'in_transit' && counts.in_transit > 0;
   // Leaflet ใช้ transform/GPU layers ซึ่งบน iOS Safari สามารถทะลุ fixed modal และ video ได้
   // เมื่อเปิด overlay ต้อง unmount map จริง ไม่ใช่แค่เพิ่ม z-index หรือซ่อนด้วย opacity
-  const suspendMap = closingJobOpen || testDialogOpen || profileOpen;
+  const suspendMap = closingJobOpen || profileOpen;
   // ปัดซ้าย/ขวาเปลี่ยนแท็บได้เฉพาะตอนดูรายการ (ปิดตอนอยู่บนแผนที่ ไม่งั้นชนกับ pan/drag ของ Leaflet
   // หรือตอนมี dialog/sheet เปิดทับอยู่)
   const swipeTabEnabled = Boolean(activeTab) && !showAssignedMap && !showTrackingMap && !suspendMap;
@@ -749,8 +745,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     setMapGroupKey(groupKeyOf(order));
     setAssignedView('map');
   }, []);
-  const activeRouteId = myJobs.find((order) => order.status === 'assigned' && order.deliveryRoute)
-    ?.deliveryRoute?.id;
   const mapOrder = mapOrderId ? (myJobs.find((order) => order.id === mapOrderId) ?? null) : null;
 
   if (!authenticated) {
@@ -796,20 +790,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 หยุดทดสอบ
               </Button>
             )}
-          </div>
-        )}
-        {/* Test Route: เครื่องมือ dev/QA ทดสอบ GPS โดยไม่ต้องมีงานลูกค้า — ซ่อนบน production build */}
-        {import.meta.env.DEV && !tracking.session && !activeRouteId && (
-          <div className="border-b bg-background px-3 py-2">
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full border-dashed text-muted-foreground"
-              onClick={() => setTestDialogOpen(true)}
-            >
-              <MapIcon className="h-3.5 w-3.5" />
-              เริ่ม Test Route (ทดสอบ GPS)
-            </Button>
           </div>
         )}
         {messenger && (
@@ -1022,6 +1002,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                         )}
                         <JobCard
                           order={order}
+                          relatedOrders={myJobs}
                           nowMs={nowMs}
                           role={getMessengerOrderRole(order, messengerCode) ?? 'main'}
                           starting={startingJobId === order.id}
@@ -1053,17 +1034,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         </div>
 
         <MessengerTabBar activeTab={activeTab} counts={counts} onSelect={handleSelectTab} />
-
-        {import.meta.env.DEV && (
-          <TestRouteDialog
-            open={testDialogOpen}
-            onCancel={() => setTestDialogOpen(false)}
-            onConfirm={(label) => {
-              setTestDialogOpen(false);
-              void tracking.startTest(label).then(() => setTab('in_transit'));
-            }}
-          />
-        )}
 
         {messenger && profileOpen && (
           <MessengerProfileSheet

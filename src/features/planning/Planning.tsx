@@ -470,7 +470,7 @@ export function PlanningPage({
       const stopCount = routeAction.route.stops.length;
       toast.success(
         routeAction.type === 'cancel'
-          ? `ดึง Route ${routeAction.route.code} (${stopCount} จุด) กลับเข้า Planning แล้ว — แจ้งคนขับเรียบร้อย`
+          ? `ดึง Route ${routeAction.route.code} (${stopCount} จุด) กลับมาจัดการแล้ว — แจ้งคนขับเรียบร้อย`
           : `เปลี่ยนคนขับ Route ${routeAction.route.code} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
       );
       setRouteAction(null);
@@ -958,12 +958,12 @@ export function PlanningPage({
       {routeAction?.type === 'cancel' && (
         <ResolutionDialog
           open
-          title={`ดึง Route ${routeAction.route.code} กลับเข้า Planning`}
-          description={`ดึงทั้ง Route ${routeAction.route.stops.length} จุดกลับเข้า Planning โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
+          title={`ดึง Route ${routeAction.route.code} กลับมาจัดการ`}
+          description={`นำทั้ง Route ${routeAction.route.stops.length} จุดกลับมาจัดการ โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={planningCancelReasons}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
-          confirmLabel="ยืนยันดึงกลับเข้า Planning"
+          confirmLabel="ยืนยันดึงกลับมาจัดการ"
           confirmVariant="destructive"
           onCancel={() => setRouteAction(null)}
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}

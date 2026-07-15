@@ -305,8 +305,10 @@ export type OrderMetadata = {
   import?: OrderImportMeta;
   dispatch?: {
     jobType: 'order' | 'document' | 'parcel' | 'other';
-    createdVia: 'intake' | 'quick_create' | 'route_template';
+    createdVia: 'intake' | 'quick_create' | 'route_template' | 'ad_hoc_route';
     title?: string;
+    /** ชื่อเสริมที่ Admin ตั้งใจให้แสดงบน Card ของ Messenger; เว้นว่าง = ไม่แสดงหัวเรื่อง */
+    messengerTitle?: string;
     pickup?: {
       name: string;
       phone?: string;
@@ -315,6 +317,26 @@ export type OrderMetadata = {
     routeTemplateId?: string;
     routeTemplateName?: string;
     routeRunKey?: string;
+    routeTemplateRunId?: string;
+    adHocRouteRunId?: string;
+    routeGroup?: string;
+    /** หมายเหตุที่ Dispatch ใส่ให้ Messenger เห็นตลอดทั้งเที่ยว */
+    routeNote?: string;
+    routeLeg?: 'pickup' | 'dropoff';
+    stopId?: string;
+    stopIndex?: number;
+    stopCount?: number;
+    contactName?: string;
+    geo?: { lat: number; lng: number };
+    deliverTo?: {
+      stopId?: string;
+      name?: string;
+    };
+    pickupFrom?: Array<{
+      stopId?: string;
+      name: string;
+      address?: string;
+    }>;
     sla?: {
       requiresAcceptance: boolean;
       acceptWithinMinutes: number;
