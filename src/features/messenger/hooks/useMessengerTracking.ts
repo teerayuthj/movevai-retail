@@ -10,10 +10,10 @@ import {
 } from '@/lib/retailApi';
 import { isPlausibleThaiCoord } from '../geocode';
 import { useMessengerLocation, type MessengerLocation } from './useMessengerLocation';
+import { getMessengerDeviceId } from '../messengerDevice';
 
 const QUEUE_KEY = 'movevai:messenger-location-queue';
 const SESSION_KEY = 'movevai:messenger-tracking-session';
-const DEVICE_KEY = 'movevai:messenger-device-id';
 // type ว่าง = session เก่าก่อนมี Test Route → ถือเป็น delivery
 type StoredSession = {
   id: string;
@@ -22,15 +22,6 @@ type StoredSession = {
   label?: string;
   isOwner: boolean;
 };
-
-function deviceId() {
-  let id = localStorage.getItem(DEVICE_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(DEVICE_KEY, id);
-  }
-  return id;
-}
 
 function readQueue(): MessengerLocationPayload[] {
   try {
@@ -70,7 +61,7 @@ export function useMessengerTracking(enabled = true) {
       if (!queue.length) return;
       flushing.current = true;
       try {
-        await sendMessengerLocations(sessionId, deviceId(), queue.slice(0, 50));
+        await sendMessengerLocations(sessionId, getMessengerDeviceId(), queue.slice(0, 50));
         saveQueue(queue.slice(50));
       } finally {
         flushing.current = false;
@@ -131,7 +122,7 @@ export function useMessengerTracking(enabled = true) {
   const syncActiveSession = useCallback(async () => {
     if (!enabled) return;
     try {
-      const active = await fetchActiveMessengerTracking(deviceId());
+      const active = await fetchActiveMessengerTracking(getMessengerDeviceId());
       setSyncError('');
       if (!active) {
         localStorage.removeItem(SESSION_KEY);
@@ -208,7 +199,7 @@ export function useMessengerTracking(enabled = true) {
     isOwner: session?.isOwner ?? false,
     activeSessionChecked,
     start: async (routeId: string, initialLocation?: MessengerLocation | null) => {
-      const started = await startMessengerRoute(routeId, deviceId());
+      const started = await startMessengerRoute(routeId, getMessengerDeviceId());
       const value: StoredSession = {
         id: started.id,
         type: 'delivery',
@@ -224,7 +215,7 @@ export function useMessengerTracking(enabled = true) {
     },
     // Test Route: เริ่มบันทึกเส้นทางโดยไม่ผูกกับงานลูกค้า (ทดสอบ GPS ตอนไปกินข้าว ฯลฯ)
     startTest: async (label?: string) => {
-      const started = await startMessengerTestRoute(deviceId(), label);
+      const started = await startMessengerTestRoute(getMessengerDeviceId(), label);
       const value: StoredSession = {
         id: started.id,
         type: 'test',

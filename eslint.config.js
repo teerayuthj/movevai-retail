@@ -7,7 +7,17 @@ import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
 export default tseslint.config(
-  { ignores: ['dist', 'dev-dist', 'node_modules', 'build', 'coverage'] },
+  {
+    ignores: [
+      'dist',
+      'dev-dist',
+      'node_modules',
+      'build',
+      '**/build/**',
+      '**/DerivedData/**',
+      'coverage',
+    ],
+  },
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

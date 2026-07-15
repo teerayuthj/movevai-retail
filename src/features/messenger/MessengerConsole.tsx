@@ -70,6 +70,7 @@ import {
 import { MessengerLogin } from './components/MessengerLogin';
 import { useMessengerTracking } from './hooks/useMessengerTracking';
 import { useMessengerLocation } from './hooks/useMessengerLocation';
+import { useMessengerPresence } from './hooks/useMessengerPresence';
 import { navigationUrl } from './geocode';
 import { Badge } from '@/components/ui/badge';
 
@@ -310,6 +311,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const { activeTab, mapOrderId, setTab, openOrderMap, backToPending } = useMessengerTab();
   const [messengerCode, setMessengerCode] = useState(resolveMessengerCode);
   const tracking = useMessengerTracking(authenticated);
+  useMessengerPresence(authenticated);
   // ถ้า backend เริ่ม tracking session ไม่สำเร็จ ยังอ่าน GPS บนอุปกรณ์เพื่อแสดงแผนที่
   // และแนบพิกัดจริงตอนส่งมอบได้ โดยไม่สร้างตำแหน่งจำลอง
   // เปิดทั้งแท็บกำลังส่งและแผนที่ในแท็บงานใหม่ — สองที่นี้ใช้ location source ร่วมกัน

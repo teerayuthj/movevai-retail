@@ -153,6 +153,21 @@ export function hasMessengerSession() {
   return Boolean(localStorage.getItem(MESSENGER_TOKEN_KEY));
 }
 
+export type MessengerPresenceUpdate = {
+  deviceId: string;
+  platform: 'web' | 'ios' | 'android';
+  appState: 'foreground' | 'background';
+  locationPermission?: 'granted' | 'denied' | 'prompt' | 'unavailable' | 'error';
+  location?: { lat: number; lng: number; accuracy: number; recordedAt: string };
+};
+
+export function updateMessengerPresence(input: MessengerPresenceUpdate) {
+  return request<{ ok: boolean; lastHeartbeatAt: string; locationAt: string | null }>(
+    `${MESSENGER_API_BASE}/presence`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+}
+
 export async function logoutMessenger() {
   try {
     await request<{ ok: boolean }>(`${MESSENGER_API_BASE}/auth/logout`, { method: 'POST' });
