@@ -56,6 +56,7 @@ type BuilderStop = RouteStop & {
 };
 
 type DispatchMode = 'planning' | 'immediate';
+const ACCEPT_WITHIN_MINUTES_OPTIONS = [5, 10, 15, 20, 30];
 
 function seedStops(): BuilderStop[] {
   return [];
@@ -184,7 +185,10 @@ export function FreeRouteBuilderPreview({
   const [plannedDate, setPlannedDate] = useState(todayDateKey());
   const [plannedTime, setPlannedTime] = useState('');
   const [driverId, setDriverId] = useState('');
-  const [mode, setMode] = useState<DispatchMode>('planning');
+  const [messengerTitle, setMessengerTitle] = useState('');
+  const [note, setNote] = useState('');
+  const [mode, setMode] = useState<DispatchMode>('immediate');
+  const [acceptWithinMinutes, setAcceptWithinMinutes] = useState(15);
   const [submitting, setSubmitting] = useState(false);
 
   const addresses = useMemo(() => [...savedAddressBookEntries(savedAddresses)], [savedAddresses]);
@@ -386,12 +390,14 @@ export function FreeRouteBuilderPreview({
       const last = stops[stops.length - 1]?.name ?? 'จุดส่ง';
       const result = await createAdHocRouteRun({
         name: `เที่ยว ${first} → ${last}`,
+        messengerTitle: messengerTitle.trim() || undefined,
         stops: routeStops.map(({ sourceLabel: _sourceLabel, ...stop }) => stop),
         plannedDate,
         plannedTime: plannedTime || undefined,
         driverId: driverId || undefined,
         dispatchMode: mode,
-        acceptWithinMinutes: 15,
+        note: note.trim() || undefined,
+        acceptWithinMinutes,
         startWithinMinutes: 10,
         startPolicy: 'manual',
       });
@@ -1075,36 +1081,112 @@ export function FreeRouteBuilderPreview({
           </div>
         )}
 
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <label className="text-xs font-medium">
-            <span className="inline-flex items-center gap-1">
-              <CalendarDays className="h-3.5 w-3.5" /> วันที่
-            </span>
-            <DatePicker
-              value={plannedDate}
-              onChange={setPlannedDate}
-              className="mt-1 w-full"
-              disablePastDates
-            />
-          </label>
-          <label className="text-xs font-medium">
-            <span className="inline-flex items-center gap-1">
-              <Clock3 className="h-3.5 w-3.5" /> เวลา
-            </span>
-            <TimePicker value={plannedTime} onChange={setPlannedTime} className="mt-1 w-full" />
-          </label>
-        </div>
+        <label className="mt-4 block text-xs font-medium">
+          ชื่อที่แสดงบน Messenger{' '}
+          <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
+          <Input
+            value={messengerTitle}
+            onChange={(event) => setMessengerTitle(event.target.value)}
+            className="mt-1 bg-background"
+            placeholder="เช่น รอบเอกสารสุขุมวิทเช้า"
+            maxLength={50}
+          />
+          <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+            เว้นว่างเพื่อไม่แสดงหัวเรื่องบน Card · ไม่ต้องใส่ชื่อจุดรับและจุดส่งซ้ำ
+          </span>
+        </label>
+
+        <section className="mt-4 rounded-xl border bg-muted/20 p-3">
+          <div className="text-xs font-semibold">รูปแบบการส่งงาน</div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            <button
+              type="button"
+              data-testid="dispatch-immediate"
+              onClick={() => setMode('immediate')}
+              className={`rounded-xl border p-3 text-left transition-colors ${mode === 'immediate' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
+            >
+              <div className="flex items-center gap-1.5 text-sm font-semibold">
+                <Send className="h-3.5 w-3.5 text-warning" /> ส่งให้ messenger ทันที
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                งานเด้งเข้ามือถือเลย · ต้องกดรับภายใน {acceptWithinMinutes} นาที
+              </div>
+            </button>
+            <button
+              type="button"
+              data-testid="dispatch-planning"
+              onClick={() => setMode('planning')}
+              className={`rounded-xl border p-3 text-left transition-colors ${mode === 'planning' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
+            >
+              <div className="flex items-center gap-1.5 text-sm font-semibold">
+                <CalendarDays className="h-3.5 w-3.5 text-info" /> เข้า Planning ก่อน
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                ยังไม่แจ้งคนขับ · ไปจัดรวมกับรอบอื่นเอง
+              </div>
+            </button>
+          </div>
+        </section>
+
+        {mode === 'immediate' && (
+          <section className="mt-3 rounded-xl border border-warning/25 bg-warning/5 p-3">
+            <label className="block text-xs font-medium">
+              Messenger ต้องรับงานภายใน
+              <Select
+                className="mt-1 bg-background"
+                value={acceptWithinMinutes}
+                onChange={(event) => setAcceptWithinMinutes(Number(event.target.value))}
+              >
+                {ACCEPT_WITHIN_MINUTES_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {minutes} นาที
+                  </option>
+                ))}
+              </Select>
+              <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                หากไม่รับภายในเวลาที่กำหนด ระบบจะแสดงว่างานเกินกำหนดใน Messenger
+              </span>
+            </label>
+          </section>
+        )}
+
+        {mode === 'planning' && (
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="text-xs font-medium">
+              <span className="inline-flex items-center gap-1">
+                <CalendarDays className="h-3.5 w-3.5" /> วันที่ส่ง
+              </span>
+              <DatePicker
+                value={plannedDate}
+                onChange={setPlannedDate}
+                className="mt-1 w-full"
+                disablePastDates
+              />
+            </label>
+            <label className="text-xs font-medium">
+              <span className="inline-flex items-center gap-1">
+                <Clock3 className="h-3.5 w-3.5" /> เวลาออก
+              </span>
+              <TimePicker value={plannedTime} onChange={setPlannedTime} className="mt-1 w-full" />
+            </label>
+          </div>
+        )}
 
         <label className="mt-3 block text-xs font-medium">
           <span className="inline-flex items-center gap-1">
-            <UserRound className="h-3.5 w-3.5" /> คนขับ (เปลี่ยนได้)
+            <UserRound className="h-3.5 w-3.5" />{' '}
+            {mode === 'immediate' ? 'คนขับ (จำเป็น)' : 'คนขับ (เลือกภายหลังได้)'}
           </span>
           <Select
             className="mt-1"
             value={driverId}
             onChange={(event) => setDriverId(event.target.value)}
           >
-            <option value="">— ยังไม่เลือก (จัดตอน Planning) —</option>
+            <option value="">
+              {mode === 'immediate'
+                ? '— เลือกคนขับเพื่อส่งงาน —'
+                : '— ยังไม่เลือก (จัดตอน Planning) —'}
+            </option>
             {availableDrivers.map((driver) => (
               <option key={driver.id} value={driver.id}>
                 {driver.name} · {formatDriverDispatchStatus(driver, orders)}
@@ -1131,38 +1213,23 @@ export function FreeRouteBuilderPreview({
           </div>
         ) : (
           <div className="mt-2 flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-[11px] text-muted-foreground">
-            <UserRound className="h-4 w-4" /> เลือกคนขับเพื่อดูรูป โปรไฟล์ รถ และสถานะงาน
+            <UserRound className="h-4 w-4" />{' '}
+            {mode === 'immediate'
+              ? 'เลือกคนขับก่อนจึงจะส่งงานได้'
+              : 'เลือกคนขับเพื่อดูรูป โปรไฟล์ รถ และสถานะงาน'}
           </div>
         )}
 
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <button
-            type="button"
-            data-testid="dispatch-immediate"
-            onClick={() => setMode('immediate')}
-            className={`rounded-xl border p-3 text-left transition-colors ${mode === 'immediate' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
-          >
-            <div className="flex items-center gap-1.5 text-sm font-semibold">
-              <Send className="h-3.5 w-3.5 text-warning" /> ส่งให้ messenger ทันที
-            </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              งานเด้งเข้ามือถือเลย · ต้องกดรับใน 15 นาที
-            </div>
-          </button>
-          <button
-            type="button"
-            data-testid="dispatch-planning"
-            onClick={() => setMode('planning')}
-            className={`rounded-xl border p-3 text-left transition-colors ${mode === 'planning' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
-          >
-            <div className="flex items-center gap-1.5 text-sm font-semibold">
-              <CalendarDays className="h-3.5 w-3.5 text-info" /> เข้า Planning ก่อน
-            </div>
-            <div className="mt-1 text-[11px] text-muted-foreground">
-              ยังไม่แจ้งคนขับ · ไปจัดรวมกับรอบอื่นเอง
-            </div>
-          </button>
-        </div>
+        <label className="mt-3 block text-xs font-medium">
+          หมายเหตุถึง Messenger <span className="font-normal text-muted-foreground">(ถ้ามี)</span>
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            className="mt-1 min-h-20 w-full rounded-md border bg-background px-3 py-2 text-sm shadow-xs outline-none transition-[color,box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            placeholder="เช่น ติดต่อคุณสมชายก่อนถึงหน้างาน หรือฝากบัตรผ่านกับ รปภ."
+            maxLength={1000}
+          />
+        </label>
 
         <Button
           data-testid="create-route-run"

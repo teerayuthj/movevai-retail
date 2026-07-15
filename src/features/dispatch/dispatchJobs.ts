@@ -57,6 +57,7 @@ function buildDispatchOrder(
         jobType: input.jobType,
         createdVia: input.mode === 'template' ? 'route_template' : 'quick_create',
         title: input.title.trim(),
+        messengerTitle: input.messengerTitle?.trim() || undefined,
         pickup: {
           name: input.pickupName.trim(),
           phone: input.pickupPhone?.trim() || undefined,

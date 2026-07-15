@@ -143,6 +143,7 @@ export async function createRouteTemplateRun(
     plannedDate?: string;
     driverId?: string;
     dispatchMode?: 'planning' | 'immediate';
+    messengerTitle?: string;
     note?: string;
   },
 ) {
@@ -154,6 +155,7 @@ export async function createRouteTemplateRun(
 
 export async function createAdHocRouteRun(input: {
   name: string;
+  messengerTitle?: string;
   stops: RouteTemplate['stops'];
   plannedDate: string;
   plannedTime?: string;

@@ -51,6 +51,7 @@ export function QuickCreateDialog({
   const [selectedPickupStopIds, setSelectedPickupStopIds] = useState<string[]>([]);
   const [jobType, setJobType] = useState<Exclude<DispatchJobType, 'order'>>('document');
   const [title, setTitle] = useState('ส่งเอกสาร');
+  const [messengerTitle, setMessengerTitle] = useState('');
   const [pickupName, setPickupName] = useState('');
   const [pickupPhone, setPickupPhone] = useState('');
   const [pickupAddress, setPickupAddress] = useState('');
@@ -104,6 +105,7 @@ export function QuickCreateDialog({
     if (!selectedTemplate) return;
     setSelectedPickupStopIds([]);
     setTitle(selectedTemplate.name);
+    setMessengerTitle('');
     setJobType(selectedTemplate.jobType);
     setDriverId(selectedTemplate.defaultDriverId ?? '');
     setPlannedTime(selectedTemplate.plannedTime ?? '');
@@ -134,6 +136,8 @@ export function QuickCreateDialog({
           plannedDate,
           driverId: driverId || undefined,
           dispatchMode: 'planning',
+          messengerTitle: messengerTitle.trim() || undefined,
+          note: note.trim() || undefined,
         });
         await onCreated();
         toast.success(`สร้าง Route Run ของ ${selectedTemplate.name} เข้า Planning แล้ว`);
@@ -143,6 +147,7 @@ export function QuickCreateDialog({
       await createDispatchJobs({
         mode,
         title,
+        messengerTitle: messengerTitle.trim() || undefined,
         jobType,
         pickupName,
         pickupPhone,
@@ -278,14 +283,30 @@ export function QuickCreateDialog({
                     ))}
                   </Select>
                 </label>
-                <label className="text-xs font-medium">
-                  ชื่องาน
+                {mode === 'single' && (
+                  <label className="text-xs font-medium">
+                    ชื่องานภายใน
+                    <Input
+                      value={title}
+                      onChange={(event) => setTitle(event.target.value)}
+                      className="mt-1"
+                      placeholder="เช่น รับเอกสารสัญญา"
+                    />
+                  </label>
+                )}
+                <label className="text-xs font-medium sm:col-span-2">
+                  ชื่อที่แสดงบน Messenger{' '}
+                  <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
                   <Input
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
+                    value={messengerTitle}
+                    onChange={(event) => setMessengerTitle(event.target.value)}
                     className="mt-1"
-                    placeholder="เช่น รับเอกสารสัญญา"
+                    placeholder="เช่น รอบเอกสารสุขุมวิทเช้า"
+                    maxLength={50}
                   />
+                  <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                    เว้นว่างเพื่อไม่แสดงหัวเรื่องบน Card
+                  </span>
                 </label>
                 {mode === 'single' && (
                   <>

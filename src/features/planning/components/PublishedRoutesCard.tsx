@@ -172,7 +172,7 @@ export function PublishedRoutesCard({
                   {formatPulledBackAt(route.cancelledAt) && (
                     <div className="mt-1 flex items-center gap-1 text-muted-foreground">
                       <Clock className="h-3 w-3 shrink-0" />
-                      ดึงกลับเข้า Planning เมื่อ {formatPulledBackAt(route.cancelledAt)}
+                      ดึงกลับมาจัดการเมื่อ {formatPulledBackAt(route.cancelledAt)}
                     </div>
                   )}
                   <div className="mt-1 text-muted-foreground">
@@ -226,7 +226,7 @@ export function PublishedRoutesCard({
                         className="border-destructive/40 text-destructive hover:bg-destructive/5"
                         onClick={() => onCancel(route)}
                       >
-                        <Ban className="h-3.5 w-3.5" /> ดึงกลับเข้า Planning
+                        <Ban className="h-3.5 w-3.5" /> ดึงกลับมาจัดการ
                       </Button>
                     </>
                   )}

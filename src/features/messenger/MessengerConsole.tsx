@@ -1002,6 +1002,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                         )}
                         <JobCard
                           order={order}
+                          relatedOrders={myJobs}
                           nowMs={nowMs}
                           role={getMessengerOrderRole(order, messengerCode) ?? 'main'}
                           starting={startingJobId === order.id}

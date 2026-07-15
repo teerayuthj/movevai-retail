@@ -43,6 +43,7 @@ export type RouteTemplate = {
 export type CreateDispatchJobInput = {
   mode: 'single' | 'template';
   title: string;
+  messengerTitle?: string;
   jobType: Exclude<DispatchJobType, 'order'>;
   pickupName: string;
   pickupPhone?: string;
