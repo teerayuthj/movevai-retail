@@ -178,7 +178,8 @@ export function RouteStopsMap({ stops, className }: { stops: RouteStop[]; classN
       <MapContainer
         center={[BANGKOK_CENTER.lat, BANGKOK_CENTER.lng]}
         zoom={11}
-        scrollWheelZoom={false}
+        scrollWheelZoom
+        zoomControl
         dragging
         className="h-full w-full"
         style={{ background: 'hsl(var(--muted))' }}
@@ -258,6 +259,9 @@ export function RouteStopsMap({ stops, className }: { stops: RouteStop[]; classN
             : `${missing} จุดค้นหาพิกัดไม่พบ — ไม่แสดงบนแผนที่`}
         </div>
       )}
+      <div className="pointer-events-none absolute bottom-1.5 right-1.5 z-[500] rounded-md bg-background/90 px-2 py-1 text-[10px] text-muted-foreground shadow-xs">
+        วางเมาส์บนแผนที่แล้วหมุนล้อเพื่อซูม
+      </div>
     </div>
   );
 }

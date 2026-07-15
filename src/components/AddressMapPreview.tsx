@@ -119,7 +119,8 @@ export function AddressMapPreview({ address, geo }: { address: string; geo?: Lat
       <MapContainer
         center={center}
         zoom={state.status === 'found' ? 15 : 11}
-        scrollWheelZoom={false}
+        scrollWheelZoom
+        zoomControl
         dragging
         className="h-full w-full"
         style={{ background: 'hsl(var(--muted))' }}

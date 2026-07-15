@@ -446,8 +446,9 @@ export function FleetMap({ focusOrder }: FleetMapProps) {
         <MapContainer
           center={[BANGKOK_CENTER.lat, BANGKOK_CENTER.lng]}
           zoom={11}
+          scrollWheelZoom
           className="h-full w-full"
-          zoomControl={false}
+          zoomControl
         >
           <BaseTileLayer />
           {messengers.map((messenger) => {

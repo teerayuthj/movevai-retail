@@ -496,9 +496,13 @@ function SignaturePad({
 
 type CloseStep = 'photo' | 'signature' | 'review';
 
-const CLOSE_STEPS: { key: CloseStep; label: string }[] = [
+const DELIVERY_CLOSE_STEPS: { key: CloseStep; label: string }[] = [
   { key: 'photo', label: 'ถ่ายรูป' },
   { key: 'signature', label: 'เซ็นรับ' },
+  { key: 'review', label: 'ตรวจสอบ' },
+];
+const PICKUP_CLOSE_STEPS: { key: CloseStep; label: string }[] = [
+  { key: 'photo', label: 'ถ่ายรูป' },
   { key: 'review', label: 'ตรวจสอบ' },
 ];
 
@@ -589,6 +593,8 @@ export function MessengerCloseJobDialog({
   const libraryInputRef = useRef<HTMLInputElement>(null);
   const initializedOrderIdRef = useRef<string | null>(null);
   const [hydratedOrderId, setHydratedOrderId] = useState<string | null>(null);
+  const isPickupCheckpoint = order?.metadataJson?.dispatch?.routeLeg === 'pickup';
+  const closeSteps = isPickupCheckpoint ? PICKUP_CLOSE_STEPS : DELIVERY_CLOSE_STEPS;
 
   useEffect(() => {
     if (!open) {
@@ -619,7 +625,7 @@ export function MessengerCloseJobDialog({
 
     setPhotos(nextPhotos);
     setSignatureDataUrl(nextSignatureDataUrl);
-    setStep(nextStep);
+    setStep(isPickupCheckpoint && nextStep === 'signature' ? 'review' : nextStep);
     // อย่าเด้งเข้าหน้ากล้องเอง — บน iOS/Capacitor (WKWebView) getUserMedia
     // ใช้ไม่ได้แล้วจะเจอจอดำ ให้ผู้ใช้เลือกเองว่าจะเปิดกล้องหรือเลือกจากคลังภาพ
     setCameraOpen(false);
@@ -627,7 +633,7 @@ export function MessengerCloseJobDialog({
     setSubmitError(null);
     setPhotoError(null);
     setHydratedOrderId(order.id);
-  }, [editorRole, open, order]);
+  }, [editorRole, isPickupCheckpoint, open, order]);
 
   useEffect(() => {
     if (!open || !order || hydratedOrderId !== order.id) return;
@@ -651,19 +657,19 @@ export function MessengerCloseJobDialog({
   useEffect(() => {
     if (!open) return;
 
-    const target = step === 'signature' ? 'landscape' : 'portrait';
+    const target = step === 'signature' && !isPickupCheckpoint ? 'landscape' : 'portrait';
     void lockScreenOrientation(target).catch((error) => {
       console.warn(`[MessengerCloseJobDialog] lock ${target} orientation skipped:`, error);
     });
 
     return () => {
-      if (step === 'signature') {
+      if (step === 'signature' && !isPickupCheckpoint) {
         void restorePortraitOrientation().catch((error) => {
           console.warn('[MessengerCloseJobDialog] restore portrait skipped:', error);
         });
       }
     };
-  }, [open, step]);
+  }, [isPickupCheckpoint, open, step]);
 
   const signatureCaptured = !!signatureDataUrl;
   const isRevision = order?.status === 'pending_confirmation';
@@ -674,16 +680,16 @@ export function MessengerCloseJobDialog({
 
   const missing = useMemo(() => {
     const items: string[] = [];
-    if (photos.length < 1) items.push('ถ่ายรูปส่งมอบ');
-    if (!signatureCaptured) items.push('ลายเซ็นผู้รับ');
+    if (photos.length < 1) items.push(isPickupCheckpoint ? 'ถ่ายรูปรับของ' : 'ถ่ายรูปส่งมอบ');
+    if (!isPickupCheckpoint && !signatureCaptured) items.push('ลายเซ็นผู้รับ');
     return items;
-  }, [photos.length, signatureCaptured]);
+  }, [isPickupCheckpoint, photos.length, signatureCaptured]);
 
   if (!open || !order) return null;
 
   const canSubmit = missing.length === 0 && revisionAllowed;
-  const currentStepIndex = CLOSE_STEPS.findIndex((item) => item.key === step);
-  const signatureMode = step === 'signature';
+  const currentStepIndex = closeSteps.findIndex((item) => item.key === step);
+  const signatureMode = step === 'signature' && !isPickupCheckpoint;
 
   const handleSubmit = async () => {
     if (!canSubmit) return;
@@ -693,8 +699,8 @@ export function MessengerCloseJobDialog({
       await onSubmit({
         photoCount: photos.length,
         photos,
-        signatureCaptured,
-        signatureDataUrl: signatureDataUrl ?? undefined,
+        signatureCaptured: isPickupCheckpoint ? false : signatureCaptured,
+        signatureDataUrl: isPickupCheckpoint ? undefined : (signatureDataUrl ?? undefined),
         otpVerified: false,
         editorRole,
         location: location
@@ -782,7 +788,9 @@ export function MessengerCloseJobDialog({
                 ? 'แก้ไขหลักฐาน'
                 : editorRole === 'admin'
                   ? 'บันทึกหลักฐาน (admin)'
-                  : 'ยืนยันส่งมอบ'}
+                  : isPickupCheckpoint
+                    ? 'ยืนยันรับของ'
+                    : 'ยืนยันส่งมอบ'}
             </h2>
             <p
               className={cn(
@@ -816,8 +824,8 @@ export function MessengerCloseJobDialog({
               แก้ไข {editorLabel}: {revisionCount}/{revisionLimit}
             </div>
           )}
-          <div className="grid grid-cols-3 gap-2">
-            {CLOSE_STEPS.map((item, index) => {
+          <div className={cn('grid gap-2', isPickupCheckpoint ? 'grid-cols-2' : 'grid-cols-3')}>
+            {closeSteps.map((item, index) => {
               const done =
                 item.key === 'photo'
                   ? photos.length > 0
@@ -828,7 +836,9 @@ export function MessengerCloseJobDialog({
               const canNavigate =
                 item.key === 'photo' ||
                 (item.key === 'signature' && photos.length > 0) ||
-                (item.key === 'review' && photos.length > 0 && signatureCaptured);
+                (item.key === 'review' &&
+                  photos.length > 0 &&
+                  (isPickupCheckpoint || signatureCaptured));
 
               return (
                 <button
@@ -882,15 +892,16 @@ export function MessengerCloseJobDialog({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-sm font-semibold">
                     <Camera className="h-4 w-4 text-primary" />
-                    ถ่ายรูปส่งมอบ
+                    {isPickupCheckpoint ? 'ถ่ายรูปรับของ' : 'ถ่ายรูปส่งมอบ'}
                   </div>
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {photos.length}/{MAX_PHOTOS} รูป
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ให้ messenger ถ่ายพัสดุและจุดส่งมอบก่อนส่งมือถือให้ลูกค้าเซ็น (สูงสุด {MAX_PHOTOS}{' '}
-                  รูป)
+                  {isPickupCheckpoint
+                    ? `ถ่ายรูปของที่รับและจุดรับให้ชัดเจน (สูงสุด ${MAX_PHOTOS} รูป)`
+                    : `ให้ messenger ถ่ายพัสดุและจุดส่งมอบก่อนส่งมือถือให้ลูกค้าเซ็น (สูงสุด ${MAX_PHOTOS} รูป)`}
                 </p>
               </div>
 
@@ -999,10 +1010,14 @@ export function MessengerCloseJobDialog({
               <div>
                 <div className="flex items-center gap-2 text-sm font-semibold">
                   <CheckCircle2 className="h-4 w-4 text-primary" />
-                  ตรวจหลักฐานก่อนยืนยันส่งมอบ
+                  {isPickupCheckpoint
+                    ? 'ตรวจหลักฐานก่อนยืนยันรับของ'
+                    : 'ตรวจหลักฐานก่อนยืนยันส่งมอบ'}
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  ตรวจว่ารูปส่งมอบและลายเซ็นครบ ก่อนส่งให้ CS/admin ตรวจสอบและยืนยันส่งมอบ
+                  {isPickupCheckpoint
+                    ? 'ตรวจว่ารูปรับของชัดเจนก่อนยืนยันจุดรับ แล้วไปยังจุดถัดไปในเที่ยว'
+                    : 'ตรวจว่ารูปส่งมอบและลายเซ็นครบ ก่อนส่งให้ CS/admin ตรวจสอบและยืนยันส่งมอบ'}
                 </p>
               </div>
 
@@ -1038,24 +1053,26 @@ export function MessengerCloseJobDialog({
                   </button>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => setStep('signature')}
-                  className="overflow-hidden rounded-lg border bg-card text-left"
-                >
-                  {signatureDataUrl ? (
-                    <img
-                      src={signatureDataUrl}
-                      alt="ลายเซ็นผู้รับ"
-                      className="aspect-4/3 w-full bg-white object-contain"
-                    />
-                  ) : (
-                    <div className="flex aspect-4/3 items-center justify-center bg-muted text-muted-foreground">
-                      <PenLine className="h-6 w-6" />
-                    </div>
-                  )}
-                  <div className="px-2 py-1.5 text-[11px] font-medium">ลายเซ็นผู้รับ</div>
-                </button>
+                {!isPickupCheckpoint && (
+                  <button
+                    type="button"
+                    onClick={() => setStep('signature')}
+                    className="overflow-hidden rounded-lg border bg-card text-left"
+                  >
+                    {signatureDataUrl ? (
+                      <img
+                        src={signatureDataUrl}
+                        alt="ลายเซ็นผู้รับ"
+                        className="aspect-4/3 w-full bg-white object-contain"
+                      />
+                    ) : (
+                      <div className="flex aspect-4/3 items-center justify-center bg-muted text-muted-foreground">
+                        <PenLine className="h-6 w-6" />
+                      </div>
+                    )}
+                    <div className="px-2 py-1.5 text-[11px] font-medium">ลายเซ็นผู้รับ</div>
+                  </button>
+                )}
               </div>
 
               <div className="flex items-start gap-2 rounded-lg bg-muted/50 px-3 py-2 text-[11px] text-muted-foreground">
@@ -1070,7 +1087,9 @@ export function MessengerCloseJobDialog({
               </div>
 
               <div className="rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-warning">
-                เมื่อกดยืนยัน รายการจะอยู่ใน “รอตรวจสอบ” ก่อน ยังไม่บันทึกเป็นส่งสำเร็จ
+                {isPickupCheckpoint
+                  ? 'เมื่อยืนยันแล้ว ระบบจะเลื่อนไปยังจุดถัดไปของเที่ยวโดยอัตโนมัติ'
+                  : 'เมื่อกดยืนยัน รายการจะอยู่ใน “รอตรวจสอบ” ก่อน ยังไม่บันทึกเป็นส่งสำเร็จ'}
               </div>
               {isRevision && (
                 <div
@@ -1119,7 +1138,7 @@ export function MessengerCloseJobDialog({
                   onCancel();
                   return;
                 }
-                setStep(CLOSE_STEPS[Math.max(0, currentStepIndex - 1)].key);
+                setStep(closeSteps[Math.max(0, currentStepIndex - 1)].key);
               }}
             >
               {step === 'photo' ? (
@@ -1136,9 +1155,17 @@ export function MessengerCloseJobDialog({
               <Button
                 size="sm"
                 disabled={step === 'photo' ? photos.length === 0 : !signatureCaptured}
-                onClick={() => setStep(step === 'photo' ? 'signature' : 'review')}
+                onClick={() =>
+                  setStep(
+                    step === 'photo' ? (isPickupCheckpoint ? 'review' : 'signature') : 'review',
+                  )
+                }
               >
-                {step === 'photo' ? 'ถัดไป: เซ็นรับ' : 'ตรวจหลักฐาน'}
+                {step === 'photo'
+                  ? isPickupCheckpoint
+                    ? 'ตรวจหลักฐาน'
+                    : 'ถัดไป: เซ็นรับ'
+                  : 'ตรวจหลักฐาน'}
               </Button>
             ) : (
               <div className="flex gap-2">
@@ -1146,7 +1173,11 @@ export function MessengerCloseJobDialog({
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setStep(photos.length === 0 ? 'photo' : 'signature')}
+                    onClick={() =>
+                      setStep(
+                        photos.length === 0 ? 'photo' : isPickupCheckpoint ? 'review' : 'signature',
+                      )
+                    }
                   >
                     แก้ไข
                   </Button>
@@ -1156,7 +1187,9 @@ export function MessengerCloseJobDialog({
                     ? 'กำลังบันทึก...'
                     : order.status === 'pending_confirmation'
                       ? 'บันทึกและส่งตรวจใหม่'
-                      : 'ส่งตรวจสอบ'}
+                      : isPickupCheckpoint
+                        ? 'ยืนยันรับของ'
+                        : 'ส่งตรวจสอบ'}
                 </Button>
               </div>
             )}

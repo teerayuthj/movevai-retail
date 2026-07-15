@@ -39,6 +39,18 @@ export function composeThaiAddress(street: string, addr: ThaiAddressValue) {
   return [street.trim(), tail].filter(Boolean).join(' ');
 }
 
+// ที่อยู่จาก LINE/OCR/คลังที่อยู่ มักมีชื่ออาคาร-เลขห้องปน (เช่น "98 Wireless Residence ห้อง 2504
+// ถนนวิทยุ …") ซึ่งทำให้ geocoder หาไม่เจอทั้งที่ตัวถนน/แขวง/เขตถูกต้อง — ตัดให้เหลือ
+// เลขที่บ้าน + ตั้งแต่ ถนน/ซอย/แขวง เป็นต้นไป เพื่อใช้เป็นคำค้นสำรอง (ที่อยู่เต็มยังเก็บไว้ที่เดิม)
+export function simplifyThaiAddress(address: string): string | null {
+  const tokens = address.split(/\s+/);
+  const anchorIndex = tokens.findIndex((token) => /^(ถนน|ถ\.|ซอย|ซ\.|แขวง|ตำบล|ต\.)/.test(token));
+  if (anchorIndex <= 0) return null;
+  const houseNumber = tokens.slice(0, anchorIndex).find((token) => /^\d+(\/\d+)?$/.test(token));
+  const simplified = [houseNumber, ...tokens.slice(anchorIndex)].filter(Boolean).join(' ');
+  return simplified === address ? null : simplified;
+}
+
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

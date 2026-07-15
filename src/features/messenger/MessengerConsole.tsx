@@ -39,6 +39,7 @@ import {
 import { isNativePushSupported, registerNativePush } from './nativePush';
 import { MessengerHeader } from './components/MessengerHeader';
 import { JobCard } from './components/JobCard';
+import { MessengerTripCard } from './components/MessengerTripCard';
 import {
   formatInTransitStartTime,
   getMessengerAppointmentCountdown,
@@ -73,11 +74,17 @@ import { useMessengerLocation } from './hooks/useMessengerLocation';
 import { useMessengerPresence } from './hooks/useMessengerPresence';
 import { navigationUrl } from './geocode';
 import { Badge } from '@/components/ui/badge';
+import {
+  groupMessengerTrips,
+  isMultiStopMessengerTrip,
+  type MessengerTrip,
+} from './messengerTrips';
 
 const MESSENGER_STORAGE_KEY = 'movevai:messenger-code';
 
 function InTransitJobSheet({
   order,
+  relatedOrders,
   nowMs,
   expanded,
   onExpandedChange,
@@ -85,6 +92,7 @@ function InTransitJobSheet({
   role = 'main',
 }: {
   order: Order;
+  relatedOrders: Order[];
   nowMs: number;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
@@ -93,6 +101,22 @@ function InTransitJobSheet({
   role?: MessengerOrderRole;
 }) {
   const isCoDriver = role === 'co';
+  const trip = groupMessengerTrips(relatedOrders).find((item) =>
+    item.orders.some((candidate) => candidate.id === order.id),
+  );
+  const tripOrders = trip?.orders ?? [order];
+  const currentSequenceIndex = tripOrders.findIndex((candidate) => candidate.id === order.id);
+  const completedStops = tripOrders.filter((candidate) =>
+    ['pending_confirmation', 'delivered'].includes(candidate.status),
+  ).length;
+  const routeLeg = order.metadataJson?.dispatch?.routeLeg ?? 'dropoff';
+  const isPickupStop = routeLeg === 'pickup';
+  const remainingStops = tripOrders.filter(
+    (candidate) =>
+      candidate.id !== order.id &&
+      candidate.status === 'in_transit' &&
+      (candidate.deliveryRoute?.sequence ?? 0) > (order.deliveryRoute?.sequence ?? 0),
+  );
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
   // เวลาเริ่มส่ง = ตัวเลขนิ่ง, เวลานัด = นับถอยหลัง — จงใจไม่โชว์นาฬิกาจับเวลาให้คนขับ
   const startedAtLabel = formatInTransitStartTime(order);
@@ -118,12 +142,15 @@ function InTransitJobSheet({
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-medium text-muted-foreground">
-                ปลายทางที่กำลังส่ง
+                {trip?.title ?? 'เที่ยวปัจจุบัน'} · จุด {currentSequenceIndex + 1}/
+                {tripOrders.length}
               </div>
               <div className="truncate text-sm font-semibold">{order.customer.name}</div>
               <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
                 <MapPin className="h-3 w-3 shrink-0" />
-                <span className="truncate">{order.customer.address}</span>
+                <span className="truncate">
+                  {isPickupStop ? 'รับของ' : 'ส่งของ'} · {order.customer.address}
+                </span>
               </div>
             </div>
             {expanded ? (
@@ -148,6 +175,9 @@ function InTransitJobSheet({
                     {paymentLabel[order.payment]}
                   </Badge>
                 )}
+                <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+                  เสร็จ {completedStops}/{tripOrders.length} จุด
+                </Badge>
               </div>
               {order.deliveryPlan?.plannedDate && (
                 <div
@@ -218,7 +248,7 @@ function InTransitJobSheet({
             {!isCoDriver && (
               <Button size="sm" className="flex-1 bg-success hover:bg-success/90" onClick={onClose}>
                 <CheckCircle2 className="h-4 w-4" />
-                ยืนยันส่งมอบ
+                {isPickupStop ? 'ยืนยันรับของ' : 'ยืนยันส่งมอบ'}
               </Button>
             )}
           </div>
@@ -252,6 +282,26 @@ function InTransitJobSheet({
                         {order.note}
                       </div>
                     </div>
+                  </div>
+                </div>
+              )}
+              {remainingStops.length > 0 && (
+                <div className="border-t pt-3">
+                  <div className="mb-2 text-[11px] font-medium text-muted-foreground">
+                    จุดถัดไปในเที่ยว
+                  </div>
+                  <div className="space-y-2">
+                    {remainingStops.slice(0, 3).map((candidate) => (
+                      <div key={candidate.id} className="flex items-start gap-2 text-xs">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium">
+                          {candidate.deliveryRoute?.sequence ?? '-'}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate">
+                          {candidate.metadataJson?.dispatch?.routeLeg === 'pickup' ? 'รับ' : 'ส่ง'}{' '}
+                          · {candidate.customer.name.replace(/^(รับ|ส่ง)\s*[—–-]\s*/u, '').trim()}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -290,7 +340,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     orders,
     drivers,
     acceptDeliveryJob,
+    acceptDeliveryTrip,
     startDelivery,
+    startDeliveryTrip,
     submitDelivery,
     refreshMessengerJobs,
   } = useRetailStore();
@@ -306,6 +358,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const [jobsError, setJobsError] = useState<string | null>(null);
   const [startingJobId, setStartingJobId] = useState<string | null>(null);
   const [acceptingJobId, setAcceptingJobId] = useState<string | null>(null);
+  const [startingTripKey, setStartingTripKey] = useState<string | null>(null);
+  const [acceptingTripKey, setAcceptingTripKey] = useState<string | null>(null);
   const [nowMs, setNowMs] = useState(Date.now);
   const install = useInstallPrompt();
   const { activeTab, mapOrderId, setTab, openOrderMap, backToPending } = useMessengerTab();
@@ -333,6 +387,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     setMapGroupKey(null);
     setJobsError(null);
     setStartingJobId(null);
+    setAcceptingJobId(null);
+    setStartingTripKey(null);
+    setAcceptingTripKey(null);
   }, []);
 
   const handleSelectTab = useCallback(
@@ -360,6 +417,13 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const inTransitOrderCount = myJobs.filter((o) => o.status === 'in_transit').length;
   const pendingConfirmationCount = myJobs.filter((o) => o.status === 'pending_confirmation').length;
   const deliveredOrderCount = myJobs.filter((o) => o.status === 'delivered').length;
+  const myTrips = useMemo(() => groupMessengerTrips(myJobs), [myJobs]);
+  const assignedTripCount = myTrips.filter((trip) =>
+    trip.orders.some((order) => order.status === 'assigned'),
+  ).length;
+  const inTransitTripCount = myTrips.filter((trip) =>
+    trip.orders.some((order) => order.status === 'in_transit'),
+  ).length;
   const hasTestTrackingSession = tracking.session?.type === 'test';
   const openCustomerJobCount = assignedOrderCount + inTransitOrderCount + pendingConfirmationCount;
   // "กำลังส่ง" เฉพาะตอนมีงาน in_transit จริงหรือกำลังบันทึก GPS ทดสอบ —
@@ -374,9 +438,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           : undefined;
 
   const counts: Record<MessengerTab, number> = {
-    assigned: assignedOrderCount,
+    assigned: assignedTripCount,
     // Test Route ไม่มี Order แต่ถือเป็นกิจกรรมที่กำลังส่งหนึ่งรายการใน UI
-    in_transit: inTransitOrderCount + (hasTestTrackingSession ? 1 : 0),
+    in_transit: inTransitTripCount + (hasTestTrackingSession ? 1 : 0),
     pending_confirmation: pendingConfirmationCount,
     delivered: deliveredOrderCount,
   };
@@ -521,6 +585,78 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     [acceptDeliveryJob, setTab, tracking],
   );
 
+  const handleStartTrip = useCallback(
+    async (trip: MessengerTrip) => {
+      const first = trip.orders[0];
+      if (!trip.routeId) {
+        await handleStartJob(first);
+        return;
+      }
+      setStartingTripKey(trip.key);
+      try {
+        await startDeliveryTrip(trip.routeId);
+        if (!tracking.session) {
+          try {
+            await tracking.start(trip.routeId);
+          } catch (error) {
+            if (isMessengerAuthError(error)) return;
+          }
+        }
+        setTab('in_transit');
+        toast.success(`เริ่มเที่ยว “${trip.title}” แล้ว · ${trip.orders.length} จุด`);
+      } catch (error) {
+        if (isMessengerAuthError(error)) {
+          toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'เริ่มเที่ยวไม่สำเร็จ';
+        setJobsError(message);
+        toast.error(`เริ่มเที่ยวไม่สำเร็จ — ${message}`);
+      } finally {
+        setStartingTripKey(null);
+      }
+    },
+    [handleStartJob, setTab, startDeliveryTrip, tracking],
+  );
+
+  const handleAcceptTrip = useCallback(
+    async (trip: MessengerTrip) => {
+      const first = trip.orders[0];
+      if (!trip.routeId) {
+        await handleAcceptJob(first);
+        return;
+      }
+      setAcceptingTripKey(trip.key);
+      try {
+        await acceptDeliveryTrip(trip.routeId);
+        if (first.deliveryRoute?.startPolicy === 'accept_starts') {
+          if (!tracking.session) {
+            try {
+              await tracking.start(trip.routeId);
+            } catch (error) {
+              if (isMessengerAuthError(error)) return;
+            }
+          }
+          setTab('in_transit');
+          toast.success(`รับและเริ่มเที่ยว “${trip.title}” แล้ว`);
+        } else {
+          toast.success(`รับเที่ยว “${trip.title}” แล้ว — กดเริ่มเที่ยวเมื่อพร้อม`);
+        }
+      } catch (error) {
+        if (isMessengerAuthError(error)) {
+          toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'รับเที่ยวไม่สำเร็จ';
+        setJobsError(message);
+        toast.error(`รับเที่ยวไม่สำเร็จ — ${message}`);
+      } finally {
+        setAcceptingTripKey(null);
+      }
+    },
+    [acceptDeliveryTrip, handleAcceptJob, setTab, tracking],
+  );
+
   const refreshJobs = useCallback(
     async (background = false) => {
       // ยังไม่ได้ login (ไม่มี code จริง) — ไม่ต้องยิง fetch
@@ -620,6 +756,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         : [],
     [activeTab, myJobs, nowMs],
   );
+  const tabTrips = useMemo(() => groupMessengerTrips(tabJobs), [tabJobs]);
 
   const showAssignedMap = activeTab === 'assigned' && assignedView === 'map';
   const closingJobOpen = Boolean(closeTargetId);
@@ -665,6 +802,17 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const activeDeliveryJob = myJobs
     .filter((order) => order.status === 'in_transit')
     .sort((a, b) => (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0))[0];
+  const activeRouteJobs = activeDeliveryJob
+    ? myJobs
+        .filter(
+          (order) =>
+            order.status === 'in_transit' &&
+            (activeDeliveryJob.deliveryRoute?.id
+              ? order.deliveryRoute?.id === activeDeliveryJob.deliveryRoute.id
+              : order.id === activeDeliveryJob.id),
+        )
+        .sort((a, b) => (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0))
+    : [];
 
   // กรณีเปิดแอปกลับมาตอนมีงานกำลังส่งอยู่แล้ว: แผนที่มือถืออ่าน GPS local ได้
   // แต่ถ้าไม่มี tracking session จะไม่ส่งตำแหน่งให้ admin. เริ่ม session ให้เองหนึ่งครั้งต่อ route.
@@ -722,7 +870,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
       ? [focusOrder]
       : (selectedGroup?.jobs ?? [])
     : showTrackingMap && activeDeliveryJob
-      ? [activeDeliveryJob]
+      ? activeRouteJobs
       : [];
   const routeStops = useRouteStops(routeMapJobs);
   const liveLocation = tracking.session ? tracking.location : fallbackLocation.location;
@@ -744,6 +892,11 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
 
   const handleViewOrderMap = useCallback((order: Order) => {
     setMapFocusOrderId(order.id);
+    setMapGroupKey(groupKeyOf(order));
+    setAssignedView('map');
+  }, []);
+  const handleViewTripMap = useCallback((order: Order) => {
+    setMapFocusOrderId(null);
     setMapGroupKey(groupKeyOf(order));
     setAssignedView('map');
   }, []);
@@ -923,6 +1076,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               {showTrackingMap && activeDeliveryJob && !closingJobOpen && !profileOpen && (
                 <InTransitJobSheet
                   order={activeDeliveryJob}
+                  relatedOrders={myJobs}
                   nowMs={nowMs}
                   role={getMessengerOrderRole(activeDeliveryJob, messengerCode) ?? 'main'}
                   expanded={deliverySheetExpanded}
@@ -987,22 +1141,53 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 <MessengerCompletedList messengerCode={messenger.id} />
               ) : (
                 <>
-                  {tabJobs.map((order, index) => {
-                    const showDate =
-                      activeTab === 'assigned' &&
-                      order.deliveryPlan?.plannedDate !==
-                        tabJobs[index - 1]?.deliveryPlan?.plannedDate;
-                    return (
-                      <div key={order.id}>
-                        {showDate && order.deliveryPlan?.plannedDate && (
-                          <div className="mb-2 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">
-                            งานวันที่{' '}
-                            {new Date(
-                              `${order.deliveryPlan.plannedDate}T00:00:00`,
-                            ).toLocaleDateString('th-TH', { dateStyle: 'full' })}
+                  {activeTab === 'assigned'
+                    ? tabTrips.map((trip, index) => {
+                        const first = trip.orders[0];
+                        const showDate =
+                          first.deliveryPlan?.plannedDate !==
+                          tabTrips[index - 1]?.orders[0]?.deliveryPlan?.plannedDate;
+                        return (
+                          <div key={trip.key}>
+                            {showDate && first.deliveryPlan?.plannedDate && (
+                              <div className="mb-2 mt-3 text-xs font-semibold text-muted-foreground first:mt-0">
+                                เที่ยววันที่{' '}
+                                {new Date(
+                                  `${first.deliveryPlan.plannedDate}T00:00:00`,
+                                ).toLocaleDateString('th-TH', { dateStyle: 'full' })}
+                              </div>
+                            )}
+                            {isMultiStopMessengerTrip(trip) ? (
+                              <MessengerTripCard
+                                trip={trip}
+                                nowMs={nowMs}
+                                role={getMessengerOrderRole(first, messengerCode) ?? 'main'}
+                                starting={startingTripKey === trip.key}
+                                accepting={acceptingTripKey === trip.key}
+                                onAccept={() => void handleAcceptTrip(trip)}
+                                onStart={() => void handleStartTrip(trip)}
+                                onViewMap={() => handleViewTripMap(first)}
+                              />
+                            ) : (
+                              <JobCard
+                                order={first}
+                                relatedOrders={myJobs}
+                                nowMs={nowMs}
+                                role={getMessengerOrderRole(first, messengerCode) ?? 'main'}
+                                starting={startingJobId === first.id}
+                                accepting={acceptingJobId === first.id}
+                                onAccept={() => void handleAcceptJob(first)}
+                                onStart={() => void handleStartJob(first)}
+                                onClose={() => setCloseTargetId(first.id)}
+                                onViewMap={() => handleViewOrderMap(first)}
+                              />
+                            )}
                           </div>
-                        )}
+                        );
+                      })
+                    : tabJobs.map((order) => (
                         <JobCard
+                          key={order.id}
                           order={order}
                           relatedOrders={myJobs}
                           nowMs={nowMs}
@@ -1013,16 +1198,12 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                           onStart={() => void handleStartJob(order)}
                           onClose={() => setCloseTargetId(order.id)}
                           onViewMap={
-                            activeTab === 'assigned'
-                              ? () => handleViewOrderMap(order)
-                              : activeTab === 'pending_confirmation'
-                                ? () => openOrderMap(order.id)
-                                : undefined
+                            activeTab === 'pending_confirmation'
+                              ? () => openOrderMap(order.id)
+                              : undefined
                           }
                         />
-                      </div>
-                    );
-                  })}
+                      ))}
                   {!jobsLoading && !jobsError && activeTab && tabJobs.length === 0 && (
                     <div className="py-12 text-center text-sm text-muted-foreground">
                       <CheckCircle2 className="mx-auto mb-2 h-8 w-8 text-success" />

@@ -89,6 +89,27 @@ export async function acceptMessengerOrder(orderId: string, _driverCode: string)
   return normalizeOrder(result);
 }
 
+type MessengerTripActionResult = {
+  routeId: string;
+  items: ApiOrder[];
+};
+
+export async function acceptMessengerTrip(routeId: string) {
+  const result = await request<MessengerTripActionResult>(
+    `${MESSENGER_API_BASE}/routes/${encodeURIComponent(routeId)}/accept`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  return result.items.map(normalizeOrder);
+}
+
+export async function startMessengerTrip(routeId: string) {
+  const result = await request<MessengerTripActionResult>(
+    `${MESSENGER_API_BASE}/routes/${encodeURIComponent(routeId)}/start-delivery`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  return result.items.map(normalizeOrder);
+}
+
 export async function submitMessengerOrder(
   orderId: string,
   _driverCode: string,
