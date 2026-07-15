@@ -19,6 +19,7 @@ import type {
   DispatchJobType,
   DispatchMethod,
   DispatchStartPolicy,
+  DispatchCreationOutcome,
   RouteTemplate,
 } from '@/features/dispatch/types';
 import { dispatchJobTypeLabel } from '@/features/dispatch/types';
@@ -32,7 +33,7 @@ type Props = {
   orders: Order[];
   initialTemplateId?: string;
   onClose: () => void;
-  onCreated: () => Promise<void> | void;
+  onCreated: (outcome: DispatchCreationOutcome) => Promise<void> | void;
 };
 
 const SLA_OPTIONS = [5, 10, 15, 30];
@@ -131,7 +132,7 @@ export function QuickCreateDialog({
     setSubmitting(true);
     try {
       if (mode === 'template' && selectedTemplate) {
-        await createRouteTemplateRun(selectedTemplate.id, {
+        const result = await createRouteTemplateRun(selectedTemplate.id, {
           selectedPickupStopIds,
           plannedDate,
           driverId: driverId || undefined,
@@ -139,12 +140,16 @@ export function QuickCreateDialog({
           messengerTitle: messengerTitle.trim() || undefined,
           note: note.trim() || undefined,
         });
-        await onCreated();
+        await onCreated({
+          destination: 'planning',
+          orderIds: result.orderIds,
+          plannedDate: result.plannedDate,
+        });
         toast.success(`สร้าง Route Run ของ ${selectedTemplate.name} เข้า Planning แล้ว`);
         onClose();
         return;
       }
-      await createDispatchJobs({
+      const result = await createDispatchJobs({
         mode,
         title,
         messengerTitle: messengerTitle.trim() || undefined,
@@ -164,7 +169,11 @@ export function QuickCreateDialog({
         startPolicy,
         note,
       });
-      await onCreated();
+      await onCreated({
+        destination: method === 'immediate' ? 'tracking' : 'planning',
+        orderIds: result.orders.map((order) => order.id),
+        plannedDate: method === 'planning' ? plannedDate : undefined,
+      });
       toast.success(
         method === 'immediate'
           ? `สร้างงานและส่งให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว`

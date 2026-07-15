@@ -64,6 +64,8 @@ import {
   fetchAppDrivers,
   fetchAppOrders,
   fetchMessengerOrders,
+  acceptMessengerTrip,
+  startMessengerTrip,
   publishPlanningRoute,
   publishUrgentPlanningRoute,
   reassignPlanningRoute,
@@ -480,6 +482,30 @@ export function RetailProvider({
     [commit, state.orders],
   );
 
+  const startDeliveryTrip = useCallback(
+    async (routeId: string) => {
+      const canonicalOrders = await startMessengerTrip(routeId);
+      messengerWorkflowRevisionRef.current += 1;
+      commit((current) => ({
+        ...current,
+        orders: canonicalOrders.reduce(replaceOrder, current.orders),
+      }));
+    },
+    [commit],
+  );
+
+  const acceptDeliveryTrip = useCallback(
+    async (routeId: string) => {
+      const canonicalOrders = await acceptMessengerTrip(routeId);
+      messengerWorkflowRevisionRef.current += 1;
+      commit((current) => ({
+        ...current,
+        orders: canonicalOrders.reduce(replaceOrder, current.orders),
+      }));
+    },
+    [commit],
+  );
+
   const submitDelivery = useCallback(
     async (orderId: string, input: SubmitDeliveryInput) => {
       const order = state.orders.find((item) => item.id === orderId);
@@ -823,6 +849,8 @@ export function RetailProvider({
       autoAssignAndDispatchReadyOrders,
       startDelivery,
       acceptDeliveryJob,
+      startDeliveryTrip,
+      acceptDeliveryTrip,
       submitDelivery,
       confirmDelivery,
       completeDelivery,
@@ -868,6 +896,8 @@ export function RetailProvider({
       autoAssignAndDispatchReadyOrders,
       startDelivery,
       acceptDeliveryJob,
+      startDeliveryTrip,
+      acceptDeliveryTrip,
       submitDelivery,
       confirmDelivery,
       completeDelivery,

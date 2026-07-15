@@ -51,6 +51,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { TrackingCard } from './components/TrackingCard';
+import { TrackingRouteCard } from './components/TrackingRouteCard';
 import { TrackingDetailDrawer } from './components/TrackingDetailDrawer';
 import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './utils/trackingSearch';
 import { FleetMap } from './components/FleetMap';
@@ -158,6 +159,22 @@ export function DeliveryTrackingPage({
     null;
 
   const totalPages = Math.max(1, Math.ceil(trackingTotal / PAGE_SIZE));
+
+  // การ์ดติดตามต้องสื่อสารเป็น "เที่ยว" ก่อน ส่วน Order ยังเป็นหน่วยข้อมูลของแต่ละจุด
+  // เพื่อให้ปิดงาน/เก็บหลักฐานรายจุดได้ตามระบบเดิม. งานที่ไม่มี Route ยังคงแสดงเดี่ยว.
+  const trackingListGroups = useMemo(() => {
+    const groups = new Map<string, Order[]>();
+    for (const order of trackingOrders) {
+      const key = order.deliveryRoute?.id ? `route:${order.deliveryRoute.id}` : `order:${order.id}`;
+      const current = groups.get(key);
+      if (current) current.push(order);
+      else groups.set(key, [order]);
+    }
+    return [...groups.values()];
+  }, [trackingOrders]);
+  const routeGroupsOnPage = trackingListGroups.filter(
+    (group) => group[0]?.deliveryRoute?.id,
+  ).length;
 
   useEffect(() => {
     if (parsedSearch.view) setView(parsedSearch.view);
@@ -741,7 +758,8 @@ export function DeliveryTrackingPage({
               <div className="text-sm font-semibold">
                 {currentTabLabel}
                 <span className="ml-2 text-[11px] font-normal text-muted-foreground">
-                  {trackingTotal.toLocaleString('th-TH')} รายการ
+                  {trackingTotal.toLocaleString('th-TH')} จุด
+                  {routeGroupsOnPage > 0 && ` · ${routeGroupsOnPage} เที่ยวในหน้านี้`}
                 </span>
               </div>
               <Button
@@ -759,7 +777,7 @@ export function DeliveryTrackingPage({
               <Input
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="ค้นหา order, ลูกค้า, เบอร์โทร, คนขับ..."
+                placeholder="ค้นหา Route, order, ลูกค้า, เบอร์โทร, คนขับ..."
                 className="h-9 rounded-lg pl-9"
               />
             </div>
@@ -767,20 +785,36 @@ export function DeliveryTrackingPage({
           </div>
 
           <div className="relative flex-1 space-y-2 overflow-y-auto p-2 [scrollbar-gutter:stable]">
-            {trackingOrders.map((order) => (
-              <TrackingCard
-                key={order.id}
-                order={order}
-                selected={selectedOrderId === order.id}
-                onSelect={() => setSelectedOrderId(order.id)}
-                actions={renderActions(order)}
-                overdueMinutes={getAssignedOrderOverdueMinutes(order, nowMs)}
-                inTransitMinutes={getInTransitElapsedMinutes(order, nowMs)}
-                settling={!!settlingOrders[order.id]}
-                settledLabel={settlingOrders[order.id]}
-                nowMs={nowMs}
-              />
-            ))}
+            {trackingListGroups.map((group) => {
+              const first = group[0];
+              const isRoute = Boolean(first.deliveryRoute?.id);
+              if (isRoute) {
+                return (
+                  <TrackingRouteCard
+                    key={first.deliveryRoute!.id}
+                    orders={group}
+                    selectedOrderId={selectedOrderId}
+                    onSelectStop={(order) => setSelectedOrderId(order.id)}
+                    actions={first.status === 'assigned' ? renderActions(first) : undefined}
+                    nowMs={nowMs}
+                  />
+                );
+              }
+              return (
+                <TrackingCard
+                  key={first.id}
+                  order={first}
+                  selected={selectedOrderId === first.id}
+                  onSelect={() => setSelectedOrderId(first.id)}
+                  actions={renderActions(first)}
+                  overdueMinutes={getAssignedOrderOverdueMinutes(first, nowMs)}
+                  inTransitMinutes={getInTransitElapsedMinutes(first, nowMs)}
+                  settling={!!settlingOrders[first.id]}
+                  settledLabel={settlingOrders[first.id]}
+                  nowMs={nowMs}
+                />
+              );
+            })}
 
             {!isListLoading && !loadError && trackingOrders.length === 0 && (
               <div className="py-16 text-center text-sm text-muted-foreground">

@@ -177,6 +177,54 @@ export function fetchLiveMessengers() {
   return request<LiveMessengerTracking[]>(`${APP_API_BASE}/tracking/riders/latest`);
 }
 
+export type MessengerPresence = {
+  driver: {
+    code: string;
+    name: string;
+    status: string;
+    activeOrders: number;
+  };
+  presence: null | {
+    deviceId: string;
+    platform: 'web' | 'ios' | 'android';
+    appState: 'foreground' | 'background';
+    locationPermission: 'granted' | 'denied' | 'prompt' | 'unavailable' | 'error' | null;
+    lastHeartbeatAt: string;
+    deviceCount: number;
+    activeDeviceCount: number;
+    location: null | {
+      lat: number | string;
+      lng: number | string;
+      accuracy: number | null;
+      recordedAt: string;
+      deviceId: string;
+    };
+  };
+  tracking: {
+    active: boolean;
+    sessionId?: string;
+    routeId?: string | null;
+    sessionType?: string;
+    startedAt?: string;
+  };
+  assignment: null | {
+    id: string;
+    code: string;
+    status: string;
+    requiresAcceptance: boolean;
+    acceptedAt: string | null;
+    acceptBy: string | null;
+    acceptOverdue: boolean;
+    startPolicy: 'manual' | 'accept_starts';
+    openStopCount: number;
+    stage: 'assigned' | 'awaiting_acceptance' | 'accepted' | 'in_transit';
+  };
+};
+
+export function fetchMessengerPresences() {
+  return request<MessengerPresence[]>(`${APP_API_BASE}/tracking/riders/presence`);
+}
+
 export function fetchMessengerTrackingHistory(sessionId: string) {
   return request<MessengerTrackingHistory>(
     `${APP_API_BASE}/tracking/sessions/${encodeURIComponent(sessionId)}`,

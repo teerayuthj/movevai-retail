@@ -11,6 +11,7 @@ import {
 import type { Driver } from '@/data/orderTypes';
 import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
 import { cn } from '@/lib/utils';
+import { getMessengerDeviceId } from '../messengerDevice';
 import {
   Bike,
   Camera,
@@ -141,15 +142,6 @@ const vehicleIcon: Record<Driver['vehicle'], React.ReactNode> = {
   van: <Truck className="h-4 w-4" />,
   pickup: <Truck className="h-4 w-4" />,
 };
-
-function deviceId() {
-  const key = 'movevai:messenger-device-id';
-  const existing = localStorage.getItem(key);
-  if (existing) return existing;
-  const value = crypto.randomUUID();
-  localStorage.setItem(key, value);
-  return value;
-}
 
 function loadPendingRegistration(): PendingRegistration | null {
   try {
@@ -331,7 +323,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
     setLoading(true);
     setError('');
     try {
-      const session = await loginMessenger(phone, pin, deviceId());
+      const session = await loginMessenger(phone, pin, getMessengerDeviceId());
       clearPendingRegistration();
       onLogin(session);
     } catch (reason) {

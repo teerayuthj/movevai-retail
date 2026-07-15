@@ -34,6 +34,7 @@ import {
   OrderActivityEvent,
   OrderActivityEventType,
 } from '@/data/orderTypes';
+import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
 import { compactActivityLog } from '@/state/retail/timeline';
 
@@ -112,12 +113,14 @@ type PresentedEvent = {
   detailsText?: string;
 };
 
-// RT-20260707-D-02-mra9re2q → ส่วนกลางคือรหัสคนขับ/รอบ (D-02) ที่หน้างานใช้เรียกกัน
-const ROUTE_SHORT_RE = /^RT-\d{8}-(.+?)-[a-z0-9]+$/i;
-
 function routeChip(code: string): EventChip {
-  const short = ROUTE_SHORT_RE.exec(code)?.[1] ?? code;
-  return { Icon: Route, label: `รอบ ${short}`, mono: true, fullText: code, copyable: true };
+  return {
+    Icon: Route,
+    label: `รอบ ${shortRouteCode(code)}`,
+    mono: true,
+    fullText: code,
+    copyable: true,
+  };
 }
 
 function formatPlannedDate(dateText: string, timeText?: string): string {

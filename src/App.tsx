@@ -15,8 +15,8 @@ const InboxPage = lazy(() => import('@/pages/Inbox').then((m) => ({ default: m.I
 const DispatchBoardPage = lazy(() =>
   import('@/pages/DispatchBoard').then((m) => ({ default: m.DispatchBoardPage })),
 );
-const RouteTemplatesPage = lazy(() =>
-  import('@/pages/RouteTemplates').then((m) => ({ default: m.RouteTemplatesPage })),
+const RouteBuilderPage = lazy(() =>
+  import('@/pages/RouteBuilder').then((m) => ({ default: m.RouteBuilderPage })),
 );
 const QueuePage = lazy(() => import('@/pages/Queue').then((m) => ({ default: m.QueuePage })));
 const DeliveryTrackingPage = lazy(() =>
@@ -145,7 +145,7 @@ export default function App() {
           {page === 'inbox' && (
             <InboxPage
               locationSearch={locationSearch}
-              onOpenQueue={(search) => navigateToPage('dispatch_board', { search })}
+              onOpenQueue={(search) => navigateToPage('queue', { search })}
               onOpenPlanning={(search) => navigateToPage('planning', { search })}
             />
           )}
@@ -156,9 +156,10 @@ export default function App() {
               onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
             />
           )}
-          {page === 'route_templates' && (
-            <RouteTemplatesPage
-              onOpenDispatch={(search) => navigateToPage('dispatch_board', { search })}
+          {page === 'route_builder' && (
+            <RouteBuilderPage
+              onOpenPlanning={(search) => navigateToPage('planning', { search })}
+              onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
             />
           )}
           {page === 'queue' && (

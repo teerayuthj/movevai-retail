@@ -2,7 +2,6 @@ import { Fragment, useMemo, useState } from 'react';
 import type { DragEvent } from 'react';
 import {
   ArrowDown,
-  ArrowRight,
   ArrowUp,
   CalendarDays,
   CheckCircle2,
@@ -36,11 +35,12 @@ import type { Driver, Order } from '@/data/orderTypes';
 import { deriveDriverDisplayStatus, formatDriverDispatchStatus } from '@/lib/deliveryExecution';
 import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
 import type { RouteStop, RouteStopKind } from '@/features/dispatch/types';
+import type { RouteTemplateRun } from '@/lib/retailApi';
 import {
   createAdHocRouteRun,
   createRouteAddress,
   deleteRouteAddress,
-  geocodeAddress,
+  geocodePlace,
   reorderRouteAddresses,
   updateRouteAddress,
   type RouteAddress,
@@ -55,11 +55,19 @@ type BuilderStop = RouteStop & {
   sourceLabel: string;
 };
 
+// 1 งาน = รับ 1 จุด + ส่ง 1 จุด (จับคู่ในตัว ไม่ต้องมี dropdown เลือกปลายทาง)
+// Messenger วิ่งเรียงตามลำดับงาน: รับ→ส่ง ของงานแรก แล้วต่อด้วยงานถัดไป
+type BuilderJob = {
+  id: string;
+  pickup: BuilderStop | null;
+  dropoff: BuilderStop | null;
+};
+
 type DispatchMode = 'planning' | 'immediate';
 const ACCEPT_WITHIN_MINUTES_OPTIONS = [5, 10, 15, 20, 30];
 
-function seedStops(): BuilderStop[] {
-  return [];
+function newJobId() {
+  return `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 function savedAddressBookEntries(addresses: RouteAddress[]): LibraryAddress[] {
@@ -85,46 +93,12 @@ function moveItem<T>(items: T[], fromIndex: number, toIndex: number) {
   return next;
 }
 
-// บังคับให้ส่วนจุดรับอยู่ก่อนจุดส่งเสมอ เพื่อให้หน้าจอและลำดับการวิ่งอ่านง่าย
-function groupStopsByKind<T extends RouteStop>(stops: T[]) {
-  return [
-    ...stops.filter((stop) => stop.kind === 'pickup'),
-    ...stops.filter((stop) => stop.kind === 'dropoff'),
-  ];
-}
-
-// จับคู่จุดรับและจุดส่งตามลำดับที่ผู้ใช้จัดในรายการ เพื่อไม่ให้ต้องเลือกจุดส่งซ้ำ
-function pairStopsByOrder(stops: BuilderStop[]) {
-  const grouped = groupStopsByKind(stops);
-  const dropoffs = grouped.filter((stop) => stop.kind === 'dropoff');
-  let pickupIndex = 0;
-
-  return grouped.map((stop) => {
-    if (stop.kind === 'dropoff') return { ...stop, deliverToStopId: undefined };
-    const deliverToStopId = dropoffs[pickupIndex]?.id;
-    pickupIndex += 1;
-    return { ...stop, deliverToStopId };
-  });
-}
-
-function stopError(stops: BuilderStop[]) {
-  if (!stops.some((stop) => stop.kind === 'pickup')) return 'เพิ่มจุดรับอย่างน้อย 1 จุด';
-  if (!stops.some((stop) => stop.kind === 'dropoff')) return 'เพิ่มจุดส่งอย่างน้อย 1 จุด';
-  const indexById = new Map(stops.map((stop, index) => [stop.id, index]));
-  for (const stop of stops) {
-    if (stop.kind !== 'pickup') continue;
-    if (!stop.deliverToStopId) return `จุดรับ “${stop.name}” ยังไม่มีจุดส่งในลำดับเดียวกัน`;
-    const destinationIndex = indexById.get(stop.deliverToStopId);
-    const pickupIndex = indexById.get(stop.id) ?? -1;
-    if (destinationIndex === undefined) return `จุดส่งของ “${stop.name}” ไม่อยู่ในเที่ยวนี้`;
-    if (destinationIndex <= pickupIndex) return `จุดส่งของ “${stop.name}” ต้องอยู่หลังจุดรับ`;
+function jobError(jobs: BuilderJob[]) {
+  if (jobs.length === 0) return 'เพิ่มงานรับ–ส่งอย่างน้อย 1 งาน';
+  for (const [index, job] of jobs.entries()) {
+    if (!job.pickup) return `งานที่ ${index + 1} ยังไม่ได้เลือกจุดรับ`;
+    if (!job.dropoff) return `งานที่ ${index + 1} ยังไม่ได้เลือกจุดส่ง`;
   }
-  const orphanDropoff = stops.find(
-    (stop) =>
-      stop.kind === 'dropoff' &&
-      !stops.some((pickup) => pickup.kind === 'pickup' && pickup.deliverToStopId === stop.id),
-  );
-  if (orphanDropoff) return `จุดส่ง “${orphanDropoff.name}” ยังไม่มีจุดรับที่ส่งมาที่นี่`;
   return null;
 }
 
@@ -157,9 +131,9 @@ export function FreeRouteBuilderPreview({
   onAddressesReordered: (addresses: RouteAddress[]) => void;
   drivers: Driver[];
   orders: Order[];
-  onCreated: () => Promise<void> | void;
+  onCreated: (result: RouteTemplateRun) => Promise<void> | void;
 }) {
-  const [stops, setStops] = useState<BuilderStop[]>(seedStops);
+  const [jobs, setJobs] = useState<BuilderJob[]>([]);
   const [searchByKind, setSearchByKind] = useState<Record<RouteStopKind, string>>({
     pickup: '',
     dropoff: '',
@@ -192,67 +166,124 @@ export function FreeRouteBuilderPreview({
   const [submitting, setSubmitting] = useState(false);
 
   const addresses = useMemo(() => [...savedAddressBookEntries(savedAddresses)], [savedAddresses]);
-  const usedAddressIds = useMemo(() => new Set(stops.map((stop) => stop.id)), [stops]);
+  const usedAddressIds = useMemo(
+    () =>
+      new Set(
+        jobs.flatMap((job) =>
+          [job.pickup?.id, job.dropoff?.id].filter((id): id is string => Boolean(id)),
+        ),
+      ),
+    [jobs],
+  );
   const savedAddressIds = useMemo(
     () => new Set(savedAddresses.map((address) => address.id)),
     [savedAddresses],
   );
-  const routeStops = useMemo(() => pairStopsByOrder(stops), [stops]);
-  const pickupStops = routeStops.filter((stop) => stop.kind === 'pickup');
-  const dropoffStops = routeStops.filter((stop) => stop.kind === 'dropoff');
+  // ลำดับวิ่งจริงที่ส่งให้แผนที่/backend: รับ→ส่ง ของแต่ละงานเรียงตามลำดับงาน
+  const routeStops = useMemo(
+    () =>
+      jobs.flatMap((job) => {
+        const stops: BuilderStop[] = [];
+        if (job.pickup) stops.push({ ...job.pickup, deliverToStopId: job.dropoff?.id });
+        if (job.dropoff) stops.push({ ...job.dropoff, deliverToStopId: undefined });
+        return stops;
+      }),
+    [jobs],
+  );
+  const routeSequence = useMemo(
+    () =>
+      jobs.flatMap((job, jobIndex) =>
+        [job.pickup, job.dropoff]
+          .filter((stop): stop is BuilderStop => stop != null)
+          .map((stop) => ({ stop, jobNumber: jobIndex + 1 })),
+      ),
+    [jobs],
+  );
   const selectedDriver = drivers.find((driver) => driver.id === driverId);
   const availableDrivers = drivers.filter((driver) => driver.status !== 'off_duty');
-  const validationError = stopError(routeStops);
-  const pickupPreviews = useMemo(
-    () =>
-      routeStops
-        .filter((stop) => stop.kind === 'pickup')
-        .map((pickup) => ({
-          pickup,
-          dropoff: routeStops.find((stop) => stop.id === pickup.deliverToStopId),
-        })),
-    [routeStops],
-  );
+  const validationError = jobError(jobs);
+
+  // เติมจุดลงงานแรกที่ช่องประเภทเดียวกันยังว่าง ถ้าไม่มีก็เปิดงานใหม่ให้
+  const placeStop = (stop: BuilderStop) => {
+    setJobs((current) => {
+      const slot = stop.kind;
+      const index = current.findIndex((job) => job[slot] == null);
+      if (index >= 0)
+        return current.map((job, jobIndex) =>
+          jobIndex === index ? { ...job, [slot]: stop } : job,
+        );
+      return [
+        ...current,
+        {
+          id: newJobId(),
+          pickup: slot === 'pickup' ? stop : null,
+          dropoff: slot === 'dropoff' ? stop : null,
+        },
+      ];
+    });
+  };
+
+  const toBuilderStop = (address: LibraryAddress): BuilderStop => ({
+    ...address,
+    deliverToStopId: undefined,
+    sourceLabel: address.source,
+  });
 
   const addAddress = (addressId: string) => {
     const address = addresses.find((entry) => entry.id === addressId);
     if (!address || usedAddressIds.has(addressId)) return;
-    setStops((current) => {
-      const nextStop: BuilderStop = {
-        ...address,
-        deliverToStopId: undefined,
-        sourceLabel: address.source,
-      };
-      return groupStopsByKind([...current, nextStop]);
-    });
+    placeStop(toBuilderStop(address));
   };
 
-  const removeStop = (stopId: string) => {
-    setStops((current) =>
-      groupStopsByKind(
-        current
-          .filter((stop) => stop.id !== stopId)
-          .map((stop) => ({ ...stop, deliverToStopId: undefined })),
+  // วางที่อยู่ลงงานที่ระบุ (ลากจากคลังมาปล่อยบนการ์ดงาน) — ช่องเดิมถูกแทนที่ได้
+  const placeAddressInJob = (jobId: string, addressId: string) => {
+    const address = addresses.find((entry) => entry.id === addressId);
+    if (!address || usedAddressIds.has(addressId)) return;
+    setJobs((current) =>
+      current.map((job) =>
+        job.id === jobId ? { ...job, [address.kind]: toBuilderStop(address) } : job,
       ),
     );
   };
 
-  const moveStop = (stopId: string, direction: -1 | 1) => {
-    setStops((current) => {
-      const index = current.findIndex((stop) => stop.id === stopId);
-      return groupStopsByKind(moveItem(current, index, index + direction));
+  const clearJobSlot = (jobId: string, kind: RouteStopKind) => {
+    setJobs((current) => current.map((job) => (job.id === jobId ? { ...job, [kind]: null } : job)));
+  };
+
+  const removeJob = (jobId: string) => {
+    setJobs((current) => current.filter((job) => job.id !== jobId));
+  };
+
+  const clearAddressUsage = (addressId: string) => {
+    setJobs((current) =>
+      current.map((job) => ({
+        ...job,
+        pickup: job.pickup?.id === addressId ? null : job.pickup,
+        dropoff: job.dropoff?.id === addressId ? null : job.dropoff,
+      })),
+    );
+  };
+
+  const addEmptyJob = () => {
+    setJobs((current) => [...current, { id: newJobId(), pickup: null, dropoff: null }]);
+  };
+
+  const moveJob = (jobId: string, direction: -1 | 1) => {
+    setJobs((current) => {
+      const index = current.findIndex((job) => job.id === jobId);
+      return moveItem(current, index, index + direction);
     });
   };
 
-  const moveStopBefore = (draggedId: string, targetId: string) => {
-    setStops((current) => {
-      const from = current.findIndex((stop) => stop.id === draggedId);
-      const target = current.findIndex((stop) => stop.id === targetId);
+  const moveJobBefore = (draggedId: string, targetId: string) => {
+    setJobs((current) => {
+      const from = current.findIndex((job) => job.id === draggedId);
+      const target = current.findIndex((job) => job.id === targetId);
       if (from < 0 || target < 0 || from === target) return current;
       const next = [...current];
       const [moved] = next.splice(from, 1);
       next.splice(from < target ? target - 1 : target, 0, moved);
-      return groupStopsByKind(next);
+      return next;
     });
   };
 
@@ -262,7 +293,7 @@ export function FreeRouteBuilderPreview({
     }
     setLocating(true);
     try {
-      const geo = await geocodeAddress(newAddress.trim()).catch(() => null);
+      const geo = await geocodePlace(newName, newAddress).catch(() => null);
       const saved = await createRouteAddress({
         routeGroup: 'เพิ่มเอง',
         kind: addingKind,
@@ -274,9 +305,7 @@ export function FreeRouteBuilderPreview({
         lng: geo?.lng,
       });
       const entry: LibraryAddress = { ...saved, source: saved.routeGroup };
-      setStops((current) =>
-        groupStopsByKind([...current, { ...entry, sourceLabel: entry.source }]),
-      );
+      placeStop(toBuilderStop(entry));
       onAddressCreated(saved);
       setNewName('');
       setNewAddress('');
@@ -306,7 +335,7 @@ export function FreeRouteBuilderPreview({
     }
     setLocating(true);
     try {
-      const geo = await geocodeAddress(editAddress.trim()).catch(() => null);
+      const geo = await geocodePlace(editName, editAddress).catch(() => null);
       const updated = await updateRouteAddress(editingAddress.id, {
         routeGroup: editRouteGroup.trim(),
         kind: editKind,
@@ -332,7 +361,7 @@ export function FreeRouteBuilderPreview({
     setDeletingAddressId(address.id);
     try {
       await deleteRouteAddress(address.id);
-      removeStop(address.id);
+      clearAddressUsage(address.id);
       onAddressDeleted(address.id);
       toast.success(`ลบ “${address.name}” แล้ว`);
     } catch (error) {
@@ -386,8 +415,8 @@ export function FreeRouteBuilderPreview({
     if (mode === 'immediate' && !selectedDriver) return toast.error('เลือกคนขับก่อนส่งงานทันที');
     setSubmitting(true);
     try {
-      const first = stops[0]?.name ?? 'จุดรับ';
-      const last = stops[stops.length - 1]?.name ?? 'จุดส่ง';
+      const first = routeStops[0]?.name ?? 'จุดรับ';
+      const last = routeStops[routeStops.length - 1]?.name ?? 'จุดส่ง';
       const result = await createAdHocRouteRun({
         name: `เที่ยว ${first} → ${last}`,
         messengerTitle: messengerTitle.trim() || undefined,
@@ -401,7 +430,7 @@ export function FreeRouteBuilderPreview({
         startWithinMinutes: 10,
         startPolicy: 'manual',
       });
-      await onCreated();
+      await onCreated(result);
       toast.success(
         result.status === 'dispatched'
           ? `ส่งเที่ยวให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`
@@ -429,7 +458,7 @@ export function FreeRouteBuilderPreview({
                   <Loader2 className="h-3 w-3 animate-spin" /> กำลังบันทึกลำดับ…
                 </span>
               ) : (
-                'ลากจัดลำดับในคลัง หรือลากไปเที่ยว/กดเพิ่ม'
+                'ลากจัดลำดับในคลัง หรือคลิก/ลากไปเติมงาน'
               )}
             </div>
           </div>
@@ -640,7 +669,7 @@ export function FreeRouteBuilderPreview({
                       เพิ่ม{addingKind === 'pickup' ? 'จุดรับของ' : 'จุดส่งของ'}ใหม่
                     </h2>
                     <p className="text-[11px] text-muted-foreground">
-                      เข้าคลังที่อยู่ และเพิ่มเข้าเที่ยวนี้ให้ทันที
+                      ใช้ชื่อสถานที่ค้นหาแผนที่ได้ แล้วเพิ่มเข้าเที่ยวนี้ทันที
                     </p>
                   </div>
                 </div>
@@ -667,6 +696,9 @@ export function FreeRouteBuilderPreview({
                     value={newName}
                     onChange={(event) => setNewName(event.target.value)}
                   />
+                  <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                    ระบบลองค้นหาชื่อสถานที่บนแผนที่ก่อน แล้วใช้ที่อยู่เป็นคำค้นสำรอง
+                  </span>
                 </label>
                 <label className="block text-xs font-medium">
                   ที่อยู่
@@ -777,6 +809,9 @@ export function FreeRouteBuilderPreview({
                     value={editName}
                     onChange={(event) => setEditName(event.target.value)}
                   />
+                  <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                    ระบบใช้ชื่อสถานที่ค้นหาแผนที่ได้ หากไม่พบจะลองค้นหาจากที่อยู่
+                  </span>
                 </label>
                 <label className="block text-xs font-medium">
                   ที่อยู่
@@ -842,204 +877,215 @@ export function FreeRouteBuilderPreview({
       >
         <div className="flex items-center justify-between gap-2">
           <div>
-            <div className="text-sm font-semibold">2. ลำดับเที่ยวและคู่รับ–ส่ง</div>
+            <div className="text-sm font-semibold">2. งานในเที่ยวนี้</div>
             <div className="text-[10px] text-muted-foreground">
-              ลากสลับลำดับ และเลือกปลายทางของแต่ละจุดรับ
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 text-[10px] font-medium">
-              <span className="rounded-full bg-info/10 px-2 py-0.5 text-info">จุดรับของ</span>
-              <ArrowRight className="h-3 w-3 text-muted-foreground" />
-              <span className="rounded-full bg-success/10 px-2 py-0.5 text-success">จุดส่งของ</span>
+              1 งาน = <span className="font-medium text-info">รับ 1 จุด</span> +{' '}
+              <span className="font-medium text-success">ส่ง 1 จุด</span> · Messenger
+              วิ่งเรียงตามลำดับงาน
             </div>
           </div>
-          <Badge variant="outline">{stops.length} จุด</Badge>
+          <Badge variant="outline">
+            {jobs.length} งาน · {routeStops.length} จุด
+          </Badge>
         </div>
 
-        {stops.length === 0 ? (
+        {jobs.length === 0 ? (
           <div className="mt-3 flex flex-col items-center justify-center rounded-xl border-2 border-dashed bg-muted/20 px-6 py-10 text-center">
             <PackagePlus className="h-8 w-8 text-muted-foreground/50" />
-            <div className="mt-2 text-sm font-medium">ลากจุดรับหรือจุดส่งมาวาง</div>
+            <div className="mt-2 text-sm font-medium">เพิ่มงานแรกของเที่ยววิ่ง</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              เพิ่มกี่จุดก็ได้ แล้วค่อยจับคู่กันในเที่ยวนี้
+              คลิกหรือลากที่อยู่จากคลัง แล้วระบบจะจัดลงช่องรับ–ส่งของงานให้เอง
             </div>
           </div>
         ) : (
           <div className="mt-3 space-y-2">
-            <div className="flex items-center gap-2 rounded-md border border-info/20 bg-info/5 px-2.5 py-2 text-[10px] font-medium text-info">
-              <Package className="h-3.5 w-3.5" /> จุดรับของ
-            </div>
-            {pickupStops.length === 0 && (
-              <div className="rounded-md border border-dashed border-info/30 bg-info/5 px-3 py-2 text-[10px] text-muted-foreground">
-                ยังไม่มีจุดรับของ — เพิ่มจากคลังด้านซ้ายก่อนจัดจุดส่ง
-              </div>
-            )}
-            {stops.map((stop, index) => {
-              const isPickup = stop.kind === 'pickup';
-              const previousKind = stops[index - 1]?.kind;
-              const showSectionDivider = !isPickup && (index === 0 || previousKind === 'pickup');
-              const stopsOfSameKind = isPickup ? pickupStops : dropoffStops;
-              const indexWithinKind = stopsOfSameKind.findIndex((item) => item.id === stop.id);
-              const linkedPickups = routeStops.filter(
-                (pickup) => pickup.kind === 'pickup' && pickup.deliverToStopId === stop.id,
-              );
-              return (
-                <Fragment key={stop.id}>
-                  {showSectionDivider && (
-                    <div className="flex items-center gap-3 py-1.5">
-                      <div className="h-px flex-1 bg-success/30" />
-                      <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-medium text-success">
-                        จุดส่งของ
-                      </span>
-                      <div className="h-px flex-1 bg-success/30" />
-                    </div>
-                  )}
-                  <div
-                    data-route-stop-id={stop.id}
-                    draggable
-                    onDragStart={(event) => {
-                      event.stopPropagation();
-                      event.dataTransfer.effectAllowed = 'move';
-                      event.dataTransfer.setData('application/x-movevai-route-stop', stop.id);
-                    }}
-                    onDragOver={(event) => {
-                      if (!event.dataTransfer.types.includes('application/x-movevai-route-stop'))
-                        return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onDrop={(event) => {
-                      const draggedId = event.dataTransfer.getData(
-                        'application/x-movevai-route-stop',
-                      );
-                      if (!draggedId) return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      moveStopBefore(draggedId, stop.id);
-                    }}
-                    className={`rounded-lg border border-l-2 p-3 shadow-sm transition-colors ${
-                      isPickup
-                        ? 'border-info/30 border-l-info bg-info/5 hover:bg-info/10'
-                        : 'border-success/30 border-l-success bg-success/5 hover:bg-success/10'
-                    }`}
+            {jobs.map((job, index) => (
+              <div
+                key={job.id}
+                data-route-job-id={job.id}
+                draggable
+                onDragStart={(event) => {
+                  event.stopPropagation();
+                  event.dataTransfer.effectAllowed = 'move';
+                  event.dataTransfer.setData('application/x-movevai-route-job', job.id);
+                }}
+                onDragOver={(event) => {
+                  const types = event.dataTransfer.types;
+                  if (
+                    !types.includes('application/x-movevai-route-job') &&
+                    !types.includes('application/x-movevai-address')
+                  )
+                    return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                }}
+                onDrop={(event) => {
+                  const draggedJobId = event.dataTransfer.getData(
+                    'application/x-movevai-route-job',
+                  );
+                  const addressId = event.dataTransfer.getData('application/x-movevai-address');
+                  if (!draggedJobId && !addressId) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  if (draggedJobId) moveJobBefore(draggedJobId, job.id);
+                  else placeAddressInJob(job.id, addressId);
+                }}
+                className="rounded-xl border bg-background shadow-sm transition-colors hover:border-primary/40"
+              >
+                <div className="flex items-center gap-2 rounded-t-xl border-b bg-muted/20 px-3 py-1">
+                  <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground/50" />
+                  <span className="flex-1 text-xs font-semibold">งานที่ {index + 1}</span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled={index === 0}
+                    onClick={() => moveJob(job.id, -1)}
                   >
-                    <div className="flex items-start gap-2">
-                      <GripVertical className="mt-1 h-4 w-4 shrink-0 cursor-grab text-muted-foreground/50" />
+                    <ArrowUp className="h-3.5 w-3.5" />
+                    <span className="sr-only">เลื่อนงานขึ้น</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    disabled={index === jobs.length - 1}
+                    onClick={() => moveJob(job.id, 1)}
+                  >
+                    <ArrowDown className="h-3.5 w-3.5" />
+                    <span className="sr-only">เลื่อนงานลง</span>
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive"
+                    onClick={() => removeJob(job.id)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span className="sr-only">ลบงานที่ {index + 1}</span>
+                  </Button>
+                </div>
+                {(['pickup', 'dropoff'] as RouteStopKind[]).map((kind) => {
+                  const isPickup = kind === 'pickup';
+                  const stop = isPickup ? job.pickup : job.dropoff;
+                  return (
+                    <Fragment key={kind}>
+                      {!isPickup && (
+                        <div className="ml-[1.6rem] h-2.5 border-l-2 border-border/70" />
+                      )}
+                      {stop ? (
+                        <div className="flex items-start gap-2 px-3 py-2">
+                          <span
+                            className={`mt-0.5 inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              isPickup ? 'bg-info/10 text-info' : 'bg-success/10 text-success'
+                            }`}
+                          >
+                            {isPickup ? 'รับ' : 'ส่ง'}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-semibold">{stop.name}</div>
+                            <div className="line-clamp-1 text-[11px] text-muted-foreground">
+                              {stop.address}
+                            </div>
+                            {(stop.contact || stop.phone) && (
+                              <div className="mt-0.5 text-[10px] text-muted-foreground">
+                                {stop.contact ? `ผู้รับ: ${stop.contact}` : 'ผู้รับ: —'}
+                                {stop.phone ? ` · ${stop.phone}` : ''}
+                              </div>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() => clearJobSlot(job.id, kind)}
+                          >
+                            <X className="h-3 w-3" />
+                            <span className="sr-only">
+                              นำ{isPickup ? 'จุดรับ' : 'จุดส่ง'}ออกจากงานที่ {index + 1}
+                            </span>
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="mx-3 my-2 flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2">
+                          <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                            <span
+                              className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                isPickup ? 'bg-info/10 text-info' : 'bg-success/10 text-success'
+                              }`}
+                            >
+                              {isPickup ? 'รับ' : 'ส่ง'}
+                            </span>
+                            เลือก{isPickup ? 'จุดรับ' : 'จุดส่ง'}จากคลัง หรือ
+                          </span>
+                          <button
+                            type="button"
+                            className="shrink-0 text-[11px] font-semibold text-primary hover:underline"
+                            onClick={() => setAddingKind(kind)}
+                          >
+                            + เพิ่มใหม่
+                          </button>
+                        </div>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Button
+          type="button"
+          variant="outline"
+          className="mt-2 w-full border-dashed"
+          disabled={jobs.some((job) => !job.pickup && !job.dropoff)}
+          onClick={addEmptyJob}
+        >
+          <Plus className="h-4 w-4" /> เพิ่มงานรับ–ส่ง
+        </Button>
+
+        {routeStops.length > 0 && (
+          <section className="mt-3 rounded-lg bg-muted/20 px-3 py-2.5">
+            <div className="text-[10px] font-medium text-muted-foreground">
+              ลำดับวิ่งจริง <span aria-hidden="true">·</span>{' '}
+              <span className="font-semibold text-foreground">{routeStops.length}</span> จุด
+            </div>
+            <ol className="mt-3 space-y-3">
+              {routeSequence.map(({ stop, jobNumber }, index) => {
+                const isFirstStopOfJob =
+                  index === 0 || routeSequence[index - 1].jobNumber !== jobNumber;
+                return (
+                  <Fragment key={`${jobNumber}-${stop.kind}-${stop.id}`}>
+                    {isFirstStopOfJob && (
+                      <li className={index > 0 ? 'pt-1' : undefined}>
+                        <span className="rounded-full bg-foreground/8 px-2 py-0.5 text-[10px] font-semibold text-foreground">
+                          งานที่ {jobNumber}
+                        </span>
+                      </li>
+                    )}
+                    <li className="flex items-start gap-2">
                       <span
-                        className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                          isPickup ? 'bg-info/15 text-info' : 'bg-success/15 text-success'
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${
+                          stop.kind === 'pickup' ? 'bg-info' : 'bg-success'
                         }`}
                       >
                         {index + 1}
                       </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
-                              isPickup
-                                ? 'border-info/30 text-info'
-                                : 'border-success/30 text-success'
-                            }`}
-                          >
-                            {isPickup ? (
-                              <Package className="h-3 w-3" />
-                            ) : (
-                              <MapPin className="h-3 w-3" />
-                            )}
-                            {isPickup ? 'รับของ' : 'ส่งของ'}
-                          </span>
-                          <span className="text-xs font-semibold">{stop.name}</span>
-                        </div>
-                        <div className="mt-1 line-clamp-2 text-[11px] text-muted-foreground">
-                          {stop.address}
-                        </div>
-                        {(stop.contact || stop.phone) && (
-                          <div className="mt-1 text-[10px] text-muted-foreground">
-                            {stop.contact ? `ผู้รับ: ${stop.contact}` : 'ผู้รับ: —'}
-                            {stop.phone ? ` · ${stop.phone}` : ''}
-                          </div>
-                        )}
-                        {!isPickup && (
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-md border border-success/20 bg-success/10 px-2 py-1.5 text-[10px] font-medium text-success">
-                            <Package className="h-3 w-3 shrink-0" /> รับมาจาก
-                            {linkedPickups.length > 0 ? (
-                              linkedPickups.map((pickup) => (
-                                <span
-                                  key={pickup.id}
-                                  className="rounded-full border border-success/20 bg-background px-2 py-0.5 text-foreground"
-                                >
-                                  {pickup.name}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-muted-foreground">
-                                ยังไม่มีจุดรับที่เลือกส่งมาที่นี่
-                              </span>
-                            )}
-                          </div>
-                        )}
+                      <div className="min-w-0 text-xs font-semibold leading-snug">
+                        <span className={stop.kind === 'pickup' ? 'text-info' : 'text-success'}>
+                          {stop.kind === 'pickup' ? 'รับ' : 'ส่ง'}
+                        </span>
+                        <span className="mx-1 text-muted-foreground" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="break-words">{stop.name}</span>
                       </div>
-                      <div className="flex shrink-0 items-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={indexWithinKind === 0}
-                          onClick={() => moveStop(stop.id, -1)}
-                        >
-                          <ArrowUp className="h-3.5 w-3.5" />
-                          <span className="sr-only">เลื่อนขึ้น</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={indexWithinKind === stopsOfSameKind.length - 1}
-                          onClick={() => moveStop(stop.id, 1)}
-                        >
-                          <ArrowDown className="h-3.5 w-3.5" />
-                          <span className="sr-only">เลื่อนลง</span>
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-destructive"
-                          onClick={() => removeStop(stop.id)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          <span className="sr-only">นำจุดออก</span>
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </Fragment>
-              );
-            })}
-          </div>
-        )}
-
-        {pickupPreviews.length > 0 && (
-          <section className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3">
-            <div className="text-[11px] font-semibold text-primary">Preview คู่รับ → ส่ง</div>
-            <div className="mt-2 space-y-1.5">
-              {pickupPreviews.map(({ pickup, dropoff }) => (
-                <div
-                  key={pickup.id}
-                  className="flex min-w-0 items-center gap-2 rounded-md border border-primary/15 bg-background px-2.5 py-2 text-[11px]"
-                >
-                  <span className="min-w-0 flex-1 truncate font-medium text-info">
-                    รับ: {pickup.name}
-                  </span>
-                  <ArrowRight className="h-3.5 w-3.5 shrink-0 text-primary" />
-                  <span
-                    className={`min-w-0 flex-1 truncate text-right ${
-                      dropoff ? 'font-medium text-success' : 'text-muted-foreground'
-                    }`}
-                  >
-                    {dropoff ? `ส่ง: ${dropoff.name}` : 'ส่ง: ยังไม่เลือก'}
-                  </span>
-                </div>
-              ))}
-            </div>
+                    </li>
+                  </Fragment>
+                );
+              })}
+            </ol>
           </section>
         )}
 
@@ -1054,7 +1100,7 @@ export function FreeRouteBuilderPreview({
             validationError
           ) : (
             <span className="inline-flex items-center gap-1.5">
-              <CheckCircle2 className="h-3.5 w-3.5" /> คู่รับ–ส่งและลำดับถูกต้อง พร้อมสร้างงาน
+              <CheckCircle2 className="h-3.5 w-3.5" /> ทุกงานมีจุดรับ–ส่งครบ พร้อมสร้างงาน
             </span>
           )}
         </div>
@@ -1069,10 +1115,10 @@ export function FreeRouteBuilderPreview({
             <div className="text-[10px] text-muted-foreground">เส้นทางถนนเปลี่ยนตามลำดับที่ลาก</div>
           </div>
           <Badge className="gap-1" variant="secondary">
-            <Route className="h-3 w-3" /> {stops.length} จุด
+            <Route className="h-3 w-3" /> {routeStops.length} จุด
           </Badge>
         </div>
-        {stops.length > 0 ? (
+        {routeStops.length > 0 ? (
           <RouteStopsMap stops={routeStops} className="mt-3 h-96" />
         ) : (
           <div className="mt-3 flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -1243,8 +1289,8 @@ export function FreeRouteBuilderPreview({
           {submitting
             ? 'กำลังสร้างเที่ยว…'
             : mode === 'immediate'
-              ? `ส่ง ${stops.length} จุดให้ Messenger`
-              : `สร้าง ${stops.length} จุดเข้า Planning`}
+              ? `ส่ง 1 เที่ยว (${routeStops.length} จุด) ให้ Messenger`
+              : `สร้าง 1 เที่ยว (${routeStops.length} จุด) เข้า Planning`}
         </Button>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
           {mode === 'immediate'

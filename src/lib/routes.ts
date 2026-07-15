@@ -3,7 +3,7 @@ export type PageKey =
   | 'script_transform'
   | 'inbox'
   | 'dispatch_board'
-  | 'route_templates'
+  | 'route_builder'
   | 'queue'
   | 'delivery_tracking'
   | 'delivery_report'
@@ -28,7 +28,7 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'script_transform', path: '/script-transform' },
   { page: 'inbox', path: '/order-inbox' },
   { page: 'dispatch_board', path: '/dispatch-board' },
-  { page: 'route_templates', path: '/route-templates' },
+  { page: 'route_builder', path: '/route-builder', aliases: ['/route-templates'] },
   { page: 'queue', path: '/driver-queue' },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
   { page: 'delivery_report', path: '/delivery-report' },

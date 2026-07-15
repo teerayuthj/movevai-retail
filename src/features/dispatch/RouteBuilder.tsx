@@ -5,9 +5,12 @@ import { FreeRouteBuilderPreview } from '@/features/dispatch/components/FreeRout
 import { fetchRouteAddresses, type RouteAddress } from '@/lib/retailApi';
 import { useRetailStore } from '@/state/retailStore';
 
-type Props = { onOpenDispatch: (search?: string) => void };
+type Props = {
+  onOpenPlanning: (search?: string) => void;
+  onOpenTracking: (search?: string) => void;
+};
 
-export function RouteTemplates({ onOpenDispatch }: Props) {
+export function RouteBuilder({ onOpenPlanning, onOpenTracking }: Props) {
   const { drivers, orders, syncFromBackend } = useRetailStore();
   const [addresses, setAddresses] = useState<RouteAddress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +38,7 @@ export function RouteTemplates({ onOpenDispatch }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">จัดเที่ยววิ่ง</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">สร้างเที่ยววิ่ง</h1>
         <p className="text-sm text-muted-foreground">
           จัดจุดรับ–ส่ง วันที่ เวลา และคนขับให้ครบในเที่ยวเดียว
         </p>
@@ -58,9 +61,19 @@ export function RouteTemplates({ onOpenDispatch }: Props) {
           onAddressesReordered={(next) => setAddresses(next)}
           drivers={drivers}
           orders={orders}
-          onCreated={async () => {
+          onCreated={async (result) => {
             await syncFromBackend();
-            onOpenDispatch();
+            const focusedOrder = result.orderIds[0];
+            const search = focusedOrder ? `?order=${encodeURIComponent(focusedOrder)}` : undefined;
+            if (result.status === 'dispatched') {
+              onOpenTracking(
+                focusedOrder
+                  ? `?tab=awaiting_acceptance&order=${encodeURIComponent(focusedOrder)}`
+                  : '?tab=awaiting_acceptance',
+              );
+              return;
+            }
+            onOpenPlanning(search);
           }}
         />
       )}

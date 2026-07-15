@@ -89,6 +89,27 @@ export async function acceptMessengerOrder(orderId: string, _driverCode: string)
   return normalizeOrder(result);
 }
 
+type MessengerTripActionResult = {
+  routeId: string;
+  items: ApiOrder[];
+};
+
+export async function acceptMessengerTrip(routeId: string) {
+  const result = await request<MessengerTripActionResult>(
+    `${MESSENGER_API_BASE}/routes/${encodeURIComponent(routeId)}/accept`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  return result.items.map(normalizeOrder);
+}
+
+export async function startMessengerTrip(routeId: string) {
+  const result = await request<MessengerTripActionResult>(
+    `${MESSENGER_API_BASE}/routes/${encodeURIComponent(routeId)}/start-delivery`,
+    { method: 'POST', body: JSON.stringify({}) },
+  );
+  return result.items.map(normalizeOrder);
+}
+
 export async function submitMessengerOrder(
   orderId: string,
   _driverCode: string,
@@ -151,6 +172,21 @@ export function registerMessengerDriver(input: MessengerRegisterInput) {
 
 export function hasMessengerSession() {
   return Boolean(localStorage.getItem(MESSENGER_TOKEN_KEY));
+}
+
+export type MessengerPresenceUpdate = {
+  deviceId: string;
+  platform: 'web' | 'ios' | 'android';
+  appState: 'foreground' | 'background';
+  locationPermission?: 'granted' | 'denied' | 'prompt' | 'unavailable' | 'error';
+  location?: { lat: number; lng: number; accuracy: number; recordedAt: string };
+};
+
+export function updateMessengerPresence(input: MessengerPresenceUpdate) {
+  return request<{ ok: boolean; lastHeartbeatAt: string; locationAt: string | null }>(
+    `${MESSENGER_API_BASE}/presence`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
 }
 
 export async function logoutMessenger() {

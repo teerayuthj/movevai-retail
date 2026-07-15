@@ -1,3 +1,4 @@
+import { simplifyThaiAddress } from '@/lib/thaiAddress';
 import { APP_API_BASE, request } from './client';
 
 export type GeoCoordinate = { lat: number; lng: number };
@@ -21,11 +22,19 @@ function normalizeThaiAddressForGeocode(address: string) {
     .trim();
 }
 
+function withCountrySuffix(query: string) {
+  return /ประเทศไทย/.test(query) ? query : `${query} ประเทศไทย`;
+}
+
 function geocodeQueries(address: string) {
   const original = address.trim().replace(/\s+/g, ' ');
   const normalized = normalizeThaiAddressForGeocode(original);
-  const withCountry = /ประเทศไทย/.test(normalized) ? normalized : `${normalized} ประเทศไทย`;
-  return [...new Set([original, normalized, withCountry].filter(Boolean))];
+  const queries = [original, normalized, withCountrySuffix(normalized)];
+  // คำค้นสำรองสุดท้าย: ตัดชื่ออาคาร/เลขห้องที่ทำให้ geocoder หลง เหลือเลขที่บ้าน + ถนน/ซอย/แขวง
+  // เป็นต้นไป เพื่อให้จุดที่ที่อยู่ "เกินจำเป็น" ยังปักหมุดและวาดเส้นทางถนนได้ (ที่อยู่เต็มไม่ถูกทิ้ง)
+  const simplified = simplifyThaiAddress(normalized);
+  if (simplified) queries.push(simplified, withCountrySuffix(simplified));
+  return [...new Set(queries.filter(Boolean))];
 }
 
 /**
@@ -40,6 +49,21 @@ export async function geocodeAddress(address: string): Promise<GeoCoordinate | n
       `${APP_API_BASE}/geocode?q=${encodeURIComponent(query)}`,
     );
     if (result.coordinate) return result.coordinate;
+  }
+  return null;
+}
+
+/**
+ * ค้นหาพิกัดของจุดรับ–ส่งจากชื่อสถานที่ได้ด้วย เช่น ชื่อร้าน/อาคาร/สาขา
+ * โดยลองชื่อก่อนเพื่อรองรับที่อยู่ที่พิมพ์ไม่ตรงรูปแบบแผนที่ แล้วจึงลองที่อยู่
+ * เป็นคำค้นสำรองเสมอ
+ */
+export async function geocodePlace(name: string, address: string): Promise<GeoCoordinate | null> {
+  const queries = [...new Set([name.trim(), address.trim()].filter(Boolean))];
+
+  for (const query of queries) {
+    const coordinate = await geocodeAddress(query);
+    if (coordinate) return coordinate;
   }
   return null;
 }

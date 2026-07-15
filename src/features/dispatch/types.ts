@@ -21,6 +21,12 @@ export type RouteStop = {
 
 export type RouteRunDispatchMode = 'planning' | 'immediate';
 
+export type DispatchCreationOutcome = {
+  destination: 'planning' | 'tracking';
+  orderIds: string[];
+  plannedDate?: string;
+};
+
 // 1 template = 1 สายวิ่ง: ลำดับจุดแวะอิสระ ไม่มีจุดเริ่มต้น (messenger เริ่มจากที่ที่ตัวเองอยู่)
 export type RouteTemplate = {
   id: string;
