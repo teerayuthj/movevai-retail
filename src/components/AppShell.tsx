@@ -18,6 +18,7 @@ import { Topbar } from '@/components/app-shell/Topbar';
 import { fetchAppOrders } from '@/lib/retailApi';
 import { matchesOrderReference, normalizeOrderNumberInput } from '@/lib/orderNumber';
 import type { Order } from '@/data/orderTypes';
+import { getBoardAction } from '@/features/dispatch/boardActions';
 
 type Props = {
   page: PageKey;
@@ -42,6 +43,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
   // สถานะพับใช้เฉพาะบนเดสก์ท็อป — บนมือถือ drawer แสดงเต็มความกว้างเสมอ
   const collapsed = isDesktop && isSidebarCollapsed;
   const { orders } = useRetailStore();
+  const [badgeNowMs, setBadgeNowMs] = useState(Date.now());
 
   // จำนวนงานค้างต่อเมนู (อ้างอิงด้วย PageKey ให้ตรงกับ navConfig)
   const badgeCounts: Partial<Record<PageKey, number>> = {
@@ -56,7 +58,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
     dispatch_board: orders.filter(
       (o) =>
         (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-        ['ready', 'assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
+        getBoardAction(o, badgeNowMs) != null,
     ).length,
     delivery_tracking: orders.filter(
       (o) =>
@@ -72,6 +74,11 @@ export function AppShell({ page, onChangePage, children }: Props) {
   };
 
   const SidebarToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setBadgeNowMs(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     try {
@@ -287,7 +294,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
           <Topbar
             onOpenMobileNav={() => setIsMobileNavOpen(true)}
             onSearch={handleGlobalSearch}
-            showSearch={page !== 'route_templates'}
+            showSearch={page !== 'route_builder'}
           />
           <main className="p-4 sm:p-6">{children}</main>
         </div>

@@ -36,6 +36,7 @@ import type { Driver, Order } from '@/data/orderTypes';
 import { deriveDriverDisplayStatus, formatDriverDispatchStatus } from '@/lib/deliveryExecution';
 import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
 import type { RouteStop, RouteStopKind } from '@/features/dispatch/types';
+import type { RouteTemplateRun } from '@/lib/retailApi';
 import {
   createAdHocRouteRun,
   createRouteAddress,
@@ -157,7 +158,7 @@ export function FreeRouteBuilderPreview({
   onAddressesReordered: (addresses: RouteAddress[]) => void;
   drivers: Driver[];
   orders: Order[];
-  onCreated: () => Promise<void> | void;
+  onCreated: (result: RouteTemplateRun) => Promise<void> | void;
 }) {
   const [stops, setStops] = useState<BuilderStop[]>(seedStops);
   const [searchByKind, setSearchByKind] = useState<Record<RouteStopKind, string>>({
@@ -401,7 +402,7 @@ export function FreeRouteBuilderPreview({
         startWithinMinutes: 10,
         startPolicy: 'manual',
       });
-      await onCreated();
+      await onCreated(result);
       toast.success(
         result.status === 'dispatched'
           ? `ส่งเที่ยวให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`

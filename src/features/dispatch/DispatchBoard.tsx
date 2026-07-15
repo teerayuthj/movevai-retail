@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   CalendarClock,
-  CheckCircle2,
   ChevronRight,
   Clock3,
   FileText,
@@ -23,20 +23,23 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import type { Order } from '@/data/orderTypes';
-import { statusLabel } from '@/data/orderTypes';
+import {
+  boardActionLabel,
+  boardActionPriority,
+  getBoardAction,
+} from '@/features/dispatch/boardActions';
 import { QuickCreateDialog } from '@/features/dispatch/components/QuickCreateDialog';
 import {
   dispatchJobTypeLabel,
   getDispatchJobTitle,
   getDispatchJobType,
   getPickup,
+  type DispatchCreationOutcome,
 } from '@/features/dispatch/types';
-import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import { useRetailStore } from '@/state/retailStore';
 
-type BoardFilter = 'action' | 'ready' | 'waiting' | 'active' | 'all';
+type BoardFilter = 'all' | 'unassigned' | 'exception';
 
 type Props = {
   locationSearch?: string;
@@ -51,49 +54,10 @@ const JOB_ICONS = {
   other: Truck,
 };
 
-function routeAcceptanceState(order: Order) {
-  const route = order.deliveryRoute;
-  if (order.status !== 'assigned') return null;
-  if (!route?.requiresAcceptance) return 'ready_to_start' as const;
-  return route.acceptedAt ? ('accepted' as const) : ('waiting_acceptance' as const);
-}
-
-function boardStatus(order: Order) {
-  if (order.status === 'ready') {
-    return isUnreleasedPlannedOrder(order) ? 'planning' : 'ready';
-  }
-  const acceptance = routeAcceptanceState(order);
-  if (acceptance) return acceptance;
-  if (order.status === 'in_transit') return 'active';
-  if (order.status === 'pending_confirmation') return 'review';
-  if (order.status === 'delivered') return 'done';
-  return 'other';
-}
-
-function boardStatusLabel(order: Order) {
-  const state = boardStatus(order);
-  if (state === 'ready') return 'รอจัดคนขับ';
-  if (state === 'planning') return 'อยู่ใน Planning';
-  if (state === 'waiting_acceptance') return 'รอคนขับรับ';
-  if (state === 'accepted') return 'รับงานแล้ว · รอเริ่ม';
-  if (state === 'ready_to_start') return 'พร้อมเริ่มงาน';
-  if (state === 'active') return 'กำลังวิ่ง';
-  if (state === 'review') return 'รอตรวจหลักฐาน';
-  return statusLabel[order.status];
-}
-
-function countdown(iso: string | undefined, nowMs: number) {
-  if (!iso) return null;
-  const diff = new Date(iso).getTime() - nowMs;
-  if (Number.isNaN(diff)) return null;
-  const minutes = Math.max(0, Math.ceil(Math.abs(diff) / 60_000));
-  return diff >= 0 ? `เหลือ ${minutes} นาที` : `เกิน ${minutes} นาที`;
-}
-
 export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }: Props) {
   const { orders, drivers, publishUrgentRoute, syncFromBackend } = useRetailStore();
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<BoardFilter>('action');
+  const [filter, setFilter] = useState<BoardFilter>('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const [initialTemplateId, setInitialTemplateId] = useState<string>();
@@ -117,32 +81,29 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
     if (orderId) setSelectedId(orderId);
   }, [locationSearch]);
 
-  const workflowOrders = useMemo(
+  const actionableOrders = useMemo(
     () =>
       orders
-        .filter(
-          (order) =>
-            (order.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-            ['ready', 'assigned', 'in_transit', 'pending_confirmation', 'delivered'].includes(
-              order.status,
-            ),
-        )
-        .sort((a, b) => new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime()),
-    [orders],
+        .filter((order) => (order.shippingMethod ?? 'internal_driver') === 'internal_driver')
+        .filter((order) => getBoardAction(order, nowMs) != null)
+        .sort((a, b) => {
+          const aAction = getBoardAction(a, nowMs)!;
+          const bAction = getBoardAction(b, nowMs)!;
+          const priority = boardActionPriority(bAction) - boardActionPriority(aAction);
+          if (priority !== 0) return priority;
+          return new Date(b.receivedAt).getTime() - new Date(a.receivedAt).getTime();
+        }),
+    [nowMs, orders],
   );
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return workflowOrders.filter((order) => {
-      const state = boardStatus(order);
+    return actionableOrders.filter((order) => {
+      const action = getBoardAction(order, nowMs)!;
       const matchesFilter =
         filter === 'all' ||
-        (filter === 'action' &&
-          ['ready', 'waiting_acceptance', 'accepted', 'ready_to_start'].includes(state)) ||
-        (filter === 'ready' && ['ready', 'planning'].includes(state)) ||
-        (filter === 'waiting' &&
-          ['waiting_acceptance', 'accepted', 'ready_to_start'].includes(state)) ||
-        (filter === 'active' && ['active', 'review'].includes(state));
+        (filter === 'unassigned' && action.kind === 'unassigned') ||
+        (filter === 'exception' && action.kind !== 'unassigned');
       if (!matchesFilter) return false;
       if (!normalized) return true;
       return [
@@ -159,24 +120,25 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
         .toLowerCase()
         .includes(normalized);
     });
-  }, [filter, query, workflowOrders]);
+  }, [actionableOrders, filter, nowMs, query]);
 
   useEffect(() => {
-    if (!selectedId || !workflowOrders.some((order) => order.id === selectedId)) {
-      setSelectedId(filtered[0]?.id ?? workflowOrders[0]?.id ?? null);
+    if (!selectedId || !filtered.some((order) => order.id === selectedId)) {
+      setSelectedId(filtered[0]?.id ?? null);
     }
-  }, [filtered, selectedId, workflowOrders]);
+  }, [filtered, selectedId]);
 
-  const selected = workflowOrders.find((order) => order.id === selectedId) ?? null;
+  const selected = actionableOrders.find((order) => order.id === selectedId) ?? null;
+  const selectedAction = selected ? getBoardAction(selected, nowMs) : null;
   const selectedDriver = drivers.find((driver) => driver.id === dispatchDriverId);
   const counts = {
-    ready: workflowOrders.filter((order) => ['ready', 'planning'].includes(boardStatus(order)))
-      .length,
-    waiting: workflowOrders.filter((order) =>
-      ['waiting_acceptance', 'accepted', 'ready_to_start'].includes(boardStatus(order)),
+    all: actionableOrders.length,
+    unassigned: actionableOrders.filter(
+      (order) => getBoardAction(order, nowMs)?.kind === 'unassigned',
     ).length,
-    active: workflowOrders.filter((order) => ['active', 'review'].includes(boardStatus(order)))
-      .length,
+    exception: actionableOrders.filter(
+      (order) => getBoardAction(order, nowMs)?.kind !== 'unassigned',
+    ).length,
   };
 
   const dispatchSelected = async () => {
@@ -189,8 +151,8 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
         startWithinMinutes: startMinutes,
         startPolicy,
       });
-      toast.success(`ส่งงานให้ ${selectedDriver.name} แล้ว — รอ Messenger รับงาน`);
-      setDispatchDriverId('');
+      toast.success(`ส่งงานให้ ${selectedDriver.name} แล้ว — ไปติดตามการรับงานต่อ`);
+      onOpenTracking(`?tab=awaiting_acceptance&order=${encodeURIComponent(selected.id)}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'ส่งงานไม่สำเร็จ');
     } finally {
@@ -198,13 +160,37 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
     }
   };
 
+  const handleCreated = async (outcome: DispatchCreationOutcome) => {
+    await syncFromBackend();
+    const focusedOrder = outcome.orderIds[0];
+    if (outcome.destination === 'planning') {
+      onOpenPlanning(focusedOrder ? `?order=${encodeURIComponent(focusedOrder)}` : undefined);
+      return;
+    }
+    onOpenTracking(
+      focusedOrder
+        ? `?tab=awaiting_acceptance&order=${encodeURIComponent(focusedOrder)}`
+        : '?tab=awaiting_acceptance',
+    );
+  };
+
+  const filteredHeading =
+    filter === 'unassigned'
+      ? 'งานรอจัดคนขับ'
+      : filter === 'exception'
+        ? 'งานผิดปกติที่ต้องแก้'
+        : 'งานที่ต้องทำตอนนี้';
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dispatch Board — งานรับส่ง</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            Dispatch Board — งานที่ต้องจัดการ
+          </h1>
           <p className="text-sm text-muted-foreground">
-            รวมงานที่พร้อมดำเนินการจาก Intake, Quick Create และ Route ประจำ
+            แสดงเฉพาะงานที่ต้องจัดคนขับหรือมีปัญหาให้แก้ไข
+            งานที่ส่งแล้วติดตามต่อในหน้าติดตามการจัดส่ง
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -224,16 +210,23 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Card className="p-4">
-          <div className="text-xs text-muted-foreground">รอจัดคนขับ / Planning</div>
-          <div className="mt-1 text-2xl font-semibold">{counts.ready}</div>
+          <div className="text-xs text-muted-foreground">ต้องทำตอนนี้</div>
+          <div className="mt-1 text-2xl font-semibold">{counts.all}</div>
         </Card>
         <Card className="p-4">
-          <div className="text-xs text-muted-foreground">รอรับ / รอเริ่มงาน</div>
-          <div className="mt-1 text-2xl font-semibold">{counts.waiting}</div>
+          <div className="text-xs text-muted-foreground">รอจัดคนขับ</div>
+          <div className="mt-1 text-2xl font-semibold">{counts.unassigned}</div>
         </Card>
-        <Card className="p-4">
-          <div className="text-xs text-muted-foreground">กำลังวิ่ง / รอตรวจ</div>
-          <div className="mt-1 text-2xl font-semibold">{counts.active}</div>
+        <Card className={cn('p-4', counts.exception > 0 && 'border-destructive/30')}>
+          <div className="text-xs text-muted-foreground">ผิดปกติ / เกินเวลา</div>
+          <div
+            className={cn(
+              'mt-1 text-2xl font-semibold',
+              counts.exception > 0 && 'text-destructive',
+            )}
+          >
+            {counts.exception}
+          </div>
         </Card>
       </div>
 
@@ -253,13 +246,11 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
         <Select
           value={filter}
           onChange={(event) => setFilter(event.target.value as BoardFilter)}
-          containerClassName="w-48"
+          containerClassName="w-52"
         >
-          <option value="action">งานที่ต้องทำต่อ</option>
-          <option value="ready">พร้อมส่ง / Planning</option>
-          <option value="waiting">รอรับ / รอเริ่ม</option>
-          <option value="active">กำลังดำเนินการ</option>
-          <option value="all">ทั้งหมด</option>
+          <option value="all">งานที่ต้องทำทั้งหมด</option>
+          <option value="unassigned">รอจัดคนขับ</option>
+          <option value="exception">ผิดปกติ / เกินเวลา</option>
         </Select>
         <Button
           variant="outline"
@@ -274,25 +265,22 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
       <div className="grid gap-4 lg:grid-cols-[minmax(300px,420px)_1fr]">
         <Card className="overflow-hidden">
           <div className="flex items-center justify-between border-b px-4 py-3">
-            <h2 className="text-sm font-semibold">งานตามสิ่งที่ต้องทำต่อ</h2>
+            <h2 className="text-sm font-semibold">{filteredHeading}</h2>
             <Badge variant="secondary">{filtered.length}</Badge>
           </div>
           <div className="app-scroll max-h-[calc(100vh-19rem)] overflow-y-auto">
             {filtered.length === 0 ? (
-              <div className="p-8 text-center text-sm text-muted-foreground">
-                ไม่พบงานในตัวกรองนี้
+              <div className="p-8 text-center">
+                <div className="text-sm font-medium">ไม่มีงานที่ต้องจัดการในกลุ่มนี้</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  งานที่ Assign แล้วตามปกติจะอยู่ในหน้าติดตามการจัดส่ง
+                </div>
               </div>
             ) : (
               filtered.map((order) => {
                 const jobType = getDispatchJobType(order);
                 const Icon = JOB_ICONS[jobType];
-                const state = boardStatus(order);
-                const due =
-                  state === 'waiting_acceptance'
-                    ? countdown(order.deliveryRoute?.acceptBy, nowMs)
-                    : state === 'accepted'
-                      ? countdown(order.deliveryRoute?.startBy, nowMs)
-                      : null;
+                const action = getBoardAction(order, nowMs)!;
                 return (
                   <button
                     key={order.id}
@@ -304,7 +292,11 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
                     )}
                   >
                     <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-muted">
-                      <Icon className="h-4 w-4 text-muted-foreground" />
+                      {action.kind === 'unassigned' ? (
+                        <Icon className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <AlertTriangle className="h-4 w-4 text-destructive" />
+                      )}
                     </span>
                     <span className="min-w-0">
                       <span className="flex flex-wrap items-center gap-1.5">
@@ -317,9 +309,15 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
                           </Badge>
                         )}
                       </span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {boardStatusLabel(order)}
-                        {due ? ` · ${due}` : ''}
+                      <span
+                        className={cn(
+                          'mt-1 block text-xs',
+                          action.kind === 'unassigned'
+                            ? 'text-muted-foreground'
+                            : 'text-destructive',
+                        )}
+                      >
+                        {boardActionLabel(action)}
                       </span>
                     </span>
                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -331,9 +329,9 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
         </Card>
 
         <Card className="min-h-[420px] p-5">
-          {!selected ? (
-            <div className="flex h-full min-h-[360px] items-center justify-center text-sm text-muted-foreground">
-              เลือกงานเพื่อดูรายละเอียด
+          {!selected || !selectedAction ? (
+            <div className="flex h-full min-h-[360px] items-center justify-center text-center text-sm text-muted-foreground">
+              เลือกงานที่ต้องจัดการเพื่อดูรายละเอียด
             </div>
           ) : (
             <div>
@@ -349,18 +347,8 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
                     {selected.orderNo ?? selected.code}
                   </p>
                 </div>
-                <Badge
-                  variant={
-                    selected.status === 'in_transit'
-                      ? 'info'
-                      : selected.status === 'ready'
-                        ? 'secondary'
-                        : selected.status === 'assigned'
-                          ? 'warning'
-                          : 'outline'
-                  }
-                >
-                  {boardStatusLabel(selected)}
+                <Badge variant={selectedAction.kind === 'unassigned' ? 'secondary' : 'destructive'}>
+                  {selectedAction.kind === 'unassigned' ? 'รอจัดคนขับ' : 'ต้องแก้ไข'}
                 </Badge>
               </div>
 
@@ -411,9 +399,12 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
                 </div>
               )}
 
-              {selected.status === 'ready' && !isUnreleasedPlannedOrder(selected) && (
+              {selectedAction.kind === 'unassigned' && (
                 <div className="mt-5 border-t pt-4">
-                  <h3 className="text-sm font-semibold">ส่งทันที</h3>
+                  <h3 className="text-sm font-semibold">จัดคนขับและส่งงาน</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    เลือกคนขับเพื่อส่งทันที หรือย้ายงานนี้ไปจัดรอบใน Planning
+                  </p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
                     <label className="text-xs font-medium">
                       คนขับ
@@ -495,77 +486,28 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
                 </div>
               )}
 
-              {isUnreleasedPlannedOrder(selected) && (
-                <div className="mt-5 rounded-xl border bg-info/5 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-info">
-                    <CalendarClock className="h-4 w-4" /> งานอยู่ใน Planning
+              {selectedAction.kind !== 'unassigned' && (
+                <div className="mt-5 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+                  <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                    {selectedAction.kind === 'push_failed' ? (
+                      <AlertTriangle className="h-4 w-4" />
+                    ) : (
+                      <Clock3 className="h-4 w-4" />
+                    )}
+                    {boardActionLabel(selectedAction)}
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {selected.deliveryPlan?.plannedDate}{' '}
-                    {selected.deliveryPlan?.plannedTime
-                      ? `· ${selected.deliveryPlan.plannedTime} น.`
-                      : ''}
+                    เปิดหน้าติดตามเพื่อตรวจสอบการแจ้งเตือน เปลี่ยนคนขับ หรือดำเนินการกับเที่ยวนี้
                   </p>
                   <Button
                     className="mt-3"
                     variant="outline"
                     size="sm"
-                    onClick={() => onOpenPlanning(`?order=${encodeURIComponent(selected.id)}`)}
-                  >
-                    เปิดแผนจัดส่ง
-                  </Button>
-                </div>
-              )}
-
-              {selected.status === 'assigned' && (
-                <div className="mt-5 rounded-xl border bg-warning/5 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium text-warning">
-                    <Clock3 className="h-4 w-4" />
-                    {boardStatusLabel(selected)}
-                  </div>
-                  {selected.deliveryRoute?.requiresAcceptance &&
-                    !selected.deliveryRoute.acceptedAt && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        ต้องรับภายใน {selected.deliveryRoute.acceptWithinMinutes ?? 15} นาที ·{' '}
-                        {countdown(selected.deliveryRoute.acceptBy, nowMs)}
-                      </p>
-                    )}
-                  {selected.deliveryRoute?.acceptedAt && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      รับเมื่อ{' '}
-                      {new Date(selected.deliveryRoute.acceptedAt).toLocaleTimeString('th-TH', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}{' '}
-                      · ต้องเริ่มภายใน {selected.deliveryRoute.startWithinMinutes ?? 10} นาที
-                    </p>
-                  )}
-                  <Button
-                    className="mt-3"
-                    variant="outline"
-                    size="sm"
                     onClick={() =>
-                      onOpenTracking(
-                        `?tab=awaiting_acceptance&order=${encodeURIComponent(selected.id)}`,
-                      )
+                      onOpenTracking(`?tab=overdue&order=${encodeURIComponent(selected.id)}`)
                     }
                   >
-                    เปิดติดตามงาน
-                  </Button>
-                </div>
-              )}
-
-              {['in_transit', 'pending_confirmation', 'delivered'].includes(selected.status) && (
-                <div className="mt-5 flex justify-end">
-                  <Button
-                    onClick={() => onOpenTracking(`?order=${encodeURIComponent(selected.id)}`)}
-                  >
-                    {selected.status === 'delivered' ? (
-                      <CheckCircle2 className="h-4 w-4" />
-                    ) : (
-                      <Truck className="h-4 w-4" />
-                    )}
-                    ดูการจัดส่ง
+                    เปิดติดตามและแก้ไข
                   </Button>
                 </div>
               )}
@@ -580,7 +522,7 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
         orders={orders}
         initialTemplateId={initialTemplateId}
         onClose={() => setQuickCreateOpen(false)}
-        onCreated={syncFromBackend}
+        onCreated={handleCreated}
       />
     </div>
   );
