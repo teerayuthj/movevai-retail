@@ -7,8 +7,9 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { TimePicker } from '@/components/ui/time-picker';
-import type { Driver } from '@/data/orderTypes';
+import type { Driver, Order } from '@/data/orderTypes';
 import { createDispatchJobs } from '@/features/dispatch/dispatchJobs';
+import { formatDriverDispatchStatus } from '@/lib/deliveryExecution';
 import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
 import {
   getRoutePickupTasks,
@@ -28,6 +29,7 @@ import { cn } from '@/lib/utils';
 type Props = {
   open: boolean;
   drivers: Driver[];
+  orders: Order[];
   initialTemplateId?: string;
   onClose: () => void;
   onCreated: () => Promise<void> | void;
@@ -35,7 +37,14 @@ type Props = {
 
 const SLA_OPTIONS = [5, 10, 15, 30];
 
-export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, onCreated }: Props) {
+export function QuickCreateDialog({
+  open,
+  drivers,
+  orders,
+  initialTemplateId,
+  onClose,
+  onCreated,
+}: Props) {
   const [templates, setTemplates] = useState<RouteTemplate[]>([]);
   const [mode, setMode] = useState<'single' | 'template'>('single');
   const [templateId, setTemplateId] = useState('');
@@ -408,8 +417,7 @@ export function QuickCreateDialog({ open, drivers, initialTemplateId, onClose, o
                       .filter((driver) => driver.status !== 'off_duty')
                       .map((driver) => (
                         <option key={driver.id} value={driver.id}>
-                          {driver.name} ·{' '}
-                          {driver.status === 'available' ? 'ว่าง' : `มี ${driver.activeOrders} งาน`}
+                          {driver.name} · {formatDriverDispatchStatus(driver, orders)}
                         </option>
                       ))}
                   </Select>

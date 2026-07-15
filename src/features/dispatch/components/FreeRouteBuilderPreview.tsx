@@ -32,7 +32,8 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { TimePicker } from '@/components/ui/time-picker';
-import type { Driver } from '@/data/orderTypes';
+import type { Driver, Order } from '@/data/orderTypes';
+import { deriveDriverDisplayStatus, formatDriverDispatchStatus } from '@/lib/deliveryExecution';
 import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
 import type { RouteStop, RouteStopKind } from '@/features/dispatch/types';
 import {
@@ -132,12 +133,6 @@ function todayDateKey(offset = 0) {
   );
 }
 
-function driverStatus(driver: Driver) {
-  if (driver.status === 'available') return 'ว่าง พร้อมรับงาน';
-  if (driver.status === 'on_delivery') return `กำลังส่ง ${driver.activeOrders || 1} งาน`;
-  return 'พักงาน';
-}
-
 function vehicleLabel(driver: Driver) {
   if (driver.vehicle === 'motorcycle') return 'มอเตอร์ไซค์';
   if (driver.vehicle === 'van') return 'รถตู้';
@@ -151,6 +146,7 @@ export function FreeRouteBuilderPreview({
   onAddressUpdated,
   onAddressesReordered,
   drivers,
+  orders,
   onCreated,
 }: {
   savedAddresses: RouteAddress[];
@@ -159,6 +155,7 @@ export function FreeRouteBuilderPreview({
   onAddressUpdated: (address: RouteAddress) => void;
   onAddressesReordered: (addresses: RouteAddress[]) => void;
   drivers: Driver[];
+  orders: Order[];
   onCreated: () => Promise<void> | void;
 }) {
   const [stops, setStops] = useState<BuilderStop[]>(seedStops);
@@ -1110,7 +1107,7 @@ export function FreeRouteBuilderPreview({
             <option value="">— ยังไม่เลือก (จัดตอน Planning) —</option>
             {availableDrivers.map((driver) => (
               <option key={driver.id} value={driver.id}>
-                {driver.name} · {driverStatus(driver)}
+                {driver.name} · {formatDriverDispatchStatus(driver, orders)}
               </option>
             ))}
           </Select>
@@ -1125,9 +1122,9 @@ export function FreeRouteBuilderPreview({
                 {vehicleLabel(selectedDriver)} · {selectedDriver.phone}
               </div>
               <div
-                className={`mt-1 text-[10px] ${selectedDriver.status === 'available' ? 'text-success' : 'text-warning'}`}
+                className={`mt-1 text-[10px] ${deriveDriverDisplayStatus(selectedDriver, orders) === 'available' ? 'text-success' : 'text-warning'}`}
               >
-                {driverStatus(selectedDriver)}
+                {formatDriverDispatchStatus(selectedDriver, orders)}
               </div>
             </div>
             <Badge variant="outline">{selectedDriver.zone || 'ไม่ระบุโซน'}</Badge>

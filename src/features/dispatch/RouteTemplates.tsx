@@ -8,7 +8,7 @@ import { useRetailStore } from '@/state/retailStore';
 type Props = { onOpenDispatch: (search?: string) => void };
 
 export function RouteTemplates({ onOpenDispatch }: Props) {
-  const { drivers, syncFromBackend } = useRetailStore();
+  const { drivers, orders, syncFromBackend } = useRetailStore();
   const [addresses, setAddresses] = useState<RouteAddress[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -57,6 +57,7 @@ export function RouteTemplates({ onOpenDispatch }: Props) {
           }
           onAddressesReordered={(next) => setAddresses(next)}
           drivers={drivers}
+          orders={orders}
           onCreated={async () => {
             await syncFromBackend();
             onOpenDispatch();

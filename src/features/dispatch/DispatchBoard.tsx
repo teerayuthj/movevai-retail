@@ -577,6 +577,7 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
       <QuickCreateDialog
         open={quickCreateOpen}
         drivers={drivers}
+        orders={orders}
         initialTemplateId={initialTemplateId}
         onClose={() => setQuickCreateOpen(false)}
         onCreated={syncFromBackend}
