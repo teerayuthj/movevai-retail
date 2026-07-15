@@ -1,4 +1,5 @@
 import type { Order } from '@/data/orderTypes';
+import { shortRouteCode } from '@/lib/routeCode';
 
 export type MessengerTrip = {
   key: string;
@@ -43,11 +44,14 @@ export function shortMessengerPlaceName(name: string) {
 
 export function messengerTripTitle(order: Order) {
   const dispatch = order.metadataJson?.dispatch;
+  const routeShort = order.deliveryRoute?.code
+    ? `รอบ ${shortRouteCode(order.deliveryRoute.code)}`
+    : undefined;
   return (
     dispatch?.messengerTitle?.trim() ||
     dispatch?.title?.trim() ||
     dispatch?.routeTemplateName?.trim() ||
-    order.deliveryRoute?.code ||
+    routeShort ||
     order.orderNo ||
     order.code
   );

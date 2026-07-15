@@ -25,6 +25,7 @@ import {
   Users,
 } from 'lucide-react';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
+import { shortRouteCode } from '@/lib/routeCode';
 import { MESSENGER_JOB_STATUSES, MESSENGER_TABS, type MessengerTab } from './messengerTabs';
 import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { useMessengerTab } from './hooks/useMessengerTab';
@@ -1001,7 +1002,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                       </div>
                       <div className="truncate text-[11px] text-muted-foreground">
                         {focusOrder.deliveryRoute
-                          ? `${focusOrder.deliveryRoute.code} · จุดที่ ${focusOrder.deliveryRoute.sequence}`
+                          ? `รอบ ${shortRouteCode(focusOrder.deliveryRoute.code)} · จุดที่ ${focusOrder.deliveryRoute.sequence}`
                           : 'ปลายทางเดียว'}
                         {focusOrder.deliveryPlan?.plannedDate &&
                           ` · ${formatPlanningDate(focusOrder.deliveryPlan.plannedDate)}`}
@@ -1039,7 +1040,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                         >
                           <span>{group.date ? formatPlanningDate(group.date) : 'ไม่ระบุวัน'}</span>
                           {group.routeCode && (
-                            <span className="opacity-70">· {group.routeCode}</span>
+                            <span className="opacity-70">
+                              · รอบ {shortRouteCode(group.routeCode)}
+                            </span>
                           )}
                           <span className="opacity-70">({group.jobs.length})</span>
                         </button>
@@ -1053,8 +1056,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                       <MapPin className="h-3.5 w-3.5 shrink-0" />
                       <span className="min-w-0 flex-1 truncate">
                         {selectedGroup.date ? formatPlanningDate(selectedGroup.date) : 'ไม่ระบุวัน'}
-                        {selectedGroup.routeCode && ` · ${selectedGroup.routeCode}`} ·{' '}
-                        {selectedGroup.jobs.length} จุด — แตะ “ดูแผนที่” ในการ์ดเพื่อดูทีละปลายทาง
+                        {selectedGroup.routeCode &&
+                          ` · รอบ ${shortRouteCode(selectedGroup.routeCode)}`}{' '}
+                        · {selectedGroup.jobs.length} จุด — แตะ “ดูแผนที่” ในการ์ดเพื่อดูทีละปลายทาง
                       </span>
                     </div>
                   )

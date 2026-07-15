@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
+import { shortRouteCode } from '@/lib/routeCode';
 import { getMessengerJobOverdue, getMessengerJobTiming } from '../messengerSchedule';
 import {
   cleanMessengerStopName,
@@ -119,7 +120,11 @@ export function MessengerTripCard({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
               <Route className="h-3.5 w-3.5" /> เที่ยววิ่ง
-              {trip.routeCode && <span>· {trip.routeCode}</span>}
+              {trip.routeCode && (
+                <span className="font-mono" title={trip.routeCode}>
+                  · รอบ {shortRouteCode(trip.routeCode)}
+                </span>
+              )}
             </div>
             <h2 className="mt-1 truncate text-base font-semibold">
               {messengerTripShortTitle(trip)}
@@ -168,6 +173,13 @@ export function MessengerTripCard({
         <ol className="mt-3">
           {trip.orders.map((order, index) => {
             const kind = order.metadataJson?.dispatch?.routeLeg ?? 'dropoff';
+            const dispatch = order.metadataJson?.dispatch;
+            const isRouteBuilderStop =
+              dispatch?.createdVia === 'route_template' ||
+              dispatch?.createdVia === 'ad_hoc_route' ||
+              Boolean(
+                dispatch?.routeRunKey || dispatch?.adHocRouteRunId || dispatch?.routeTemplateRunId,
+              );
             const isCurrent = order.id === current.id;
             const done = ['pending_confirmation', 'delivered'].includes(order.status);
             const isLast = index === trip.orders.length - 1;
@@ -206,6 +218,12 @@ export function MessengerTripCard({
                   <div className="break-words text-[11px] leading-relaxed text-muted-foreground">
                     {order.customer.address}
                   </div>
+                  {/* จุดจาก Route Builder เป็น stop ของเที่ยว ไม่ใช่เลขออเดอร์ที่คนขับต้องตีความ */}
+                  {!isRouteBuilderStop && order.orderNo && (
+                    <div className="mt-0.5 font-mono text-[10px] text-muted-foreground/80">
+                      {order.orderNo}
+                    </div>
+                  )}
                 </div>
                 <Badge variant={isCurrent ? 'default' : 'muted'} className="shrink-0 text-[10px]">
                   {done ? 'เสร็จแล้ว' : isCurrent ? 'จุดแรก' : 'ถัดไป'}

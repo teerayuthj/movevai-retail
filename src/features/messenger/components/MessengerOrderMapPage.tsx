@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Order } from '@/data/orderTypes';
 import { fetchMessengerOrderRouteHistory, type MessengerOrderRouteHistory } from '@/lib/retailApi';
+import { shortRouteCode } from '@/lib/routeCode';
 import { BANGKOK_CENTER } from '../geocode';
 import { useRouteStops } from '../hooks/useRouteStops';
 
@@ -175,7 +176,7 @@ export function MessengerOrderMapPage({
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold">{displayCode}</div>
           <div className="truncate text-[11px] text-muted-foreground">
-            {displayRoute ? `${displayRoute} · ` : ''}
+            {displayRoute ? `รอบ ${shortRouteCode(displayRoute)} · ` : ''}
             {order?.customer.name ?? 'เส้นทางส่งของ'}
           </div>
         </div>
