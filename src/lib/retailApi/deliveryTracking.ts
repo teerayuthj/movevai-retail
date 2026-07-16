@@ -233,9 +233,14 @@ export function fetchMessengerTrackingHistory(sessionId: string) {
   );
 }
 
-export function fetchTrackingSessions(params?: { date?: string; driverCode?: string }) {
+export function fetchTrackingSessions(params?: {
+  date?: string;
+  days?: 1 | 7 | 14 | 30 | 60 | 90;
+  driverCode?: string;
+}) {
   const search = new URLSearchParams();
   if (params?.date) search.set('date', params.date);
+  if (params?.days) search.set('days', String(params.days));
   if (params?.driverCode) search.set('driverCode', params.driverCode);
   const query = search.toString();
   return request<MessengerTrackingSessionSummary[]>(

@@ -23,9 +23,50 @@ type StoredSession = {
   isOwner: boolean;
 };
 
+function normalizeOptionalGpsMetric(value: unknown, max = Infinity): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max
+    ? value
+    : null;
+}
+
+function normalizeQueuedPoint(value: unknown): MessengerLocationPayload | null {
+  if (!value || typeof value !== 'object') return null;
+  const point = value as Partial<MessengerLocationPayload>;
+  if (
+    typeof point.clientPointId !== 'string' ||
+    !point.clientPointId ||
+    typeof point.lat !== 'number' ||
+    typeof point.lng !== 'number' ||
+    !isPlausibleThaiCoord({ lat: point.lat, lng: point.lng }) ||
+    typeof point.accuracy !== 'number' ||
+    !Number.isFinite(point.accuracy) ||
+    point.accuracy < 0 ||
+    point.accuracy > 10_000 ||
+    typeof point.recordedAt !== 'string' ||
+    !Number.isFinite(Date.parse(point.recordedAt))
+  ) {
+    return null;
+  }
+
+  return {
+    clientPointId: point.clientPointId,
+    lat: point.lat,
+    lng: point.lng,
+    accuracy: point.accuracy,
+    // ซ่อมคิวจาก native รุ่นก่อนที่อาจเก็บ sentinel -1 ไว้แล้ว
+    speed: normalizeOptionalGpsMetric(point.speed),
+    heading: normalizeOptionalGpsMetric(point.heading, 360),
+    recordedAt: point.recordedAt,
+  };
+}
+
 function readQueue(): MessengerLocationPayload[] {
   try {
-    return JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]') as MessengerLocationPayload[];
+    const stored: unknown = JSON.parse(localStorage.getItem(QUEUE_KEY) ?? '[]');
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .map(normalizeQueuedPoint)
+      .filter((point): point is MessengerLocationPayload => point !== null);
   } catch {
     return [];
   }
@@ -76,7 +117,14 @@ export function useMessengerTracking(enabled = true) {
   }, [flushSessionQueue, session]);
 
   const enqueueLocation = useCallback((location: MessengerLocation, force = false) => {
-    if (!isPlausibleThaiCoord(location)) return false;
+    if (
+      !isPlausibleThaiCoord(location) ||
+      !Number.isFinite(location.accuracy) ||
+      location.accuracy < 0 ||
+      location.accuracy > 10_000
+    ) {
+      return false;
+    }
     const last = lastQueued.current;
     const elapsed = last ? location.timestamp - last.at : Infinity;
     const moved = last

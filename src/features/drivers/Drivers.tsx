@@ -39,6 +39,7 @@ import {
   upsertMessengerAccount,
   type DriverMutationInput,
   type DriverStats,
+  type DriverStatsPeriodDays,
 } from '@/lib/retailApi';
 import { Eye, FileImage, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
 
@@ -413,7 +414,15 @@ function ImageField({
   );
 }
 
-export function DriversPage() {
+type DriversPageProps = {
+  onOpenTrackingHistory?: (driverCode: string) => void;
+};
+
+function statsCacheKey(driverId: string, days: DriverStatsPeriodDays) {
+  return `${driverId}:${days}`;
+}
+
+export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
   const { orders, completeDelivery, failDelivery, syncFromBackend } = useRetailStore();
   const [managedDrivers, setManagedDrivers] = useState<Driver[]>([]);
   const [driversLoading, setDriversLoading] = useState(true);
@@ -425,6 +434,7 @@ export function DriversPage() {
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
   const [statsByDriver, setStatsByDriver] = useState<Record<string, DriverStats>>({});
   const [statsLoadingId, setStatsLoadingId] = useState<string | null>(null);
+  const [statsDays, setStatsDays] = useState<DriverStatsPeriodDays>(90);
 
   const loadDrivers = useCallback(async () => {
     setDriversLoading(true);
@@ -471,11 +481,11 @@ export function DriversPage() {
 
   const selectedDriver = visibleDrivers.find((driver) => driver.id === selectedId) ?? null;
 
-  const loadStats = useCallback(async (driverId: string) => {
+  const loadStats = useCallback(async (driverId: string, days: DriverStatsPeriodDays) => {
     setStatsLoadingId(driverId);
     try {
-      const stats = await fetchDriverStats(driverId);
-      setStatsByDriver((prev) => ({ ...prev, [driverId]: stats }));
+      const stats = await fetchDriverStats(driverId, days);
+      setStatsByDriver((prev) => ({ ...prev, [statsCacheKey(driverId, days)]: stats }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'โหลดสถิติไม่สำเร็จ');
     } finally {
@@ -485,9 +495,10 @@ export function DriversPage() {
 
   useEffect(() => {
     if (!selectedId || activeTab === 'pending') return;
-    if (statsByDriver[selectedId]) return;
-    void loadStats(selectedId);
-  }, [selectedId, activeTab, statsByDriver, loadStats]);
+    const key = statsCacheKey(selectedId, statsDays);
+    if (statsByDriver[key]) return;
+    void loadStats(selectedId, statsDays);
+  }, [selectedId, activeTab, statsByDriver, statsDays, loadStats]);
 
   async function reloadAll() {
     await Promise.all([loadDrivers(), syncFromBackend()]);
@@ -668,8 +679,9 @@ export function DriversPage() {
                 order.assignedDriverId === selectedDriver.id &&
                 ['assigned', 'in_transit'].includes(order.status),
             )}
-            stats={statsByDriver[selectedDriver.id] ?? null}
+            stats={statsByDriver[statsCacheKey(selectedDriver.id, statsDays)] ?? null}
             statsLoading={statsLoadingId === selectedDriver.id}
+            statsDays={statsDays}
             onSetStatus={(driverId, status) => void setStatus(driverId, status)}
             onCompleteDelivery={completeDelivery}
             onFailDelivery={setFailTargetId}
@@ -678,7 +690,11 @@ export function DriversPage() {
             onApprove={(driver) => void approve(driver)}
             onReject={(driver) => void reject(driver)}
             onResetPin={(driver) => void resetPin(driver)}
-            onRefreshStats={(driver) => void loadStats(driver.id)}
+            onRefreshStats={(driver) => void loadStats(driver.id, statsDays)}
+            onStatsDaysChange={setStatsDays}
+            onOpenTrackingHistory={
+              onOpenTrackingHistory ? () => onOpenTrackingHistory(selectedDriver.id) : undefined
+            }
           />
         ) : (
           <div className="flex min-h-48 items-center justify-center rounded-lg border text-sm text-muted-foreground">

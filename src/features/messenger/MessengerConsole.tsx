@@ -429,6 +429,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const pendingConfirmationCount = customerJobs.filter(
     (o) => o.status === 'pending_confirmation',
   ).length;
+  // Badge ของแท็บต้องนับตามรายการที่แสดงจริงในแท็บนั้น ซึ่งรวมจุดรับของด้วย
+  // (ต่างจาก header ที่นับเฉพาะงานส่งลูกค้า)
+  const pendingReviewItemCount = myJobs.filter((o) => o.status === 'pending_confirmation').length;
   const deliveredOrderCount = customerJobs.filter((o) => o.status === 'delivered').length;
   const myTrips = useMemo(() => groupMessengerTrips(myJobs), [myJobs]);
   const assignedTripCount = myTrips.filter((trip) =>
@@ -456,7 +459,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     assigned: assignedTripCount,
     // Test Route ไม่มี Order แต่ถือเป็นกิจกรรมที่กำลังส่งหนึ่งรายการใน UI
     in_transit: inTransitTripCount + (hasTestTrackingSession ? 1 : 0),
-    pending_confirmation: pendingConfirmationCount,
+    pending_confirmation: pendingReviewItemCount,
     delivered: deliveredOrderCount,
   };
 
@@ -1313,9 +1316,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         onSubmit={async (input) => {
           if (!closeTargetId) return;
           const submittedOrderId = closeTargetId;
-          const nextInTransitJob = myJobs.find(
-            (order) => order.id !== submittedOrderId && order.status === 'in_transit',
-          );
           const shouldStopTracking =
             tracking.session?.type === 'delivery' &&
             tracking.isOwner &&
@@ -1324,10 +1324,12 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                 order.id !== submittedOrderId && ['assigned', 'in_transit'].includes(order.status),
             );
           await submitDelivery(submittedOrderId, input);
-          if (!nextInTransitJob) {
-            setDeliverySheetExpanded(false);
-            setTab('pending_confirmation', { replace: true });
-          }
+          // อย่าอิง myJobs ก่อน submit เพื่อเลือกแท็บ เพราะ iOS อาจยังถือ snapshot
+          // in_transit เดิมอยู่ชั่วคราว ทำให้ผู้ใช้ค้างที่หน้า “กำลังส่ง” หลังบันทึกสำเร็จ
+          // หลักฐานที่เพิ่งส่งต้องพาไปหน้า “รอตรวจสอบ” ทันทีเสมอ
+          setCloseTargetId(null);
+          setDeliverySheetExpanded(false);
+          setTab('pending_confirmation', { replace: true });
           if (shouldStopTracking) {
             try {
               await tracking.end();
@@ -1340,7 +1342,6 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               );
             }
           }
-          setCloseTargetId(null);
         }}
       />
     </div>

@@ -1,5 +1,5 @@
 import type { Order, PlanningCancelReason } from '@/data/orderTypes';
-import type { RouteStop, RouteStopKind, RouteTemplate } from '@/features/dispatch/types';
+import type { RouteStop, RouteTemplate } from '@/features/dispatch/types';
 import {
   APP_API_BASE,
   MESSENGER_API_BASE,
@@ -58,6 +58,7 @@ export type RouteTemplateRun = {
 
 export type RouteAddress = Omit<RouteStop, 'deliverToStopId'> & {
   routeGroup: string;
+  favorite: boolean;
   active: boolean;
   sortOrder: number;
   createdAt: string;
@@ -73,7 +74,10 @@ export async function fetchRouteAddresses() {
 }
 
 export async function createRouteAddress(
-  input: Omit<RouteAddress, 'id' | 'active' | 'sortOrder' | 'createdAt' | 'updatedAt'>,
+  input: Omit<
+    RouteAddress,
+    'id' | 'favorite' | 'active' | 'sortOrder' | 'createdAt' | 'updatedAt'
+  > & { favorite?: boolean },
 ) {
   return request<RouteAddress>(`${APP_API_BASE}/route-addresses`, {
     method: 'POST',
@@ -98,8 +102,8 @@ export async function deleteRouteAddress(addressId: string) {
   );
 }
 
-// จัดลำดับคลังที่อยู่ใหม่ภายในกลุ่ม kind เดียว (drag-and-drop) — คืนคลังทั้งหมดที่เรียงใหม่แล้ว
-export async function reorderRouteAddresses(input: { kind: RouteStopKind; orderedIds: string[] }) {
+// จัดลำดับคลังสถานที่รวม (drag-and-drop) — คืนคลังทั้งหมดที่เรียงใหม่แล้ว
+export async function reorderRouteAddresses(input: { orderedIds: string[] }) {
   return request<RouteAddress[]>(`${APP_API_BASE}/route-addresses/reorder`, {
     method: 'POST',
     body: JSON.stringify(input),

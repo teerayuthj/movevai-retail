@@ -61,15 +61,35 @@ export type AcceptanceHistoryItem = {
 
 export type DriverStats = {
   driver: Driver;
+  period: {
+    days: DriverStatsPeriodDays;
+    from: string;
+    to: string;
+    routeLimit: number;
+    activityLimit: number;
+  };
+  presence: null | {
+    isOnline: boolean;
+    platform: 'web' | 'ios' | 'android';
+    appState: 'foreground' | 'background';
+    locationPermission: string | null;
+    lastHeartbeatAt: string;
+    locationAt: string | null;
+    locationAccuracy: number | null;
+    activeDeviceCount: number;
+  };
   totals: {
     trackingSessions: number;
     distanceMeters: number;
     offRouteCount: number;
     completedOrders: number;
     routes: number;
+    completedRoutes: number;
+    cancelledRoutes: number;
   };
   acceptance: AcceptanceSummary;
   recentAcceptances: AcceptanceHistoryItem[];
+  activities: DriverActivityItem[];
   frequentDestinations: { label: string; count: number }[];
   recentSessions: {
     id: string;
@@ -82,6 +102,51 @@ export type DriverStats = {
     distanceMeters: number;
     offRouteCount: number;
   }[];
+};
+
+export type DriverStatsPeriodDays = 7 | 30 | 90;
+
+export type DriverActivityItem = {
+  id: string;
+  type:
+    | 'route_assigned'
+    | 'route_accepted'
+    | 'acceptance_overdue'
+    | 'tracking_summary'
+    | 'route_completed'
+    | 'route_cancelled';
+  at: string;
+  routeId: string;
+  routeCode: string;
+  routeStatus: string;
+  stopTotal: number;
+  deliveredStops: number;
+  failedStops: number;
+  responseMinutes?: number;
+  lateMinutes?: number;
+  sessionCount?: number;
+  pointCount?: number;
+  distanceMeters?: number;
+  offRouteCount?: number;
+  startedAt?: string;
+  endedAt?: string | null;
+  endReasons?: string[];
+  cancelReason?: string | null;
+  completedStops?: DriverCompletedStopItem[];
+};
+
+export type DriverCompletedStopItem = {
+  id: string;
+  sequence: number;
+  status: string;
+  completedAt: string;
+  orderId: string;
+  orderNo: string;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  routeLeg: 'pickup' | 'dropoff';
+  totalValue: number;
 };
 
 export async function fetchAppDrivers(params?: {
@@ -139,9 +204,12 @@ export async function rejectDriver(driverId: string, reason: string) {
   return normalizeDriver(result);
 }
 
-export async function fetchDriverStats(driverId: string): Promise<DriverStats> {
+export async function fetchDriverStats(
+  driverId: string,
+  days: DriverStatsPeriodDays = 90,
+): Promise<DriverStats> {
   const result = await request<Omit<DriverStats, 'driver'> & { driver: ApiDriver }>(
-    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/stats`,
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverId)}/stats?days=${days}`,
   );
   return { ...result, driver: normalizeDriver(result.driver) };
 }
