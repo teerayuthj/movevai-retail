@@ -21,3 +21,6 @@ android/.idea/
 
 .claude
 .husky
+
+# local npm/npx -> pnpm proxy shims (tooling convenience, not project code)
+.codex-bin/
