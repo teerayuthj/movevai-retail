@@ -913,6 +913,10 @@ export function DeliveryTrackingPage({
                     selectedOrderId={selectedOrderId}
                     onSelectStop={(order) => setSelectedOrderId(order.id)}
                     onViewLive={openLiveRoute}
+                    settling={group.some((order) => !!settlingOrders[order.id])}
+                    settledLabel={group
+                      .map((order) => settlingOrders[order.id])
+                      .find((label): label is string => Boolean(label))}
                     actions={
                       actionableOrder
                         ? actionableOrder.status === 'pending_confirmation'

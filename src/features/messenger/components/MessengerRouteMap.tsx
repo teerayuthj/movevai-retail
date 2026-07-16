@@ -47,8 +47,13 @@ function formatRemainingDistance(distanceMeters: number) {
   return `${Math.round(distanceMeters / 10) * 10} ม.`;
 }
 
-function numberedIcon(label: number, overdue: boolean) {
-  const color = overdue ? 'hsl(var(--destructive))' : 'hsl(var(--info))';
+// สีหมุดตาม convention เดียวกับ admin route-builder/tracking: รับ = info, ส่ง = success
+function numberedIcon(label: number, overdue: boolean, isPickup: boolean) {
+  const color = overdue
+    ? 'hsl(var(--destructive))'
+    : isPickup
+      ? 'hsl(var(--info))'
+      : 'hsl(var(--success))';
   return L.divIcon({
     className: '',
     iconSize: [30, 30],
@@ -276,11 +281,12 @@ export function MessengerRouteMap({
         )}
         {located.map((stop) => {
           const overdue = getMessengerJobOverdueMinutes(stop.order, nowMs) != null;
+          const isPickup = stop.order.metadataJson?.dispatch?.routeLeg === 'pickup';
           return (
             <Marker
               key={stop.order.id}
               position={[stop.coords!.lat, stop.coords!.lng]}
-              icon={numberedIcon(stop.label, overdue)}
+              icon={numberedIcon(stop.label, overdue, isPickup)}
               eventHandlers={{ click: () => onFocusOrder?.(stop.order) }}
             >
               <Popup>

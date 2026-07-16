@@ -226,48 +226,25 @@ function InTransitJobSheet({
           {order.deliveryPlan?.plannedDate && (
             <div
               className={cn(
-                'mt-3 flex items-center gap-2.5 rounded-xl border px-3 py-2',
+                'mt-3 flex items-center gap-2 rounded-xl border px-3 py-2',
                 apptToneSurface,
               )}
             >
-              <CalendarClock className={cn('h-5 w-5 shrink-0', apptToneText)} />
-              <div className="min-w-0 flex-1">
-                <div
-                  className={cn(
-                    'text-[10px] font-medium uppercase tracking-normal opacity-80',
-                    apptToneText,
-                  )}
-                >
-                  นัดส่ง
-                </div>
-                <div className={cn('text-[13px] font-semibold leading-tight', apptToneText)}>
-                  {formatPlanningDate(order.deliveryPlan.plannedDate)}
-                </div>
-                {countdown && (
-                  <div className={cn('mt-0.5 text-[11px] font-medium', apptToneText)}>
-                    {countdown.phase === 'before'
-                      ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
-                      : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`}
-                  </div>
-                )}
-              </div>
-              <div className={cn('shrink-0 text-right leading-none', apptToneText)}>
-                {plannedTime ? (
-                  <>
-                    <span className="text-xl font-semibold">{plannedTime}</span>
-                    <span className="ml-0.5 text-[11px] font-medium">น.</span>
-                  </>
-                ) : (
-                  <span className="text-xs font-medium">ไม่ระบุเวลา</span>
-                )}
-              </div>
+              <CalendarClock className={cn('h-4 w-4 shrink-0', apptToneText)} />
+              <span
+                className={cn('min-w-0 flex-1 truncate text-[13px] font-semibold', apptToneText)}
+              >
+                {countdown
+                  ? countdown.phase === 'before'
+                    ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
+                    : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`
+                  : formatPlanningDate(order.deliveryPlan.plannedDate)}
+              </span>
+              <span className={cn('shrink-0 text-[13px] font-semibold', apptToneText)}>
+                {plannedTime ? `นัด ${plannedTime} น.` : 'ไม่ระบุเวลา'}
+              </span>
             </div>
           )}
-
-          <div className="mt-3 flex items-center gap-2 rounded-xl bg-info/5 px-3 py-2 text-[11px] text-info">
-            <MapPin className="h-4 w-4 shrink-0" />
-            GPS ใช้ช่วยนำทาง — ยืนยันได้เมื่อทำงานเสร็จ
-          </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Button asChild size="sm" variant="outline" className="flex-1 border-info/30 text-info">
