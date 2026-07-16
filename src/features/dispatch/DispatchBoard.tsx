@@ -24,6 +24,10 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import {
+  ConfirmDispatchDialog,
+  DriverSummaryRow,
+} from '@/components/delivery/ConfirmDispatchDialog';
+import {
   boardActionLabel,
   boardActionPriority,
   getBoardAction,
@@ -65,6 +69,7 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
   const [acceptMinutes, setAcceptMinutes] = useState(15);
   const [startMinutes, setStartMinutes] = useState(10);
   const [startPolicy, setStartPolicy] = useState<'manual' | 'accept_starts'>('manual');
+  const [confirmDispatchOpen, setConfirmDispatchOpen] = useState(false);
   const [dispatching, setDispatching] = useState(false);
   const [nowMs, setNowMs] = useState(Date.now());
 
@@ -151,6 +156,7 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
         startWithinMinutes: startMinutes,
         startPolicy,
       });
+      setConfirmDispatchOpen(false);
       toast.success(`ส่งงานให้ ${selectedDriver.name} แล้ว — ไปติดตามการรับงานต่อ`);
       onOpenTracking(`?tab=awaiting_acceptance&order=${encodeURIComponent(selected.id)}`);
     } catch (error) {
@@ -477,10 +483,10 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
                     </Button>
                     <Button
                       disabled={!selectedDriver || dispatching}
-                      onClick={() => void dispatchSelected()}
+                      onClick={() => setConfirmDispatchOpen(true)}
                     >
                       <Zap className="h-4 w-4" />
-                      {dispatching ? 'กำลังส่งงาน…' : 'ส่งให้คนขับทันที'}
+                      ส่งให้คนขับทันที
                     </Button>
                   </div>
                 </div>
@@ -515,6 +521,66 @@ export function DispatchBoard({ locationSearch, onOpenPlanning, onOpenTracking }
           )}
         </Card>
       </div>
+
+      {selected && selectedDriver && (
+        <ConfirmDispatchDialog
+          open={confirmDispatchOpen}
+          title="ตรวจสอบก่อนส่งให้ Messenger"
+          description="งานจะแจ้งเตือนไปที่มือถือคนขับทันทีหลังยืนยัน"
+          confirmLabel="ยืนยันส่งงาน"
+          submitting={dispatching}
+          warnings={
+            selectedDriver.activeOrders > 0
+              ? [
+                  `${selectedDriver.name} มีงานค้างอยู่ ${selectedDriver.activeOrders} งาน — ตรวจสอบก่อนยืนยัน`,
+                ]
+              : undefined
+          }
+          onCancel={() => setConfirmDispatchOpen(false)}
+          onConfirm={() => void dispatchSelected()}
+        >
+          <div className="rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-sm font-medium">
+                {getDispatchJobTitle(selected)}
+              </span>
+              <Badge variant="warning" className="shrink-0">
+                <Zap className="h-3 w-3" /> ส่งทันที
+              </Badge>
+            </div>
+            <div className="mt-2 space-y-1.5 text-xs">
+              {getPickup(selected) && (
+                <div className="flex items-start gap-1.5">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>
+                    <span className="text-muted-foreground">รับ:</span>{' '}
+                    {[getPickup(selected)?.name, getPickup(selected)?.address]
+                      .filter(Boolean)
+                      .join(' — ')}
+                  </span>
+                </div>
+              )}
+              <div className="flex items-start gap-1.5">
+                <Truck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span>
+                  <span className="text-muted-foreground">ส่ง:</span>{' '}
+                  {[selected.customer.name, selected.customer.address].filter(Boolean).join(' — ')}
+                </span>
+              </div>
+            </div>
+          </div>
+          <DriverSummaryRow
+            driver={selectedDriver}
+            orders={orders}
+            detail={
+              <>
+                รับใน {acceptMinutes} นาที · เริ่มใน {startMinutes} นาที ·{' '}
+                {startPolicy === 'manual' ? 'รับแล้วกดเริ่มเอง' : 'รับแล้วเริ่มทันที'}
+              </>
+            }
+          />
+        </ConfirmDispatchDialog>
+      )}
 
       <QuickCreateDialog
         open={quickCreateOpen}

@@ -25,6 +25,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DriverAvatar } from '@/components/DriverAvatar';
+import {
+  ConfirmDispatchDialog,
+  DriverSummaryRow,
+} from '@/components/delivery/ConfirmDispatchDialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
@@ -63,7 +67,7 @@ type BuilderJob = {
   dropoff: BuilderStop | null;
 };
 
-type DispatchMode = 'planning' | 'immediate';
+type DispatchMode = 'scheduled' | 'immediate';
 const ACCEPT_WITHIN_MINUTES_OPTIONS = [5, 10, 15, 20, 30];
 
 function newJobId() {
@@ -163,6 +167,7 @@ export function FreeRouteBuilderPreview({
   const [note, setNote] = useState('');
   const [mode, setMode] = useState<DispatchMode>('immediate');
   const [acceptWithinMinutes, setAcceptWithinMinutes] = useState(15);
+  const [confirmDispatchOpen, setConfirmDispatchOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const addresses = useMemo(() => [...savedAddressBookEntries(savedAddresses)], [savedAddresses]);
@@ -202,7 +207,7 @@ export function FreeRouteBuilderPreview({
   const selectedDriver = drivers.find((driver) => driver.id === driverId);
   const availableDrivers = drivers.filter((driver) => driver.status !== 'off_duty');
   const validationError = jobError(jobs);
-  const missingDispatchRequirement = !selectedDriver || (mode === 'planning' && !plannedTime);
+  const missingDispatchRequirement = !selectedDriver || (mode === 'scheduled' && !plannedTime);
 
   // เติมจุดลงงานแรกที่ช่องประเภทเดียวกันยังว่าง ถ้าไม่มีก็เปิดงานใหม่ให้
   const placeStop = (stop: BuilderStop) => {
@@ -411,16 +416,31 @@ export function FreeRouteBuilderPreview({
     }
   };
 
-  const submit = async () => {
-    if (validationError) return toast.error(validationError);
+  const validateBeforeDispatch = () => {
+    if (validationError) {
+      toast.error(validationError);
+      return false;
+    }
     if (!selectedDriver) {
-      return toast.error(
-        mode === 'immediate' ? 'เลือกคนขับก่อนส่งงานทันที' : 'เลือกคนขับก่อนส่งแผนงานให้ Messenger',
+      toast.error(
+        mode === 'immediate' ? 'เลือกคนขับก่อนมอบงานทันที' : 'เลือกคนขับก่อนมอบงานตามวัน–เวลา',
       );
+      return false;
     }
-    if (mode === 'planning' && !plannedTime) {
-      return toast.error('กรุณาเลือกเวลาออกก่อนสร้างเข้า Planning');
+    if (mode === 'scheduled' && !plannedTime) {
+      toast.error('กรุณาเลือกเวลาออกก่อนมอบงานตามวัน–เวลา');
+      return false;
     }
+    return true;
+  };
+
+  const openDispatchPreview = () => {
+    if (!validateBeforeDispatch()) return;
+    setConfirmDispatchOpen(true);
+  };
+
+  const submit = async () => {
+    if (!validateBeforeDispatch()) return;
     setSubmitting(true);
     try {
       const first = routeStops[0]?.name ?? 'จุดรับ';
@@ -432,6 +452,8 @@ export function FreeRouteBuilderPreview({
         plannedDate,
         plannedTime: plannedTime || undefined,
         driverId: driverId || undefined,
+        // ทั้งสองแบบมอบงานถึง Messenger ในขั้นยืนยันเดียว
+        // scheduled คงวัน–เวลาไว้บน Route โดยไม่ค้างในหน้า Delivery Planning
         dispatchMode: mode,
         note: note.trim() || undefined,
         acceptWithinMinutes,
@@ -439,10 +461,11 @@ export function FreeRouteBuilderPreview({
         startPolicy: 'manual',
       });
       await onCreated(result);
+      setConfirmDispatchOpen(false);
       toast.success(
-        result.status === 'dispatched'
+        mode === 'immediate'
           ? `ส่งเที่ยวให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`
-          : `ส่งแผนงานให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`,
+          : `มอบรอบส่งให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'สร้างเที่ยวไม่สำเร็จ');
@@ -1169,14 +1192,14 @@ export function FreeRouteBuilderPreview({
             <button
               type="button"
               data-testid="dispatch-planning"
-              onClick={() => setMode('planning')}
-              className={`rounded-xl border p-3 text-left transition-colors ${mode === 'planning' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
+              onClick={() => setMode('scheduled')}
+              className={`rounded-xl border p-3 text-left transition-colors ${mode === 'scheduled' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'}`}
             >
               <div className="flex items-center gap-1.5 text-sm font-semibold">
-                <CalendarDays className="h-3.5 w-3.5 text-info" /> เข้า Planning ก่อน
+                <CalendarDays className="h-3.5 w-3.5 text-info" /> มอบงานตามวัน–เวลา
               </div>
               <div className="mt-1 text-[11px] text-muted-foreground">
-                ยังไม่แจ้งคนขับ · ไปจัดรวมกับรอบอื่นเอง
+                ยืนยันครั้งเดียว · มอบรอบตามวัน–เวลานี้ให้ Messenger โดยตรง
               </div>
             </button>
           </div>
@@ -1204,7 +1227,7 @@ export function FreeRouteBuilderPreview({
           </section>
         )}
 
-        {mode === 'planning' && (
+        {mode === 'scheduled' && (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             <label className="text-xs font-medium">
               <span className="inline-flex items-center gap-1">
@@ -1228,7 +1251,7 @@ export function FreeRouteBuilderPreview({
                 required
               />
               <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
-                ต้องระบุเวลา · ระบบจะแจ้ง Messenger ล่วงหน้า 10 นาทีเมื่อ Publish
+                ต้องระบุเวลา · ระบบมอบงานให้ Messenger โดยตรง และแจ้งเตือนล่วงหน้าตามรอบ
               </span>
             </label>
           </div>
@@ -1289,21 +1312,121 @@ export function FreeRouteBuilderPreview({
           data-testid="create-route-run"
           className="mt-3 w-full"
           disabled={submitting || Boolean(validationError) || missingDispatchRequirement}
-          onClick={() => void submit()}
+          onClick={openDispatchPreview}
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           {submitting
             ? 'กำลังสร้างเที่ยว…'
             : mode === 'immediate'
-              ? `ส่ง 1 เที่ยว (${routeStops.length} จุด) ให้ Messenger`
-              : `ส่งแผนงาน 1 เที่ยว (${routeStops.length} จุด) ให้ Messenger`}
+              ? `ตรวจสอบ 1 เที่ยว (${routeStops.length} จุด) ก่อนส่ง`
+              : `ตรวจสอบรอบส่ง 1 เที่ยว (${routeStops.length} จุด) ก่อนมอบงาน`}
         </Button>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
           {mode === 'immediate'
-            ? 'ส่งทันทีจะเริ่มวันนี้ โดยใช้คนขับที่เลือก'
-            : 'วันที่ เวลาออก และคนขับจำเป็น · ระบบส่งแผนงานให้ Messenger ทันที'}
+            ? 'ตรวจสอบรายละเอียดก่อน · ยืนยันในขั้นถัดไปจึงจะส่งจริง'
+            : 'ตรวจสอบรายละเอียดก่อน · ยืนยันในขั้นถัดไปจะมอบงานให้ Messenger โดยตรง'}
         </p>
       </div>
+
+      {selectedDriver && (
+        <ConfirmDispatchDialog
+          open={confirmDispatchOpen}
+          title={
+            mode === 'immediate'
+              ? 'ตรวจสอบก่อนส่งให้ Messenger'
+              : 'ตรวจสอบก่อนมอบรอบส่งให้ Messenger'
+          }
+          description={
+            mode === 'immediate'
+              ? 'งานจะส่งไปที่มือถือคนขับทันทีหลังยืนยัน'
+              : 'รอบนี้จะมอบให้ Messenger หลังยืนยัน โดยไม่ผ่านหน้า Delivery Planning'
+          }
+          confirmLabel={mode === 'immediate' ? 'ยืนยันส่งเที่ยว' : 'ยืนยันมอบรอบส่ง'}
+          submitting={submitting}
+          warnings={
+            selectedDriver.activeOrders > 0
+              ? [
+                  `${selectedDriver.name} มีงานค้างอยู่ ${selectedDriver.activeOrders} งาน — ตรวจสอบก่อนยืนยัน`,
+                ]
+              : undefined
+          }
+          onCancel={() => setConfirmDispatchOpen(false)}
+          onConfirm={() => void submit()}
+        >
+          <div className="rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0 truncate text-sm font-medium">
+                {messengerTitle.trim() ||
+                  `เที่ยว ${routeStops[0]?.name ?? 'จุดรับ'} → ${
+                    routeStops[routeStops.length - 1]?.name ?? 'จุดส่ง'
+                  }`}
+              </div>
+              <Badge variant={mode === 'immediate' ? 'warning' : 'secondary'} className="shrink-0">
+                {mode === 'immediate' ? (
+                  <Send className="h-3 w-3" />
+                ) : (
+                  <CalendarDays className="h-3 w-3" />
+                )}
+                {mode === 'immediate' ? 'ส่งทันที' : 'มอบงานตามเวลา'}
+              </Badge>
+            </div>
+
+            <div className="mt-2 rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
+              {mode === 'immediate' ? (
+                <span>ส่งวันนี้ · Messenger ต้องรับงานภายใน {acceptWithinMinutes} นาที</span>
+              ) : (
+                <span>
+                  วันออกงาน {plannedDate} · {plannedTime}
+                </span>
+              )}
+            </div>
+
+            <ol className="mt-3 space-y-2">
+              {routeSequence.map(({ stop, jobNumber }, index) => (
+                <li
+                  key={`${jobNumber}-${stop.kind}-${stop.id}`}
+                  className="flex items-start gap-2 text-xs"
+                >
+                  <span
+                    className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ${
+                      stop.kind === 'pickup' ? 'bg-info' : 'bg-success'
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="font-medium">
+                      <span className={stop.kind === 'pickup' ? 'text-info' : 'text-success'}>
+                        {stop.kind === 'pickup' ? 'รับ' : 'ส่ง'}
+                      </span>{' '}
+                      · {stop.name}
+                    </div>
+                    <div className="line-clamp-2 text-[11px] text-muted-foreground">
+                      {stop.address}
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+
+            {note.trim() && (
+              <div className="mt-3 border-t pt-2 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">หมายเหตุ:</span> {note.trim()}
+              </div>
+            )}
+          </div>
+          <DriverSummaryRow
+            driver={selectedDriver}
+            orders={orders}
+            plannedDate={mode === 'scheduled' ? plannedDate : undefined}
+            detail={
+              mode === 'immediate'
+                ? `ต้องรับงานภายใน ${acceptWithinMinutes} นาที`
+                : `เวลาออก ${plannedTime}`
+            }
+          />
+        </ConfirmDispatchDialog>
+      )}
     </section>
   );
 }

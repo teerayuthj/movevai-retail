@@ -74,6 +74,8 @@ export function TrackingCard({
 }: TrackingCardProps) {
   const pod = order.proofOfDelivery;
   const isUrgent = order.deliveryRoute?.dispatchMode === 'urgent';
+  const isPlannedPreview =
+    order.deliveryPlan?.releaseState === 'planned' && Boolean(order.deliveryPlan.plannedDriverId);
   const tone =
     overdueMinutes != null
       ? 'border-l-destructive'
@@ -83,6 +85,7 @@ export function TrackingCard({
           ? 'border-l-warning'
           : 'border-l-muted-foreground/30';
   const isActionable =
+    isPlannedPreview ||
     overdueMinutes != null ||
     (order.status === 'assigned' && !!order.deliveryRoute) ||
     order.status === 'in_transit' ||
@@ -148,6 +151,11 @@ export function TrackingCard({
                 ส่งทันที
               </Badge>
             )}
+            {isPlannedPreview && (
+              <Badge variant="info" className="h-5 px-1.5 text-[10px]">
+                แผนล่วงหน้า
+              </Badge>
+            )}
             {overdueMinutes != null && (
               <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
                 <Clock3 className="h-3 w-3" /> {formatOverdueDuration(overdueMinutes)}
@@ -173,7 +181,7 @@ export function TrackingCard({
         </div>
 
         <div className="mt-1.5 text-sm font-medium">{order.customer.name}</div>
-        {order.status === 'assigned' && order.deliveryPlan && (
+        {(order.status === 'assigned' || isPlannedPreview) && order.deliveryPlan && (
           <div
             className={cn(
               'mt-1 text-[11px] font-medium',

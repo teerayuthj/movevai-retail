@@ -141,8 +141,9 @@ export async function createRouteTemplateRun(
     /** เลือกเฉพาะงานรับ → ส่งที่จะวิ่งในเที่ยวนี้ ป้องกันการส่งทั้งสายโดยไม่ตั้งใจ */
     selectedPickupStopIds: string[];
     plannedDate?: string;
+    plannedTime?: string;
     driverId?: string;
-    dispatchMode?: 'planning' | 'immediate';
+    dispatchMode?: 'planning' | 'scheduled' | 'immediate';
     messengerTitle?: string;
     note?: string;
   },
@@ -160,7 +161,7 @@ export async function createAdHocRouteRun(input: {
   plannedDate: string;
   plannedTime?: string;
   driverId?: string;
-  dispatchMode: 'planning' | 'immediate';
+  dispatchMode: 'planning' | 'scheduled' | 'immediate';
   note?: string;
   jobType?: RouteTemplate['jobType'];
   acceptWithinMinutes?: number;

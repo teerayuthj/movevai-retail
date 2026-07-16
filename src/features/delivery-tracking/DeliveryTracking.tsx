@@ -35,6 +35,7 @@ import {
   Ban,
   CheckCircle2,
   ClipboardList,
+  Clock3,
   ChevronLeft,
   ChevronRight,
   Loader2,
@@ -67,6 +68,7 @@ type TrackingChip = {
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: DeliveryTrackingCounts = {
   all_open: 0,
+  planned: 0,
   awaiting_acceptance: 0,
   overdue: 0,
   in_transit: 0,
@@ -110,6 +112,7 @@ export function DeliveryTrackingPage({
     cancelRoute,
     reassignRoute,
     unassignOrder,
+    clearPlannedOrders,
   } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [messengerCloseTargetId, setMessengerCloseTargetId] = useState<string | null>(null);
@@ -131,6 +134,8 @@ export function DeliveryTrackingPage({
   const [routeActionError, setRouteActionError] = useState('');
   const [unassignTarget, setUnassignTarget] = useState<Order | null>(null);
   const [unassignError, setUnassignError] = useState('');
+  const [clearPlanTarget, setClearPlanTarget] = useState<Order | null>(null);
+  const [clearPlanError, setClearPlanError] = useState('');
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     order: Order;
@@ -246,7 +251,8 @@ export function DeliveryTrackingPage({
 
   useEffect(() => {
     void fetchDeliveryTrackingCounts()
-      .then(setTrackingCounts)
+      // รองรับ server เวอร์ชันเก่าระหว่าง rollout ที่ยังไม่มี key `planned`
+      .then((counts) => setTrackingCounts({ ...EMPTY_COUNTS, ...counts }))
       .catch(() => undefined);
   }, [refreshKey]);
 
@@ -342,8 +348,50 @@ export function DeliveryTrackingPage({
     }
   }
 
-  // ── ปุ่ม action ตามสถานะ — ใช้ซ้ำทั้งบนการ์ด inline และ footer ของ drawer ──
-  function renderActions(order: Order) {
+  function renderConfirmDeliveryAction(order: Order) {
+    return (
+      <Button
+        className="w-full"
+        onClick={async () => {
+          try {
+            await confirmDelivery(order.id);
+            toast.success(`ปิดงาน ${order.orderNo} เรียบร้อย`);
+            settleAndRefresh(order.id, 'ปิดงานแล้ว');
+          } catch (error) {
+            toast.error(
+              `ปิดงานไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }}
+      >
+        <CheckCircle2 className="h-4 w-4" />
+        ยืนยันปิดงาน
+      </Button>
+    );
+  }
+
+  // ── ปุ่ม action สำหรับ footer ของ drawer ──
+  function renderActions(order: Order, options: { includeConfirm?: boolean } = {}) {
+    const { includeConfirm = true } = options;
+    const isPlannedPreview =
+      order.deliveryPlan?.releaseState === 'planned' && Boolean(order.deliveryPlan.plannedDriverId);
+    if (isPlannedPreview) {
+      return (
+        <Button
+          variant="outline"
+          className="w-full border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => {
+            setClearPlanError('');
+            setSelectedOrderId(null);
+            setClearPlanTarget(order);
+          }}
+        >
+          <Undo2 className="h-4 w-4" />
+          ดึงแผนกลับ
+        </Button>
+      );
+    }
+
     if (order.status === 'assigned' && !order.deliveryRoute) {
       return (
         <div className="space-y-2">
@@ -365,7 +413,7 @@ export function DeliveryTrackingPage({
             }}
           >
             <Undo2 className="h-4 w-4" />
-            ถอนการมอบหมาย
+            ดึงงานกลับ
           </Button>
         </div>
       );
@@ -454,23 +502,7 @@ export function DeliveryTrackingPage({
               <MapIcon className="h-4 w-4" />
               เส้นทาง
             </Button>
-            <Button
-              className="w-full"
-              onClick={async () => {
-                try {
-                  await confirmDelivery(order.id);
-                  toast.success(`ปิดงาน ${order.orderNo} เรียบร้อย`);
-                  settleAndRefresh(order.id, 'ปิดงานแล้ว');
-                } catch (error) {
-                  toast.error(
-                    `ปิดงานไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
-                  );
-                }
-              }}
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              ยืนยันปิดงาน
-            </Button>
+            {includeConfirm && renderConfirmDeliveryAction(order)}
             <Button
               variant="outline"
               className="w-full"
@@ -513,6 +545,25 @@ export function DeliveryTrackingPage({
     );
   }
 
+  function plannedRunOrderIds(order: Order) {
+    const dispatch = order.metadataJson?.dispatch;
+    const runId = dispatch?.routeTemplateRunId ?? dispatch?.adHocRouteRunId;
+    if (!runId) return [order.id];
+    const ids = orders
+      .filter((candidate) => {
+        const candidateDispatch = candidate.metadataJson?.dispatch;
+        const candidateRunId =
+          candidateDispatch?.routeTemplateRunId ?? candidateDispatch?.adHocRouteRunId;
+        return (
+          candidateRunId === runId &&
+          candidate.deliveryPlan?.releaseState === 'planned' &&
+          Boolean(candidate.deliveryPlan.plannedDriverId)
+        );
+      })
+      .map((candidate) => candidate.id);
+    return ids.length > 0 ? ids : [order.id];
+  }
+
   // chip เดียวคุมทั้งหมด — ตัวเลขเป็น badge ใน chip (ไม่แยกการ์ด KPI เพื่อเลี่ยงความกำกวมว่าคลิกได้ไหม)
   const tabs: TrackingChip[] = [
     {
@@ -521,6 +572,7 @@ export function DeliveryTrackingPage({
       icon: ClipboardList,
       count: trackingCounts.all_open,
     },
+    { view: 'planned', label: 'แผนล่วงหน้า', icon: Clock3, count: trackingCounts.planned },
     { view: 'overdue', label: 'เลยกำหนด', icon: AlertCircle, count: trackingCounts.overdue },
     {
       view: 'awaiting_acceptance',
@@ -689,12 +741,12 @@ export function DeliveryTrackingPage({
       {unassignTarget && (
         <ResolutionDialog
           open
-          title={`ถอนการมอบหมาย ${unassignTarget.orderNo}`}
+          title={`ดึงงาน ${unassignTarget.orderNo} กลับ`}
           description="เอางานออกจาก Messenger และคืนเป็นงานรอมอบหมาย โดยไม่ยกเลิกออเดอร์"
           error={unassignError}
           reasons={PLANNING_CANCEL_REASONS}
           notePlaceholder="เช่น เลือกคนขับผิด / ต้องจัดคิวใหม่"
-          confirmLabel="ยืนยันถอนการมอบหมาย"
+          confirmLabel="ยืนยันดึงกลับ"
           confirmVariant="destructive"
           onCancel={() => {
             setUnassignError('');
@@ -708,7 +760,7 @@ export function DeliveryTrackingPage({
               note,
             })
               .then(() => {
-                toast.success(`ถอนการมอบหมาย ${target.orderNo} แล้ว — คืนเข้าคิวรอมอบหมาย`);
+                toast.success(`ดึงงาน ${target.orderNo} กลับแล้ว — คืนเข้าคิวรอมอบหมาย`);
                 setSelectedOrderId(null);
                 setUnassignTarget(null);
                 refreshTracking();
@@ -716,7 +768,46 @@ export function DeliveryTrackingPage({
               .catch((error: unknown) => {
                 const message = error instanceof Error ? error.message : String(error);
                 setUnassignError(message);
-                toast.error(`ถอนการมอบหมาย ${target.orderNo} ไม่สำเร็จ — ${message}`);
+                toast.error(`ดึงงาน ${target.orderNo} กลับไม่สำเร็จ — ${message}`);
+              });
+          }}
+        />
+      )}
+
+      {clearPlanTarget && (
+        <ResolutionDialog
+          open
+          title={`ดึงแผน ${clearPlanTarget.orderNo} กลับ`}
+          description={`นำ ${plannedRunOrderIds(clearPlanTarget).length} จุดออกจากตาราง Messenger และคืนเข้าคิวจัดส่ง งานยังไม่ถูก Publish หรือเริ่มจัดส่ง`}
+          error={clearPlanError}
+          reasons={PLANNING_CANCEL_REASONS}
+          notePlaceholder="เช่น เปลี่ยนวันนัด / ต้องจัดคนขับใหม่"
+          confirmLabel="ยืนยันดึงกลับ"
+          confirmVariant="destructive"
+          onCancel={() => {
+            setClearPlanError('');
+            setClearPlanTarget(null);
+          }}
+          onConfirm={({ reason, note }) => {
+            const target = clearPlanTarget;
+            const targetIds = plannedRunOrderIds(target);
+            setClearPlanError('');
+            void clearPlannedOrders(targetIds, {
+              reason: reason as PlanningCancelReason,
+              note,
+            })
+              .then(() => {
+                toast.success(
+                  `ดึงแผน ${targetIds.length} จุดกลับแล้ว — Messenger จะไม่เห็นงานนี้อีก`,
+                );
+                setSelectedOrderId(null);
+                setClearPlanTarget(null);
+                refreshTracking();
+              })
+              .catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                setClearPlanError(message);
+                toast.error(`ดึงแผน ${target.orderNo} กลับไม่สำเร็จ — ${message}`);
               });
           }}
         />
@@ -809,6 +900,12 @@ export function DeliveryTrackingPage({
               const first = group[0];
               const isRoute = Boolean(first.deliveryRoute?.id);
               if (isRoute) {
+                // การ์ด Route ต้องพาไป action ของจุดที่รอตรวจสอบได้ทันที
+                // ไม่เช่นนั้นงานสถานะ pending_confirmation จะมีปุ่มยืนยันเฉพาะใน drawer
+                // ซึ่งผู้ใช้หาไม่เจอจากรายการเที่ยวหลัก
+                const actionableOrder =
+                  group.find((order) => order.status === 'pending_confirmation') ??
+                  group.find((order) => order.status === 'assigned');
                 return (
                   <TrackingRouteCard
                     key={first.deliveryRoute!.id}
@@ -816,7 +913,13 @@ export function DeliveryTrackingPage({
                     selectedOrderId={selectedOrderId}
                     onSelectStop={(order) => setSelectedOrderId(order.id)}
                     onViewLive={openLiveRoute}
-                    actions={first.status === 'assigned' ? renderActions(first) : undefined}
+                    actions={
+                      actionableOrder
+                        ? actionableOrder.status === 'pending_confirmation'
+                          ? renderConfirmDeliveryAction(actionableOrder)
+                          : renderActions(actionableOrder)
+                        : undefined
+                    }
                     nowMs={nowMs}
                   />
                 );
@@ -907,7 +1010,16 @@ export function DeliveryTrackingPage({
         isDetailLoading={isDetailLoading}
         onClose={() => setSelectedOrderId(null)}
         onSelectStop={(order) => setSelectedOrderId(order.id)}
-        actions={selectedOrder ? renderActions(selectedOrder) : undefined}
+        actions={
+          selectedOrder
+            ? renderActions(selectedOrder, {
+                // การ์ด Route เป็นจุดเดียวที่ยืนยันปิดงาน จึงไม่แสดงปุ่มซ้ำใน drawer
+                includeConfirm: !(
+                  selectedOrder.status === 'pending_confirmation' && selectedOrder.deliveryRoute
+                ),
+              })
+            : undefined
+        }
         nowMs={nowMs}
       />
 

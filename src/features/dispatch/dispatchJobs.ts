@@ -3,6 +3,7 @@ import type { CreateDispatchJobInput } from '@/features/dispatch/types';
 import {
   createAppOrder,
   geocodeAddress,
+  publishPlanningRoute,
   publishUrgentPlanningRoute,
   savePlanning,
 } from '@/lib/retailApi';
@@ -75,8 +76,11 @@ function buildDispatchOrder(
 }
 
 export async function createDispatchJobs(input: CreateDispatchJobInput) {
-  if (input.method === 'immediate' && !input.driver) {
-    throw new Error('กรุณาเลือกคนขับสำหรับงานส่งทันที');
+  if (input.method !== 'planning' && !input.driver) {
+    throw new Error('กรุณาเลือกคนขับก่อนมอบงาน');
+  }
+  if (input.method === 'scheduled' && !input.plannedTime) {
+    throw new Error('กรุณาระบุเวลาออกก่อนมอบงานตามวัน–เวลา');
   }
 
   const destinations = [
@@ -106,6 +110,21 @@ export async function createDispatchJobs(input: CreateDispatchJobInput) {
       note: input.note,
     });
     return { orders: created, route: null };
+  }
+
+  if (input.method === 'scheduled') {
+    const route = await publishPlanningRoute({
+      orderIds,
+      plannedDate: input.plannedDate,
+      plannedTime: input.plannedTime,
+      driverCode: input.driver!.id,
+      note: input.note,
+      requiresAcceptance: true,
+      acceptWithinMinutes: input.acceptWithinMinutes,
+      startWithinMinutes: input.startWithinMinutes,
+      startPolicy: input.startPolicy,
+    });
+    return { orders: created, route };
   }
 
   const pickupGeo = input.pickupAddress.trim()

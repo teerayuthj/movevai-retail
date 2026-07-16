@@ -158,7 +158,6 @@ export default function App() {
           )}
           {page === 'route_builder' && (
             <RouteBuilderPage
-              onOpenPlanning={(search) => navigateToPage('planning', { search })}
               onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
             />
           )}

@@ -9,6 +9,7 @@ import {
 export type DriverQueueTab = 'ready' | 'assigned';
 export type DeliveryTrackingTab =
   | 'all_open'
+  | 'planned'
   | 'awaiting_acceptance'
   | 'overdue'
   | 'in_transit'
@@ -23,6 +24,7 @@ export const driverQueueTabLabels: Record<DriverQueueTab, string> = {
 
 export const deliveryTrackingTabLabels: Record<DeliveryTrackingTab, string> = {
   all_open: 'งานยังไม่ปิด',
+  planned: 'แผนล่วงหน้า',
   awaiting_acceptance: 'รอคนขับรับ',
   overdue: 'เลยกำหนด',
   in_transit: 'กำลังจัดส่ง',
@@ -146,6 +148,12 @@ export function formatDriverDispatchStatus(driver: Driver, orders: Order[]): str
 }
 
 export function getDeliveryTrackingTab(order: Order): DeliveryTrackingTab | null {
+  if (
+    order.deliveryPlan?.releaseState === 'planned' &&
+    Boolean(order.deliveryPlan.plannedDriverId)
+  ) {
+    return 'planned';
+  }
   if (
     order.status === 'assigned' &&
     order.deliveryPlan?.releaseState === 'released' &&

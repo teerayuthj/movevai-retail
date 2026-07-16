@@ -128,7 +128,7 @@ export function TrackingRouteCard({
           onClick={() => onViewLive(first)}
         >
           <Navigation className="h-3.5 w-3.5" />
-          ดู Live เที่ยวนี้
+          ดูตำแหน่งบนแผนที่
         </Button>
       </div>
 

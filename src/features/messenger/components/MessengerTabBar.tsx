@@ -32,23 +32,20 @@ export function MessengerTabBar({
             <button
               key={tab.key}
               type="button"
+              aria-label={tab.label}
+              title={tab.label}
               onClick={() => onSelect(tab.key)}
               className={cn(
-                'group flex min-h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-full pb-0.5 pt-1 text-[10px] font-medium transition-colors',
-                active ? 'text-primary' : 'text-muted-foreground',
+                'flex h-12 flex-1 items-center justify-center rounded-full transition-colors',
+                active ? 'bg-primary/15 text-primary' : 'text-muted-foreground hover:bg-muted/70',
               )}
             >
-              <span
-                className={cn(
-                  'relative flex h-7 w-10 items-center justify-center rounded-full transition-colors',
-                  active ? 'bg-primary/15' : 'group-hover:bg-muted/70',
-                )}
-              >
-                <Icon className="h-5 w-5" strokeWidth={active ? 2.3 : 1.9} />
+              <span className="relative flex items-center justify-center">
+                <Icon className="h-7 w-7" strokeWidth={active ? 2.1 : 1.8} />
                 {count > 0 && (
                   <span
                     className={cn(
-                      'absolute -right-0.5 -top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full px-1 text-[9px] font-semibold tabular-nums',
+                      'absolute -right-2.5 -top-2 flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-semibold tabular-nums',
                       active
                         ? 'bg-primary text-primary-foreground'
                         : 'bg-muted-foreground/70 text-background',
@@ -58,7 +55,6 @@ export function MessengerTabBar({
                   </span>
                 )}
               </span>
-              <span className={cn(active && 'font-semibold')}>{tab.label}</span>
             </button>
           );
         })}

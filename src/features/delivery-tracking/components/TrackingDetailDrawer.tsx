@@ -209,6 +209,8 @@ export function TrackingDetailDrawer({
               order.deliveryRoute?.dispatchMode !== 'urgent' && (
                 <Badge variant="info">จาก Planning</Badge>
               )}
+            {order.deliveryPlan?.releaseState === 'planned' &&
+              order.deliveryPlan.plannedDriverId && <Badge variant="info">แผนล่วงหน้า</Badge>}
             {order.deliveryRoute?.dispatchMode === 'urgent' && (
               <Badge variant="info">ส่งทันที</Badge>
             )}
