@@ -30,6 +30,7 @@ import { MESSENGER_JOB_STATUSES, MESSENGER_TABS, type MessengerTab } from './mes
 import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { useMessengerTab } from './hooks/useMessengerTab';
 import { useSwipeTabTransition } from './hooks/useSwipeTabTransition';
+import { usePullToRefresh } from './hooks/usePullToRefresh';
 import {
   clearMessengerAppBadge,
   currentPermission,
@@ -78,6 +79,7 @@ import { navigationUrl } from './geocode';
 import { Badge } from '@/components/ui/badge';
 import {
   groupMessengerTrips,
+  isMessengerCustomerJob,
   isMultiStopMessengerTrip,
   type MessengerTrip,
 } from './messengerTrips';
@@ -416,10 +418,18 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     [orders, messengerCode],
   );
 
+  // นับ "งาน" ที่ผู้ใช้เห็น (header/แท็บ/แจ้งเตือน) เป็นงานส่งลูกค้า ไม่รวม leg รับ ให้ตรงกับฝั่ง admin
+  // ส่วน inTransitOrderCount (ทุก leg) ยังใช้ตัดสินสถานะ "กำลังส่ง" เพราะรับของก็คือกำลังวิ่งงาน
+  const customerJobs = useMemo(() => myJobs.filter(isMessengerCustomerJob), [myJobs]);
+  // นับทุก leg (รวมจุดรับ) — ใช้คุมสถานะ/หยุด GPS ของ session ที่จบแล้ว ไม่ใช่ตัวเลขที่โชว์ผู้ใช้
   const assignedOrderCount = myJobs.filter((o) => o.status === 'assigned').length;
   const inTransitOrderCount = myJobs.filter((o) => o.status === 'in_transit').length;
-  const pendingConfirmationCount = myJobs.filter((o) => o.status === 'pending_confirmation').length;
-  const deliveredOrderCount = myJobs.filter((o) => o.status === 'delivered').length;
+  const assignedJobCount = customerJobs.filter((o) => o.status === 'assigned').length;
+  const inTransitJobCount = customerJobs.filter((o) => o.status === 'in_transit').length;
+  const pendingConfirmationCount = customerJobs.filter(
+    (o) => o.status === 'pending_confirmation',
+  ).length;
+  const deliveredOrderCount = customerJobs.filter((o) => o.status === 'delivered').length;
   const myTrips = useMemo(() => groupMessengerTrips(myJobs), [myJobs]);
   const assignedTripCount = myTrips.filter((trip) =>
     trip.orders.some(
@@ -430,7 +440,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     trip.orders.some((order) => order.status === 'in_transit'),
   ).length;
   const hasTestTrackingSession = tracking.session?.type === 'test';
-  const openCustomerJobCount = assignedOrderCount + inTransitOrderCount + pendingConfirmationCount;
+  const openCustomerJobCount = assignedJobCount + inTransitJobCount + pendingConfirmationCount;
   // "กำลังส่ง" เฉพาะตอนมีงาน in_transit จริงหรือกำลังบันทึก GPS ทดสอบ —
   // งานที่แค่ assigned/รอตรวจสอบยังถือว่า "ว่าง" (สอดคล้อง deriveDriverDisplayStatus ฝั่ง admin)
   const effectiveMessengerStatus: NonNullable<typeof messenger>['status'] | undefined =
@@ -735,7 +745,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  const overdueCount = myJobs.filter(
+  // แจ้งเตือน "งานถึงเวลาเริ่มส่ง" นับเป็นงานส่ง (ไม่รวม leg รับ) ให้ตรงกับ count งานทั้งระบบ
+  const overdueCount = customerJobs.filter(
     (order) => getMessengerJobOverdueMinutes(order, nowMs) != null,
   ).length;
 
@@ -777,6 +788,16 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   // หรือตอนมี dialog/sheet เปิดทับอยู่)
   const swipeTabEnabled = Boolean(activeTab) && !showAssignedMap && !showTrackingMap && !suspendMap;
   const swipeContainerRef = useSwipeTabTransition(activeTab, handleSelectTab, swipeTabEnabled);
+
+  // ดึงลงเพื่อรีเฟรชงาน (แบบ social app) — เฉพาะตอนดูรายการ ไม่ใช่แผนที่
+  const handlePullRefresh = useCallback(async () => {
+    // หน่วงขั้นต่ำเพื่อให้ spinner ไม่กระพริบหายเร็วเกินไป
+    await Promise.all([refreshJobs(true), new Promise((resolve) => setTimeout(resolve, 500))]);
+  }, [refreshJobs]);
+  const pullToRefresh = usePullToRefresh<HTMLDivElement>({
+    onRefresh: handlePullRefresh,
+    disabled: showAssignedMap || showTrackingMap,
+  });
 
   // จัดงานใหม่เป็นกลุ่มตาม Route + วันส่ง เพื่อให้แผนที่แยกแต่ละรอบชัดเจน
   // (ไม่รวมงานล่วงหน้าหลายวัน/หลาย Route ไว้บนภาพเดียวจนหมุดทับกัน)
@@ -1099,7 +1120,37 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
             </div>
           ) : (
             /* job list — padding ล่างเผื่อ floating tab bar ให้การ์ดสุดท้ายเลื่อนพ้น dock */
-            <div className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3 pb-[calc(max(env(safe-area-inset-bottom),0.75rem)+5.5rem)]">
+            <div
+              ref={pullToRefresh.scrollRef}
+              className="app-scroll min-h-0 flex-1 space-y-2.5 overflow-auto p-3 pb-[calc(max(env(safe-area-inset-bottom),0.75rem)+5.5rem)]"
+            >
+              {/* pull-to-refresh: ตัวหมุนโผล่บนสุดตามระยะที่ดึงลง */}
+              <div
+                className="flex items-center justify-center overflow-hidden text-muted-foreground"
+                style={{
+                  height: pullToRefresh.refreshing
+                    ? pullToRefresh.threshold
+                    : pullToRefresh.distance,
+                  transition: pullToRefresh.dragging ? 'none' : 'height 200ms ease-out',
+                }}
+              >
+                <Loader2
+                  className={cn(
+                    'h-5 w-5',
+                    (pullToRefresh.refreshing ||
+                      pullToRefresh.distance >= pullToRefresh.threshold) &&
+                      'animate-spin',
+                  )}
+                  style={{
+                    opacity: pullToRefresh.refreshing
+                      ? 1
+                      : Math.min(1, pullToRefresh.distance / pullToRefresh.threshold),
+                    transform: pullToRefresh.refreshing
+                      ? undefined
+                      : `rotate(${pullToRefresh.distance * 3}deg)`,
+                  }}
+                />
+              </div>
               {jobsLoading && myJobs.length === 0 && (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />

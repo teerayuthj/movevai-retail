@@ -50,9 +50,14 @@ export function TrackingRouteCard({
   const route = first.deliveryRoute;
   const routeJobs = groupRouteOrdersIntoJobs(sortedOrders);
   const [expanded, setExpanded] = useState(false);
-  const completed = sortedOrders.filter((order) =>
-    ['pending_confirmation', 'delivered'].includes(order.status),
-  ).length;
+  // นับความคืบหน้าเป็น "งาน" (จุดส่ง) ไม่ใช่ราย leg — งานถือว่าเสร็จเมื่อจุดส่งปิดแล้ว
+  // ส่วนจุดรับเป็นขั้นย่อยของงาน จึงไม่นับซ้ำ
+  const completed = routeJobs.filter((job) => {
+    const dropoff =
+      job.stops.find((stop) => stop.metadataJson?.dispatch?.routeLeg !== 'pickup') ??
+      job.stops[job.stops.length - 1];
+    return ['pending_confirmation', 'delivered'].includes(dropoff.status);
+  }).length;
   const pickupCount = sortedOrders.filter(
     (order) => order.metadataJson?.dispatch?.routeLeg === 'pickup',
   ).length;
@@ -84,7 +89,7 @@ export function TrackingRouteCard({
             variant={overdueMinutes > 0 ? 'destructive' : 'info'}
             className="shrink-0 text-[10px]"
           >
-            {completed}/{sortedOrders.length} จุด
+            {completed}/{routeJobs.length} จุด
           </Badge>
         </div>
 
