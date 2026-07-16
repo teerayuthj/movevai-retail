@@ -122,6 +122,10 @@ function InTransitJobSheet({
       (candidate.deliveryRoute?.sequence ?? 0) > (order.deliveryRoute?.sequence ?? 0),
   );
   const isCod = order.payment === 'cod' || order.payment === 'transfer_on_delivery';
+  const nextStop = remainingStops[0];
+  const currentActionLabel = isPickupStop ? 'กำลังไปจุดรับ' : 'กำลังไปจุดส่ง';
+  const currentActionDescription = isPickupStop ? 'รับพัสดุ' : 'ส่งมอบพัสดุ';
+  const completionLabel = isPickupStop ? 'รับของแล้ว' : 'ยืนยันส่งมอบ';
   // เวลาเริ่มส่ง = ตัวเลขนิ่ง, เวลานัด = นับถอยหลัง — จงใจไม่โชว์นาฬิกาจับเวลาให้คนขับ
   const startedAtLabel = formatInTransitStartTime(order);
   const countdown = getMessengerAppointmentCountdown(order, nowMs);
@@ -141,20 +145,33 @@ function InTransitJobSheet({
           className="w-full border-b px-4 pb-3 pt-2 text-left"
           onClick={() => onExpandedChange(!expanded)}
           aria-expanded={expanded}
+          aria-label={expanded ? 'ซ่อนรายละเอียดงาน' : 'ดูรายละเอียดงาน'}
         >
           <span className="mx-auto mb-2 block h-1.5 w-12 rounded-full bg-muted-foreground/30" />
           <div className="flex items-center gap-3">
             <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium text-muted-foreground">
-                {trip?.title ?? 'เที่ยวปัจจุบัน'} · จุด {currentSequenceIndex + 1}/
-                {tripOrders.length}
-              </div>
-              <div className="truncate text-sm font-semibold">{order.customer.name}</div>
-              <div className="mt-0.5 flex min-w-0 items-center gap-1 text-[11px] text-muted-foreground">
-                <MapPin className="h-3 w-3 shrink-0" />
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                <span
+                  className={cn(
+                    'h-2 w-2 shrink-0 rounded-full',
+                    isPickupStop ? 'bg-info' : 'bg-success',
+                  )}
+                />
                 <span className="truncate">
-                  {isPickupStop ? 'รับของ' : 'ส่งของ'} · {order.customer.address}
+                  {trip?.title ?? 'เที่ยวปัจจุบัน'} · จุด {currentSequenceIndex + 1}/
+                  {tripOrders.length}
                 </span>
+              </div>
+              <div className="mt-1 flex min-w-0 items-center gap-2">
+                <span
+                  className={cn(
+                    'inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                    isPickupStop ? 'bg-info/10 text-info' : 'bg-success/10 text-success',
+                  )}
+                >
+                  {currentActionDescription}
+                </span>
+                <span className="truncate text-sm font-semibold">{order.customer.name}</span>
               </div>
             </div>
             {expanded ? (
@@ -166,73 +183,70 @@ function InTransitJobSheet({
         </button>
 
         <div className="px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <span
+              className={cn(
+                'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white',
+                isPickupStop ? 'bg-info' : 'bg-success',
+              )}
+            >
+              {currentSequenceIndex + 1}
+            </span>
             <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <span className="font-mono text-xs font-medium">{order.orderNo}</span>
-                <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
-                  <Package className="h-3 w-3" /> พัสดุ
-                </Badge>
-                {isCod && (
-                  <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
-                    <Banknote className="h-3 w-3" />
-                    {paymentLabel[order.payment]}
-                  </Badge>
+              <p
+                className={cn(
+                  'text-[11px] font-semibold',
+                  isPickupStop ? 'text-info' : 'text-success',
                 )}
-                <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
-                  เสร็จ {completedStops}/{tripOrders.length} จุด
-                </Badge>
-              </div>
-              {order.deliveryPlan?.plannedDate && (
-                <div
-                  className={cn(
-                    'mt-2 flex items-center gap-2.5 rounded-xl border px-3 py-2',
-                    apptToneSurface,
-                  )}
-                >
-                  <CalendarClock className={cn('h-5 w-5 shrink-0', apptToneText)} />
-                  <div className="min-w-0 flex-1">
-                    <div
-                      className={cn(
-                        'text-[10px] font-medium uppercase tracking-normal opacity-80',
-                        apptToneText,
-                      )}
-                    >
-                      นัดส่ง
-                    </div>
-                    <div className={cn('text-[13px] font-semibold leading-tight', apptToneText)}>
-                      {formatPlanningDate(order.deliveryPlan.plannedDate)}
-                    </div>
-                    {countdown && (
-                      <div className={cn('mt-0.5 text-[11px] font-medium', apptToneText)}>
-                        {countdown.phase === 'before'
-                          ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
-                          : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`}
-                      </div>
-                    )}
-                  </div>
-                  <div className={cn('shrink-0 text-right leading-none', apptToneText)}>
-                    {plannedTime ? (
-                      <>
-                        <span className="text-xl font-semibold">{plannedTime}</span>
-                        <span className="ml-0.5 text-[11px] font-medium">น.</span>
-                      </>
-                    ) : (
-                      <span className="text-xs font-medium">ไม่ระบุเวลา</span>
-                    )}
-                  </div>
-                </div>
-              )}
-              {startedAtLabel && (
-                <div className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <Clock3 className="h-3 w-3" />
-                  เริ่มส่ง {startedAtLabel} น.
-                </div>
-              )}
+              >
+                {currentActionLabel}
+              </p>
+              <h2 className="mt-0.5 truncate text-base font-semibold">{order.customer.name}</h2>
+              <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                {order.customer.address}
+              </p>
             </div>
           </div>
 
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+              <Package className="h-3 w-3" /> {order.orderNo}
+            </Badge>
+            {isCod && (
+              <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
+                <Banknote className="h-3 w-3" />
+                {paymentLabel[order.payment]}
+              </Badge>
+            )}
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px]">
+              เสร็จ {completedStops}/{tripOrders.length} จุด
+            </Badge>
+          </div>
+
+          {order.deliveryPlan?.plannedDate && (
+            <div
+              className={cn(
+                'mt-3 flex items-center gap-2 rounded-xl border px-3 py-2',
+                apptToneSurface,
+              )}
+            >
+              <CalendarClock className={cn('h-4 w-4 shrink-0', apptToneText)} />
+              <span
+                className={cn('min-w-0 flex-1 truncate text-[13px] font-semibold', apptToneText)}
+              >
+                {countdown
+                  ? countdown.phase === 'before'
+                    ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
+                    : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`
+                  : formatPlanningDate(order.deliveryPlan.plannedDate)}
+              </span>
+              <span className={cn('shrink-0 text-[13px] font-semibold', apptToneText)}>
+                {plannedTime ? `นัด ${plannedTime} น.` : 'ไม่ระบุเวลา'}
+              </span>
+            </div>
+          )}
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <Button asChild size="sm" variant="outline" className="flex-1 border-info/30 text-info">
               <a href={`tel:${order.customer.phone}`}>
                 <Phone className="h-4 w-4" />
@@ -249,13 +263,19 @@ function InTransitJobSheet({
                 นำทาง
               </a>
             </Button>
-            {!isCoDriver && (
-              <Button size="sm" className="flex-1 bg-success hover:bg-success/90" onClick={onClose}>
-                <CheckCircle2 className="h-4 w-4" />
-                {isPickupStop ? 'ยืนยันรับของ' : 'ยืนยันส่งมอบ'}
-              </Button>
-            )}
           </div>
+          {!isCoDriver && (
+            <Button
+              className={cn(
+                'mt-2 w-full',
+                isPickupStop ? 'bg-info hover:bg-info/90' : 'bg-success hover:bg-success/90',
+              )}
+              onClick={onClose}
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {completionLabel}
+            </Button>
+          )}
 
           {isCoDriver && (
             <div className="mt-2 flex items-start gap-2 rounded-xl border border-info/30 bg-info/10 px-3 py-2 text-[12px] text-info">
@@ -272,9 +292,35 @@ function InTransitJobSheet({
 
           {expanded && (
             <div className="app-scroll mt-3 max-h-[34dvh] space-y-3 overflow-auto border-t pt-3">
+              <div className="flex items-center justify-between gap-2 text-[11px]">
+                <span className="font-medium text-muted-foreground">รายละเอียดงาน</span>
+                {startedAtLabel && (
+                  <span className="inline-flex items-center gap-1 text-muted-foreground">
+                    <Clock3 className="h-3 w-3" /> เริ่มส่ง {startedAtLabel} น.
+                  </span>
+                )}
+              </div>
               <div className="flex items-start gap-2 text-sm text-muted-foreground">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>{order.customer.address}</span>
+                <div>
+                  <div className="font-medium text-foreground">ที่อยู่เต็ม</div>
+                  <div className="mt-0.5">{order.customer.address}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 rounded-xl bg-muted/50 p-3 text-xs">
+                <div>
+                  <div className="text-[10px] text-muted-foreground">ผู้ติดต่อ</div>
+                  <div className="mt-0.5 truncate font-medium">{order.customer.name}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-muted-foreground">โทรศัพท์</div>
+                  <a
+                    href={`tel:${order.customer.phone}`}
+                    className="mt-0.5 block font-medium text-info"
+                  >
+                    {order.customer.phone}
+                  </a>
+                </div>
               </div>
               {order.note && (
                 <div className="text-warning">
@@ -292,10 +338,10 @@ function InTransitJobSheet({
               {remainingStops.length > 0 && (
                 <div className="border-t pt-3">
                   <div className="mb-2 text-[11px] font-medium text-muted-foreground">
-                    จุดถัดไปในเที่ยว
+                    เส้นทางที่เหลือ
                   </div>
                   <div className="space-y-2">
-                    {remainingStops.slice(0, 3).map((candidate) => (
+                    {remainingStops.map((candidate) => (
                       <div key={candidate.id} className="flex items-start gap-2 text-xs">
                         <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-medium">
                           {candidate.deliveryRoute?.sequence ?? '-'}
@@ -309,14 +355,15 @@ function InTransitJobSheet({
                   </div>
                 </div>
               )}
-              <div className="text-[11px] text-muted-foreground">
-                อัปเดตระยะทางบนแผนที่ตาม GPS ปัจจุบัน ·{' '}
-                {new Date(nowMs).toLocaleTimeString('th-TH', {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}{' '}
-                น.
-              </div>
+              {nextStop && (
+                <div className="flex items-center gap-2 rounded-xl border border-success/25 bg-success/5 px-3 py-2 text-xs">
+                  <span className="font-medium text-success">ถัดไปในงานนี้</span>
+                  <span className="truncate font-semibold">
+                    {nextStop.metadataJson?.dispatch?.routeLeg === 'pickup' ? 'รับ' : 'ส่ง'} ·{' '}
+                    {nextStop.customer.name.replace(/^(รับ|ส่ง)\s*[—–-]\s*/u, '').trim()}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -923,6 +970,44 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         remote: false,
       };
 
+  // จุดรับเป็น checkpoint เบา ๆ: คนขับกดครั้งเดียวแล้วระบบเลื่อนไปจุดส่งที่ผูกไว้
+  // GPS แนบได้เมื่อมี แต่ไม่ใช้เป็นเงื่อนไขบล็อกการบันทึก
+  const handlePickupCheckpoint = useCallback(
+    async (order: Order) => {
+      try {
+        await submitDelivery(order.id, {
+          photoCount: 0,
+          photos: [],
+          signatureCaptured: false,
+          otpVerified: false,
+          editorRole: 'messenger',
+          location: liveLocation
+            ? {
+                lat: liveLocation.lat,
+                lng: liveLocation.lng,
+                label:
+                  liveLocation.accuracy != null
+                    ? `พิกัด GPS ขณะรับของ (±${Math.round(liveLocation.accuracy)} ม.)`
+                    : 'พิกัด GPS ขณะรับของ',
+              }
+            : undefined,
+        });
+        setDeliverySheetExpanded(false);
+        setTab('in_transit', { replace: true });
+        toast.success('บันทึกรับของแล้ว — ไปยังจุดส่งถัดไป');
+      } catch (error) {
+        if (isMessengerAuthError(error)) {
+          toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'บันทึกรับของไม่สำเร็จ';
+        setJobsError(message);
+        toast.error(`บันทึกรับของไม่สำเร็จ — ${message}`);
+      }
+    },
+    [liveLocation, setTab, submitDelivery],
+  );
+
   const handleViewOrderMap = useCallback((order: Order) => {
     setMapFocusOrderId(order.id);
     setMapGroupKey(groupKeyOf(order));
@@ -1117,7 +1202,13 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                   role={getMessengerOrderRole(activeDeliveryJob, messengerCode) ?? 'main'}
                   expanded={deliverySheetExpanded}
                   onExpandedChange={setDeliverySheetExpanded}
-                  onClose={() => setCloseTargetId(activeDeliveryJob.id)}
+                  onClose={() => {
+                    if (activeDeliveryJob.metadataJson?.dispatch?.routeLeg === 'pickup') {
+                      void handlePickupCheckpoint(activeDeliveryJob);
+                      return;
+                    }
+                    setCloseTargetId(activeDeliveryJob.id);
+                  }}
                 />
               )}
             </div>
@@ -1316,6 +1407,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         onSubmit={async (input) => {
           if (!closeTargetId) return;
           const submittedOrderId = closeTargetId;
+          const submittedOrder = orders.find((order) => order.id === submittedOrderId) ?? null;
+          const isPickupCheckpoint = submittedOrder?.metadataJson?.dispatch?.routeLeg === 'pickup';
           const shouldStopTracking =
             tracking.session?.type === 'delivery' &&
             tracking.isOwner &&
@@ -1326,10 +1419,10 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
           await submitDelivery(submittedOrderId, input);
           // อย่าอิง myJobs ก่อน submit เพื่อเลือกแท็บ เพราะ iOS อาจยังถือ snapshot
           // in_transit เดิมอยู่ชั่วคราว ทำให้ผู้ใช้ค้างที่หน้า “กำลังส่ง” หลังบันทึกสำเร็จ
-          // หลักฐานที่เพิ่งส่งต้องพาไปหน้า “รอตรวจสอบ” ทันทีเสมอ
+          // จุดรับที่บันทึกแล้วต้องพาไปยัง stop ถัดไปในเที่ยว; ส่วนจุดส่งเข้าสู่รอตรวจสอบ
           setCloseTargetId(null);
           setDeliverySheetExpanded(false);
-          setTab('pending_confirmation', { replace: true });
+          setTab(isPickupCheckpoint ? 'in_transit' : 'pending_confirmation', { replace: true });
           if (shouldStopTracking) {
             try {
               await tracking.end();

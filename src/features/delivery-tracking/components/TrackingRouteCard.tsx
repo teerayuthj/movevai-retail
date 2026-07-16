@@ -13,6 +13,10 @@ type TrackingRouteCardProps = {
   onSelectStop: (order: Order) => void;
   onViewLive: (order: Order) => void;
   actions?: ReactNode;
+  /** เพิ่งกด action — ทำให้ทั้งการ์ดเที่ยวค่อย ๆ จางก่อนรีเฟรชรายการ */
+  settling?: boolean;
+  /** ข้อความสรุป action ที่เพิ่งทำ */
+  settledLabel?: string;
   nowMs: number;
 };
 
@@ -41,6 +45,8 @@ export function TrackingRouteCard({
   onSelectStop,
   onViewLive,
   actions,
+  settling = false,
+  settledLabel,
   nowMs,
 }: TrackingRouteCardProps) {
   const sortedOrders = [...orders].sort(
@@ -69,11 +75,15 @@ export function TrackingRouteCard({
   return (
     <article
       className={cn(
-        'overflow-hidden rounded-lg border border-l-[3px] bg-card',
+        'overflow-hidden rounded-lg border border-l-[3px] bg-card transition-all duration-500',
         overdueMinutes > 0
           ? 'border-l-destructive border-destructive/40 bg-destructive/5'
           : 'border-l-info',
         hasSelectedStop && 'ring-1 ring-primary',
+        // ใช้ effect เดียวกับ TrackingCard: หลังปิดงานยังเห็นผลลัพธ์ชั่วครู่
+        // แล้วค่อยรีเฟรชให้การ์ดออกจากรายการแบบไม่เด้งทันที
+        settling &&
+          'pointer-events-none border-l-muted-foreground/40 bg-muted/40 opacity-60 grayscale',
       )}
     >
       <div className="p-4 pb-3">
@@ -196,7 +206,13 @@ export function TrackingRouteCard({
         </div>
       )}
 
-      {actions && <div className="border-t p-3">{actions}</div>}
+      {settling ? (
+        <div className="flex items-center justify-center gap-1.5 border-t p-3 text-[11px] font-medium text-muted-foreground">
+          {settledLabel ?? 'ดำเนินการแล้ว'}
+        </div>
+      ) : (
+        actions && <div className="border-t p-3">{actions}</div>
+      )}
     </article>
   );
 }

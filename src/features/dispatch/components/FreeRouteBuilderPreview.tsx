@@ -500,13 +500,14 @@ export function FreeRouteBuilderPreview({
         plannedDate,
         plannedTime: plannedTime || undefined,
         driverId: driverId || undefined,
-        // ทั้งสองแบบมอบงานถึง Messenger ในขั้นยืนยันเดียว
+        // รับเที่ยวครั้งเดียวแล้วเริ่มทั้ง Route ทันที: messenger จัดการการรับ/ส่ง
+        // ตามแต่ละจุดระหว่างวิ่ง โดยไม่ต้องกลับมากดเริ่มเที่ยวเป็นขั้นที่สอง
         // scheduled คงวัน–เวลาไว้บน Route โดยไม่ค้างในหน้า Delivery Planning
         dispatchMode: mode,
         note: note.trim() || undefined,
         acceptWithinMinutes,
         startWithinMinutes: 10,
-        startPolicy: 'manual',
+        startPolicy: 'accept_starts',
       });
       await onCreated(result);
       setConfirmDispatchOpen(false);
