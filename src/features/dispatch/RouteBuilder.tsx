@@ -6,11 +6,10 @@ import { fetchRouteAddresses, type RouteAddress } from '@/lib/retailApi';
 import { useRetailStore } from '@/state/retailStore';
 
 type Props = {
-  onOpenPlanning: (search?: string) => void;
   onOpenTracking: (search?: string) => void;
 };
 
-export function RouteBuilder({ onOpenPlanning, onOpenTracking }: Props) {
+export function RouteBuilder({ onOpenTracking }: Props) {
   const { drivers, orders, syncFromBackend } = useRetailStore();
   const [addresses, setAddresses] = useState<RouteAddress[]>([]);
   const [loading, setLoading] = useState(true);
@@ -64,16 +63,11 @@ export function RouteBuilder({ onOpenPlanning, onOpenTracking }: Props) {
           onCreated={async (result) => {
             await syncFromBackend();
             const focusedOrder = result.orderIds[0];
-            const search = focusedOrder ? `?order=${encodeURIComponent(focusedOrder)}` : undefined;
-            if (result.status === 'dispatched') {
-              onOpenTracking(
-                focusedOrder
-                  ? `?tab=awaiting_acceptance&order=${encodeURIComponent(focusedOrder)}`
-                  : '?tab=awaiting_acceptance',
-              );
-              return;
-            }
-            onOpenPlanning(search);
+            onOpenTracking(
+              focusedOrder
+                ? `?tab=awaiting_acceptance&order=${encodeURIComponent(focusedOrder)}`
+                : '?tab=awaiting_acceptance',
+            );
           }}
         />
       )}

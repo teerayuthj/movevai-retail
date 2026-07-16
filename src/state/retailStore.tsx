@@ -78,7 +78,11 @@ import {
   unassignAppOrder,
 } from '@/lib/retailApi';
 import { getAdminRouteOrigin } from '@/lib/adminLocation';
-import { MESSENGER_JOB_STATUSES, isMessengerOrderParticipant } from '@/lib/messengerJobs';
+import {
+  MESSENGER_JOB_STATUSES,
+  isMessengerOrderParticipant,
+  isMessengerPlannedPreview,
+} from '@/lib/messengerJobs';
 
 const LOCAL_DRAFT_STATUSES = ['new', 'parsing', 'needs_review', 'ready'];
 
@@ -266,8 +270,11 @@ export function RetailProvider({
         orders: [
           ...current.orders.filter(
             (order) =>
-              !isMessengerOrderParticipant(order, driverCode) ||
-              !MESSENGER_JOB_STATUSES.includes(order.status),
+              !(
+                (isMessengerOrderParticipant(order, driverCode) &&
+                  MESSENGER_JOB_STATUSES.includes(order.status)) ||
+                isMessengerPlannedPreview(order, driverCode)
+              ),
           ),
           ...remote.orders.map((order) => preservePendingReview(current, order)),
         ],

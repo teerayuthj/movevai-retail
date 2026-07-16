@@ -13,6 +13,7 @@ export function parseTrackingSearch(locationSearch: string): {
 
   const view: TrackingView | null =
     tab === 'all_open' ||
+    tab === 'planned' ||
     tab === 'awaiting_acceptance' ||
     tab === 'overdue' ||
     tab === 'in_transit' ||

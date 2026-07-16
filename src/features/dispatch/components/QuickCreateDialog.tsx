@@ -3,6 +3,10 @@ import { ArrowRight, CalendarClock, MapPin, Repeat2, Send, Timer, X, Zap } from 
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  ConfirmDispatchDialog,
+  DriverSummaryRow,
+} from '@/components/delivery/ConfirmDispatchDialog';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -67,6 +71,7 @@ export function QuickCreateDialog({
   const [startWithinMinutes, setStartWithinMinutes] = useState(10);
   const [startPolicy, setStartPolicy] = useState<DispatchStartPolicy>('manual');
   const [note, setNote] = useState('');
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const selectedTemplate = templates.find((template) => template.id === templateId);
@@ -92,10 +97,11 @@ export function QuickCreateDialog({
 
   useEffect(() => {
     if (!open) return;
+    setConfirmSendOpen(false);
     if (initialTemplateId && templates.some((template) => template.id === initialTemplateId)) {
       setMode('template');
       setTemplateId(initialTemplateId);
-      setMethod('planning');
+      setMethod('scheduled');
       return;
     }
     setMode('single');
@@ -117,17 +123,36 @@ export function QuickCreateDialog({
 
   if (!open) return null;
 
-  const submit = async () => {
-    if (!title.trim()) return toast.error('กรุณาระบุชื่องาน');
-    if (mode === 'template' && !selectedTemplate) return toast.error('กรุณาเลือก Route Template');
-    if (mode === 'template' && selectedPickupStopIds.length === 0)
-      return toast.error('เลือกอย่างน้อย 1 คู่รับ → ส่งสำหรับเที่ยวนี้');
+  const validate = () => {
+    if (!title.trim()) {
+      toast.error('กรุณาระบุชื่องาน');
+      return false;
+    }
+    if (mode === 'template' && !selectedTemplate) {
+      toast.error('กรุณาเลือก Route Template');
+      return false;
+    }
+    if (mode === 'template' && selectedPickupStopIds.length === 0) {
+      toast.error('เลือกอย่างน้อย 1 คู่รับ → ส่งสำหรับเที่ยวนี้');
+      return false;
+    }
     if (mode === 'single' && (!pickupAddress.trim() || !destinationAddress.trim())) {
-      return toast.error('กรุณาระบุจุดรับและจุดส่ง');
+      toast.error('กรุณาระบุจุดรับและจุดส่ง');
+      return false;
     }
-    if (mode === 'single' && method === 'immediate' && !selectedDriver) {
-      return toast.error('กรุณาเลือกคนขับ');
+    if (method !== 'planning' && !selectedDriver) {
+      toast.error('กรุณาเลือกคนขับ');
+      return false;
     }
+    if (method === 'scheduled' && !plannedTime) {
+      toast.error('กรุณาระบุเวลาออกก่อนมอบงานตามวัน–เวลา');
+      return false;
+    }
+    return true;
+  };
+
+  const submit = async () => {
+    if (!validate()) return;
 
     setSubmitting(true);
     try {
@@ -135,17 +160,24 @@ export function QuickCreateDialog({
         const result = await createRouteTemplateRun(selectedTemplate.id, {
           selectedPickupStopIds,
           plannedDate,
+          plannedTime: plannedTime || undefined,
           driverId: driverId || undefined,
-          dispatchMode: 'planning',
+          dispatchMode: method,
           messengerTitle: messengerTitle.trim() || undefined,
           note: note.trim() || undefined,
         });
         await onCreated({
-          destination: 'planning',
+          destination: result.status === 'dispatched' ? 'tracking' : 'planning',
           orderIds: result.orderIds,
-          plannedDate: result.plannedDate,
+          plannedDate: result.status === 'planned' ? result.plannedDate : undefined,
         });
-        toast.success(`สร้าง Route Run ของ ${selectedTemplate.name} เข้า Planning แล้ว`);
+        toast.success(
+          result.status === 'dispatched'
+            ? method === 'immediate'
+              ? `สร้างและส่ง ${selectedTemplate.name} ให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว`
+              : `มอบ ${selectedTemplate.name} ให้ ${selectedDriver?.name ?? 'Messenger'} ตามเวลาแล้ว`
+            : `สร้าง Route Run ของ ${selectedTemplate.name} เข้า Planning แล้ว`,
+        );
         onClose();
         return;
       }
@@ -170,14 +202,16 @@ export function QuickCreateDialog({
         note,
       });
       await onCreated({
-        destination: method === 'immediate' ? 'tracking' : 'planning',
+        destination: method === 'planning' ? 'planning' : 'tracking',
         orderIds: result.orders.map((order) => order.id),
         plannedDate: method === 'planning' ? plannedDate : undefined,
       });
       toast.success(
         method === 'immediate'
           ? `สร้างงานและส่งให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว`
-          : 'สร้างงานเข้า Planning แล้ว',
+          : method === 'scheduled'
+            ? `มอบงานให้ ${selectedDriver?.name ?? 'Messenger'} ตามเวลาแล้ว`
+            : 'สร้างงานเข้า Planning แล้ว',
       );
       onClose();
     } catch (error) {
@@ -185,6 +219,17 @@ export function QuickCreateDialog({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  // งานที่มอบให้ Messenger แล้ว (ทันที/ตามเวลา) ต้องยืนยันก่อนส่งจริง
+  // ส่วน Planning เป็นเพียงงานรอจัดรอบ จึงยังไม่ต้องยืนยันการมอบงาน
+  const requestSubmit = () => {
+    if (method !== 'planning') {
+      if (!validate()) return;
+      setConfirmSendOpen(true);
+      return;
+    }
+    void submit();
   };
 
   return (
@@ -213,7 +258,10 @@ export function QuickCreateDialog({
               <div className="grid gap-2 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => setMode('single')}
+                  onClick={() => {
+                    setMode('single');
+                    setMethod('immediate');
+                  }}
                   className={cn(
                     'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
                     mode === 'single' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40',
@@ -229,7 +277,7 @@ export function QuickCreateDialog({
                   type="button"
                   onClick={() => {
                     setMode('template');
-                    setMethod('planning');
+                    setMethod('scheduled');
                   }}
                   className={cn(
                     'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
@@ -427,9 +475,9 @@ export function QuickCreateDialog({
                     value={method}
                     onChange={(event) => setMethod(event.target.value as DispatchMethod)}
                     className="mt-1"
-                    disabled={mode === 'template'}
                   >
-                    <option value="immediate">ส่งทันที</option>
+                    <option value="immediate">มอบงานทันที</option>
+                    <option value="scheduled">มอบงานตามวัน–เวลา</option>
                     <option value="planning">เข้า Planning</option>
                   </Select>
                 </label>
@@ -441,7 +489,7 @@ export function QuickCreateDialog({
                     className="mt-1"
                   >
                     <option value="">
-                      {method === 'immediate' ? 'เลือกคนขับ' : 'เลือกภายหลัง'}
+                      {method === 'planning' ? 'เลือกภายหลัง' : 'เลือกคนขับ'}
                     </option>
                     {drivers
                       .filter((driver) => driver.status !== 'off_duty')
@@ -452,7 +500,7 @@ export function QuickCreateDialog({
                       ))}
                   </Select>
                 </label>
-                {method === 'planning' && (
+                {method !== 'immediate' && (
                   <>
                     <label className="text-xs font-medium">
                       วันที่ส่ง
@@ -560,17 +608,19 @@ export function QuickCreateDialog({
                 </div>
               </div>
               <div className="flex gap-2">
-                {mode === 'template' || method === 'planning' ? (
+                {method === 'planning' ? (
+                  <CalendarClock className="mt-0.5 h-4 w-4 text-info" />
+                ) : method === 'scheduled' ? (
                   <CalendarClock className="mt-0.5 h-4 w-4 text-info" />
                 ) : (
                   <Zap className="mt-0.5 h-4 w-4 text-warning" />
                 )}
                 <div>
                   <div className="font-medium">
-                    {mode === 'template'
-                      ? 'สร้าง Route Run เข้า Planning'
-                      : method === 'immediate'
-                        ? 'ส่งทันที'
+                    {method === 'immediate'
+                      ? 'มอบงานทันที'
+                      : method === 'scheduled'
+                        ? 'มอบงานตามวัน–เวลา'
                         : 'เข้า Planning'}
                   </div>
                   <div className="text-xs text-muted-foreground">
@@ -590,19 +640,114 @@ export function QuickCreateDialog({
                 </div>
               )}
             </div>
-            <Button className="mt-5 w-full" onClick={() => void submit()} disabled={submitting}>
+            <Button className="mt-5 w-full" onClick={requestSubmit} disabled={submitting}>
               <Send className="h-4 w-4" />
               {submitting
                 ? 'กำลังสร้างงาน…'
-                : mode === 'template'
-                  ? 'สร้าง Route Run เข้า Planning'
-                  : method === 'immediate'
-                    ? 'สร้างและส่งให้คนขับ'
-                    : 'สร้างเข้า Planning'}
+                : method === 'immediate'
+                  ? mode === 'template'
+                    ? 'ยืนยันมอบ Route ให้คนขับ'
+                    : 'สร้างและส่งให้คนขับ'
+                  : method === 'scheduled'
+                    ? 'ยืนยันมอบงานตามเวลา'
+                    : mode === 'template'
+                      ? 'สร้าง Route Run เข้า Planning'
+                      : 'สร้างเข้า Planning'}
             </Button>
           </aside>
         </div>
       </div>
+
+      {selectedDriver && method !== 'planning' && (
+        <ConfirmDispatchDialog
+          open={confirmSendOpen}
+          title={
+            method === 'immediate' ? 'ตรวจสอบก่อนส่งให้ Messenger' : 'ตรวจสอบก่อนมอบงานตามเวลา'
+          }
+          description={
+            method === 'immediate'
+              ? 'สร้างงานแล้วแจ้งเตือนไปที่มือถือคนขับทันทีหลังยืนยัน'
+              : 'ยืนยันแล้ว Messenger จะได้รับรอบงานตามวัน–เวลาที่กำหนด'
+          }
+          confirmLabel={method === 'immediate' ? 'ยืนยันสร้างและส่งงาน' : 'ยืนยันมอบงาน'}
+          submitting={submitting}
+          overlayClassName="z-[60]"
+          warnings={
+            selectedDriver.activeOrders > 0
+              ? [
+                  `${selectedDriver.name} มีงานค้างอยู่ ${selectedDriver.activeOrders} งาน — ตรวจสอบก่อนยืนยัน`,
+                ]
+              : undefined
+          }
+          onCancel={() => setConfirmSendOpen(false)}
+          onConfirm={() => void submit()}
+        >
+          <div className="rounded-lg border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="min-w-0 truncate text-sm font-medium">{title}</span>
+              <Badge
+                variant={method === 'immediate' ? 'warning' : 'secondary'}
+                className="shrink-0"
+              >
+                {method === 'immediate' ? (
+                  <Zap className="h-3 w-3" />
+                ) : (
+                  <CalendarClock className="h-3 w-3" />
+                )}
+                {method === 'immediate' ? 'ส่งทันที' : 'มอบงานตามเวลา'}
+              </Badge>
+            </div>
+            <div className="mt-2 space-y-1.5 text-xs">
+              {mode === 'template' ? (
+                <div className="flex items-start gap-1.5">
+                  <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span>
+                    {selectedTemplate?.name} · {selectedPickupStopIds.length} งาน ·{' '}
+                    {selectedTemplateStops.length} จุดแวะ
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start gap-1.5">
+                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="text-muted-foreground">รับ:</span>{' '}
+                      {[pickupName.trim(), pickupAddress.trim(), pickupPhone.trim()]
+                        .filter(Boolean)
+                        .join(' — ')}
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-1.5">
+                    <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span>
+                      <span className="text-muted-foreground">ส่ง:</span>{' '}
+                      {[destinationName.trim(), destinationAddress.trim(), destinationPhone.trim()]
+                        .filter(Boolean)
+                        .join(' — ')}
+                    </span>
+                  </div>
+                </>
+              )}
+              {note.trim() && <div className="text-muted-foreground">หมายเหตุ: {note.trim()}</div>}
+            </div>
+          </div>
+          <DriverSummaryRow
+            driver={selectedDriver}
+            orders={orders}
+            plannedDate={method === 'scheduled' ? plannedDate : undefined}
+            detail={
+              method === 'immediate' ? (
+                <>
+                  รับใน {acceptWithinMinutes} นาที · เริ่มใน {startWithinMinutes} นาที ·{' '}
+                  {startPolicy === 'manual' ? 'รับแล้วกดเริ่มเอง' : 'รับแล้วเริ่มทันที'}
+                </>
+              ) : (
+                `เวลาออก ${plannedTime}`
+              )
+            }
+          />
+        </ConfirmDispatchDialog>
+      )}
     </div>
   );
 }

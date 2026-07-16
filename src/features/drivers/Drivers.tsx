@@ -10,16 +10,24 @@ import type { Driver } from '@/data/orderTypes';
 import { useRetailStore } from '@/state/retailStore';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
 import { DriverAvatar } from '@/components/DriverAvatar';
-import { DriverCard } from './components/DriverCard';
+import { DriverDetailPanel, DriverStatusBadge } from './components/DriverDetailPanel';
+import { ImagePreviewModal } from './components/ImagePreviewModal';
+import {
+  type DriverTab,
+  approvalStatus,
+  formatIdCardNumber,
+  normalizeIdCardNumber,
+  vehicleLabel,
+} from './utils/driverInfo';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import ThaiAddressPicker from '@/components/ThaiAddressPicker';
 import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
 import { EMPTY_THAI_ADDRESS, type ThaiAddressValue } from '@/lib/thaiAddress';
+import { cn } from '@/lib/utils';
 import {
   archiveDriver,
   approveDriver,
@@ -32,19 +40,7 @@ import {
   type DriverMutationInput,
   type DriverStats,
 } from '@/lib/retailApi';
-import {
-  BarChart3,
-  Check,
-  Eye,
-  FileImage,
-  Loader2,
-  Pencil,
-  Plus,
-  RefreshCw,
-  ShieldCheck,
-  UserX,
-  X,
-} from 'lucide-react';
+import { Eye, FileImage, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
 
 const FAIL_REASONS: { value: FailReason; label: string }[] = (
   Object.keys(failReasonLabel) as FailReason[]
@@ -53,12 +49,6 @@ const FAIL_REASONS: { value: FailReason; label: string }[] = (
 const FAIL_ACTIONS: { value: FailNextAction; label: string }[] = (
   Object.keys(failNextActionLabel) as FailNextAction[]
 ).map((value) => ({ value, label: failNextActionLabel[value] }));
-
-const vehicleLabel: Record<Driver['vehicle'], string> = {
-  motorcycle: 'จักรยานยนต์',
-  van: 'รถตู้',
-  pickup: 'รถกระบะ',
-};
 
 const vehicleColorOptions = [
   'ขาว',
@@ -74,8 +64,6 @@ const vehicleColorOptions = [
   'น้ำตาล',
   'ทอง',
 ];
-
-type DriverTab = 'approved' | 'pending' | 'rejected';
 
 type DriverFormState = {
   name: string;
@@ -108,10 +96,6 @@ function temporaryPin() {
   return value.toString().padStart(6, '0');
 }
 
-function approvalStatus(driver: Driver): DriverTab {
-  return driver.approvalStatus ?? 'approved';
-}
-
 function toForm(driver?: Driver): DriverFormState {
   if (!driver) return emptyForm;
   return {
@@ -138,22 +122,6 @@ function trimOptional(value: string) {
   return trimmed || undefined;
 }
 
-function normalizeIdCardNumber(value: string) {
-  return value.replace(/\D/g, '').slice(0, 13);
-}
-
-function formatIdCardNumber(value: string) {
-  const digits = normalizeIdCardNumber(value);
-  const parts = [
-    digits.slice(0, 1),
-    digits.slice(1, 5),
-    digits.slice(5, 10),
-    digits.slice(10, 12),
-    digits.slice(12, 13),
-  ].filter(Boolean);
-  return parts.join('-');
-}
-
 function formPayload(form: DriverFormState, status: DriverTab): DriverMutationInput {
   return {
     name: form.name.trim(),
@@ -172,10 +140,6 @@ function formPayload(form: DriverFormState, status: DriverTab): DriverMutationIn
     addressSubdistrict: form.address.subdistrict.trim(),
     addressPostalCode: form.address.postalCode.trim(),
   };
-}
-
-function formatKm(meters: number) {
-  return `${(meters / 1000).toFixed(2)} กม.`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -449,154 +413,18 @@ function ImageField({
   );
 }
 
-function ImagePreviewModal({
-  title,
-  src,
-  onClose,
-}: {
-  title: string;
-  src: string;
-  onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-foreground/70 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-label={`ดู${title}ขนาดใหญ่`}
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-    >
-      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-lg border bg-background shadow-xl">
-        <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-semibold">{title}</div>
-          </div>
-          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="ปิด">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center bg-muted/30 p-4">
-          <img
-            src={src}
-            alt={title}
-            className="max-h-[78vh] max-w-full rounded-md object-contain"
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatsModal({
-  stats,
-  loading,
-  onClose,
-}: {
-  stats: DriverStats | null;
-  loading: boolean;
-  onClose: () => void;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 p-4">
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-lg border bg-background shadow-xl">
-        <div className="flex items-center justify-between border-b px-5 py-4">
-          <div>
-            <h2 className="text-lg font-semibold">สถิติ Messenger</h2>
-            <p className="text-sm text-muted-foreground">{stats?.driver.name ?? 'กำลังโหลด'}</p>
-          </div>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="ปิด">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        {loading || !stats ? (
-          <div className="flex items-center justify-center gap-2 p-10 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            กำลังโหลดสถิติ
-          </div>
-        ) : (
-          <div className="space-y-5 p-5">
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {[
-                { label: 'ระยะทางรวม', value: formatKm(stats.totals.distanceMeters) },
-                { label: 'งานสำเร็จ', value: stats.totals.completedOrders },
-                { label: 'Route', value: stats.totals.routes },
-                { label: 'หลุดเส้นทาง', value: stats.totals.offRouteCount },
-              ].map((item) => (
-                <div key={item.label} className="rounded-lg border p-3">
-                  <div className="text-xs text-muted-foreground">{item.label}</div>
-                  <div className="mt-1 text-lg font-semibold tabular-nums">{item.value}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="grid gap-4 lg:grid-cols-2">
-              <section>
-                <h3 className="text-sm font-semibold">เส้นทาง/ปลายทางที่พบบ่อย</h3>
-                <div className="mt-2 space-y-2">
-                  {stats.frequentDestinations.length === 0 ? (
-                    <p className="rounded-lg border p-3 text-sm text-muted-foreground">
-                      ยังไม่มีข้อมูลปลายทาง
-                    </p>
-                  ) : (
-                    stats.frequentDestinations.map((item) => (
-                      <div key={item.label} className="rounded-lg border p-3 text-sm">
-                        <div className="line-clamp-2 font-medium">{item.label}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">{item.count} ครั้ง</div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
-
-              <section>
-                <h3 className="text-sm font-semibold">รอบวิ่งล่าสุด</h3>
-                <div className="mt-2 space-y-2">
-                  {stats.recentSessions.length === 0 ? (
-                    <p className="rounded-lg border p-3 text-sm text-muted-foreground">
-                      ยังไม่มีประวัติ GPS
-                    </p>
-                  ) : (
-                    stats.recentSessions.map((session) => (
-                      <div key={session.id} className="rounded-lg border p-3 text-sm">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">
-                            {session.label || session.routeId || 'รอบจัดส่ง'}
-                          </span>
-                          <Badge variant={session.status === 'active' ? 'info' : 'muted'}>
-                            {session.status}
-                          </Badge>
-                        </div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {new Date(session.startedAt).toLocaleString('th-TH')} ·{' '}
-                          {formatKm(session.distanceMeters)}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </section>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export function DriversPage() {
-  const { orders, startDelivery, completeDelivery, failDelivery, syncFromBackend } =
-    useRetailStore();
+  const { orders, completeDelivery, failDelivery, syncFromBackend } = useRetailStore();
   const [managedDrivers, setManagedDrivers] = useState<Driver[]>([]);
   const [driversLoading, setDriversLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<DriverTab>('approved');
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editingDriver, setEditingDriver] = useState<Driver | null>(null);
-  const [statsOpen, setStatsOpen] = useState(false);
-  const [statsLoading, setStatsLoading] = useState(false);
-  const [stats, setStats] = useState<DriverStats | null>(null);
+  const [statsByDriver, setStatsByDriver] = useState<Record<string, DriverStats>>({});
+  const [statsLoadingId, setStatsLoadingId] = useState<string | null>(null);
 
   const loadDrivers = useCallback(async () => {
     setDriversLoading(true);
@@ -623,22 +451,46 @@ export function DriversPage() {
     [managedDrivers],
   );
 
-  async function reloadAll() {
-    await Promise.all([loadDrivers(), syncFromBackend()]);
-  }
+  const visibleDrivers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const list = groupedDrivers[activeTab];
+    if (!query) return list;
+    return list.filter((driver) =>
+      [driver.name, driver.phone, driver.licensePlate ?? ''].some((value) =>
+        value.toLowerCase().includes(query),
+      ),
+    );
+  }, [groupedDrivers, activeTab, search]);
 
-  async function openStats(driver: Driver) {
-    setStatsOpen(true);
-    setStatsLoading(true);
-    setStats(null);
+  // เลือกคนแรกใน list อัตโนมัติเมื่อสลับแท็บ/ค้นหา แล้วคนเดิมไม่อยู่ใน list
+  useEffect(() => {
+    if (driversLoading) return;
+    if (selectedId && visibleDrivers.some((driver) => driver.id === selectedId)) return;
+    setSelectedId(visibleDrivers[0]?.id ?? null);
+  }, [visibleDrivers, selectedId, driversLoading]);
+
+  const selectedDriver = visibleDrivers.find((driver) => driver.id === selectedId) ?? null;
+
+  const loadStats = useCallback(async (driverId: string) => {
+    setStatsLoadingId(driverId);
     try {
-      setStats(await fetchDriverStats(driver.id));
+      const stats = await fetchDriverStats(driverId);
+      setStatsByDriver((prev) => ({ ...prev, [driverId]: stats }));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'โหลดสถิติไม่สำเร็จ');
-      setStatsOpen(false);
     } finally {
-      setStatsLoading(false);
+      setStatsLoadingId((current) => (current === driverId ? null : current));
     }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId || activeTab === 'pending') return;
+    if (statsByDriver[selectedId]) return;
+    void loadStats(selectedId);
+  }, [selectedId, activeTab, statsByDriver, loadStats]);
+
+  async function reloadAll() {
+    await Promise.all([loadDrivers(), syncFromBackend()]);
   }
 
   async function approve(driver: Driver) {
@@ -647,6 +499,7 @@ export function DriversPage() {
       toast.success(`อนุมัติ ${driver.name} แล้ว`);
       await reloadAll();
       setActiveTab('approved');
+      setSelectedId(driver.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'อนุมัติไม่สำเร็จ');
     }
@@ -660,6 +513,7 @@ export function DriversPage() {
       toast.success(`ไม่อนุมัติ ${driver.name} แล้ว`);
       await reloadAll();
       setActiveTab('rejected');
+      setSelectedId(driver.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'บันทึกการไม่อนุมัติไม่สำเร็จ');
     }
@@ -682,6 +536,18 @@ export function DriversPage() {
       setManagedDrivers((prev) => prev.map((item) => (item.id === driverId ? updated : item)));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'อัปเดตสถานะไม่สำเร็จ');
+    }
+  }
+
+  async function resetPin(driver: Driver) {
+    const phone = window.prompt('เบอร์โทรสำหรับ Messenger Login', driver.phone)?.trim();
+    if (!phone) return;
+    const pin = temporaryPin();
+    try {
+      await upsertMessengerAccount(driver.id, { phone, pin });
+      window.alert(`PIN ชั่วคราวของ ${driver.name}: ${pin}\nกรุณาบันทึกตอนนี้ ระบบจะไม่แสดงซ้ำ`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'สร้าง PIN ไม่สำเร็จ');
     }
   }
 
@@ -723,70 +589,103 @@ export function DriversPage() {
           <TabsTrigger value="pending">รออนุมัติ ({groupedDrivers.pending.length})</TabsTrigger>
           <TabsTrigger value="rejected">ไม่อนุมัติ ({groupedDrivers.rejected.length})</TabsTrigger>
         </TabsList>
+      </Tabs>
 
-        {(['approved', 'pending', 'rejected'] as DriverTab[]).map((tab) => (
-          <TabsContent key={tab} value={tab}>
+      <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+        <Card className="lg:sticky lg:top-4">
+          <CardContent className="space-y-3 p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="ค้นหาชื่อ / เบอร์ / ทะเบียน"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+
             {driversLoading ? (
-              <div className="flex items-center justify-center gap-2 rounded-lg border p-8 text-sm text-muted-foreground">
+              <div className="flex items-center justify-center gap-2 rounded-lg border p-6 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 กำลังโหลดคนขับ
               </div>
-            ) : groupedDrivers[tab].length === 0 ? (
-              <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-                ไม่มีรายการในแท็บนี้
+            ) : visibleDrivers.length === 0 ? (
+              <div className="rounded-lg border p-6 text-center text-sm text-muted-foreground">
+                {search.trim() ? 'ไม่พบคนขับที่ค้นหา' : 'ไม่มีรายการในแท็บนี้'}
               </div>
             ) : (
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {groupedDrivers[tab].map((driver) => {
-                  const driverOrders = orders.filter(
+              <div className="app-scroll max-h-[65vh] space-y-1 overflow-y-auto pr-0.5">
+                {visibleDrivers.map((driver) => {
+                  const activeOrderCount = orders.filter(
                     (order) =>
                       order.assignedDriverId === driver.id &&
                       ['assigned', 'in_transit'].includes(order.status),
-                  );
+                  ).length;
+                  const isSelected = driver.id === selectedId;
 
                   return (
-                    <div key={driver.id} className="space-y-2">
-                      <DriverCard
-                        driver={driver}
-                        driverOrders={driverOrders}
-                        onSetStatus={(driverId, status) => void setStatus(driverId, status)}
-                        onCompleteDelivery={completeDelivery}
-                        onFailDelivery={setFailTargetId}
-                      />
-                      <DriverActions
-                        driver={driver}
-                        tab={tab}
-                        onEdit={openEdit}
-                        onArchive={(item) => void archive(item)}
-                        onApprove={(item) => void approve(item)}
-                        onReject={(item) => void reject(item)}
-                        onStats={(item) => void openStats(item)}
-                        onResetPin={async (item) => {
-                          const phone = window
-                            .prompt('เบอร์โทรสำหรับ Messenger Login', item.phone)
-                            ?.trim();
-                          if (!phone) return;
-                          const pin = temporaryPin();
-                          try {
-                            await upsertMessengerAccount(item.id, { phone, pin });
-                            window.alert(
-                              `PIN ชั่วคราวของ ${item.name}: ${pin}\nกรุณาบันทึกตอนนี้ ระบบจะไม่แสดงซ้ำ`,
-                            );
-                          } catch (error) {
-                            toast.error(
-                              error instanceof Error ? error.message : 'สร้าง PIN ไม่สำเร็จ',
-                            );
-                          }
-                        }}
-                      />
-                    </div>
+                    <button
+                      key={driver.id}
+                      type="button"
+                      onClick={() => setSelectedId(driver.id)}
+                      aria-current={isSelected}
+                      className={cn(
+                        'flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-2 text-left transition-colors',
+                        isSelected
+                          ? 'border-primary/50 bg-primary/5'
+                          : 'border-transparent hover:bg-muted/60',
+                      )}
+                    >
+                      <DriverAvatar driver={driver} className="h-9 w-9" />
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{driver.name}</div>
+                        <div className="truncate text-xs text-muted-foreground">
+                          {driver.licensePlate || vehicleLabel[driver.vehicle]} · {driver.phone}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {activeTab === 'approved' && <DriverStatusBadge driver={driver} />}
+                        {activeOrderCount > 0 && (
+                          <span className="text-[10px] tabular-nums text-muted-foreground">
+                            {activeOrderCount} จุดงาน
+                          </span>
+                        )}
+                      </div>
+                    </button>
                   );
                 })}
               </div>
             )}
-          </TabsContent>
-        ))}
-      </Tabs>
+          </CardContent>
+        </Card>
+
+        {selectedDriver ? (
+          <DriverDetailPanel
+            driver={selectedDriver}
+            tab={activeTab}
+            driverOrders={orders.filter(
+              (order) =>
+                order.assignedDriverId === selectedDriver.id &&
+                ['assigned', 'in_transit'].includes(order.status),
+            )}
+            stats={statsByDriver[selectedDriver.id] ?? null}
+            statsLoading={statsLoadingId === selectedDriver.id}
+            onSetStatus={(driverId, status) => void setStatus(driverId, status)}
+            onCompleteDelivery={completeDelivery}
+            onFailDelivery={setFailTargetId}
+            onEdit={openEdit}
+            onArchive={(driver) => void archive(driver)}
+            onApprove={(driver) => void approve(driver)}
+            onReject={(driver) => void reject(driver)}
+            onResetPin={(driver) => void resetPin(driver)}
+            onRefreshStats={(driver) => void loadStats(driver.id)}
+          />
+        ) : (
+          <div className="flex min-h-48 items-center justify-center rounded-lg border text-sm text-muted-foreground">
+            เลือกคนขับจากรายการด้านซ้ายเพื่อดูรายละเอียด
+          </div>
+        )}
+      </div>
 
       <DriverFormModal
         driver={editingDriver}
@@ -794,10 +693,6 @@ export function DriversPage() {
         onClose={() => setFormOpen(false)}
         onSaved={reloadAll}
       />
-
-      {statsOpen && (
-        <StatsModal stats={stats} loading={statsLoading} onClose={() => setStatsOpen(false)} />
-      )}
 
       <ResolutionDialog
         open={!!failTargetId}
@@ -833,143 +728,5 @@ export function DriversPage() {
         }}
       />
     </div>
-  );
-}
-
-function DriverActions({
-  driver,
-  tab,
-  onEdit,
-  onArchive,
-  onApprove,
-  onReject,
-  onStats,
-  onResetPin,
-}: {
-  driver: Driver;
-  tab: DriverTab;
-  onEdit: (driver: Driver) => void;
-  onArchive: (driver: Driver) => void;
-  onApprove: (driver: Driver) => void;
-  onReject: (driver: Driver) => void;
-  onStats: (driver: Driver) => void;
-  onResetPin: (driver: Driver) => void;
-}) {
-  return (
-    <Card>
-      <CardContent className="space-y-2 p-3">
-        <div className="flex items-center gap-2">
-          <DriverAvatar driver={driver} className="h-8 w-8" />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{driver.name}</div>
-            <div className="text-xs text-muted-foreground">
-              {driver.licensePlate || vehicleLabel[driver.vehicle]}
-            </div>
-          </div>
-          {driver.highValueCertified && (
-            <Badge variant="success" className="gap-1">
-              <ShieldCheck className="h-3 w-3" />
-              HV
-            </Badge>
-          )}
-        </div>
-
-        {tab !== 'approved' && (
-          <div className="grid gap-2 rounded-lg border bg-muted/20 p-2 text-xs">
-            <div className="grid grid-cols-2 gap-2">
-              <ReviewImage label="โปรไฟล์" src={driver.profilePhotoDataUrl} />
-              <ReviewImage label="บัตรประชาชน" src={driver.idCardPhotoDataUrl} />
-            </div>
-            <div className="grid gap-1 text-muted-foreground">
-              <div>
-                เลขบัตร:{' '}
-                <span className="font-mono text-foreground">
-                  {driver.idCardNumber ? formatIdCardNumber(driver.idCardNumber) : '—'}
-                </span>
-              </div>
-              {driver.rejectedReason && (
-                <div className="text-destructive">เหตุผล: {driver.rejectedReason}</div>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 gap-2">
-          {tab === 'pending' ? (
-            <>
-              <Button size="sm" onClick={() => onApprove(driver)}>
-                <Check className="h-4 w-4" />
-                อนุมัติ
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => onReject(driver)}>
-                <UserX className="h-4 w-4" />
-                ไม่อนุมัติ
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button size="sm" variant="outline" onClick={() => onEdit(driver)}>
-                <Pencil className="h-4 w-4" />
-                แก้ไข
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => onStats(driver)}>
-                <BarChart3 className="h-4 w-4" />
-                สถิติ
-              </Button>
-            </>
-          )}
-          {tab === 'approved' && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="col-span-2"
-              onClick={() => onResetPin(driver)}
-            >
-              สร้าง / รีเซ็ต Messenger PIN
-            </Button>
-          )}
-          <Button
-            size="sm"
-            variant="outline"
-            className="col-span-2 text-destructive hover:text-destructive"
-            onClick={() => onArchive(driver)}
-          >
-            ปิดใช้งาน
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function ReviewImage({ label, src }: { label: string; src?: string }) {
-  const [previewOpen, setPreviewOpen] = useState(false);
-
-  return (
-    <>
-      <div className="space-y-1">
-        <div className="text-[11px] text-muted-foreground">{label}</div>
-        {src ? (
-          <button
-            type="button"
-            className="group relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-md border bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => setPreviewOpen(true)}
-            aria-label={`ดู${label}ขนาดใหญ่`}
-          >
-            <img src={src} alt="" className="h-full w-full object-cover" />
-            <span className="absolute inset-0 flex items-center justify-center bg-foreground/0 text-background transition group-hover:bg-foreground/45 group-focus-visible:bg-foreground/45">
-              <Eye className="h-5 w-5 opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100" />
-            </span>
-          </button>
-        ) : (
-          <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md border bg-background">
-            <FileImage className="h-5 w-5 text-muted-foreground" />
-          </div>
-        )}
-      </div>
-      {src && previewOpen && (
-        <ImagePreviewModal title={label} src={src} onClose={() => setPreviewOpen(false)} />
-      )}
-    </>
   );
 }

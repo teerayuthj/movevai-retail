@@ -112,8 +112,8 @@ export function DaySummaryCard({
 
         <div className="rounded-xl border bg-background px-3 py-2 text-xs text-muted-foreground">
           {isToday
-            ? 'งานวันนี้จะเริ่มได้ทันทีหลัง Publish'
-            : `Messenger จะเห็นงานวันที่ ${formatPlanningDate(selectedDate)} ล่วงหน้า แต่เริ่มงานก่อนวันไม่ได้`}
+            ? 'ระบบจะแจ้ง Messenger ให้รับเที่ยวล่วงหน้า 10 นาที และเริ่มได้เมื่อถึงเวลาออก'
+            : `Messenger ที่ถูกเลือกจะเห็นแผนงานวันที่ ${formatPlanningDate(selectedDate)} ล่วงหน้า แต่ยังรับงานไม่ได้จนกว่าจะ Publish และถึงช่วงก่อนเวลาออก 10 นาที`}
         </div>
       </CardContent>
     </Card>

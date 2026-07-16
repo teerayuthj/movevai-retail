@@ -31,9 +31,19 @@ function formatPulledBackAt(value?: string) {
 
 function formatScheduledPush(route: PlanningRoute) {
   if (!route.plannedTime) return null;
-  if (route.reminderPushStatus === 'succeeded') return `เตือนเวลา ${route.plannedTime} น. แล้ว`;
-  if (route.reminderPushStatus === 'failed') return `เตือนเวลา ${route.plannedTime} น. ไม่สำเร็จ`;
-  return `รอเตือนเมื่อถึงเวลา ${route.plannedTime} น.`;
+  const acceptancePush =
+    route.pushStatus === 'succeeded'
+      ? 'แจ้งให้รับเที่ยวล่วงหน้า 10 นาทีแล้ว'
+      : route.pushStatus === 'failed'
+        ? 'แจ้งให้รับเที่ยวล่วงหน้า 10 นาทีไม่สำเร็จ'
+        : 'รอแจ้งให้รับเที่ยวล่วงหน้า 10 นาที';
+  const startReminder =
+    route.reminderPushStatus === 'succeeded'
+      ? ` · เตือนเวลา ${route.plannedTime} น. แล้ว`
+      : route.reminderPushStatus === 'failed'
+        ? ` · เตือนเวลา ${route.plannedTime} น. ไม่สำเร็จ`
+        : ` · รอเตือนเมื่อถึงเวลา ${route.plannedTime} น.`;
+  return `${acceptancePush}${startReminder}`;
 }
 
 function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {

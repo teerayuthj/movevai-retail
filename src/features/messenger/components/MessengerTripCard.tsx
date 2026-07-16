@@ -16,7 +16,13 @@ import {
 import { formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { shortRouteCode } from '@/lib/routeCode';
-import { getMessengerJobOverdue, getMessengerJobTiming } from '../messengerSchedule';
+import {
+  canMessengerStartJob,
+  getMessengerJobAcceptanceOpensAt,
+  getMessengerJobOverdue,
+  getMessengerJobTiming,
+  SCHEDULED_DELIVERY_ACCEPTANCE_LEAD_MINUTES,
+} from '../messengerSchedule';
 import {
   cleanMessengerStopName,
   messengerTripCurrentOrder,
@@ -56,10 +62,14 @@ export function MessengerTripCard({
   const current = messengerTripCurrentOrder(trip);
   const progress = messengerTripProgress(trip);
   const route = first.deliveryRoute;
+  const isPlannedPreview = first.deliveryPlan?.releaseState === 'planned' && !first.deliveryRoute;
   const awaitingAcceptance =
     first.status === 'assigned' && route?.requiresAcceptance === true && !route.acceptedAt;
   const isFuture =
     !!first.deliveryPlan?.plannedDate && first.deliveryPlan.plannedDate > getTodayDateKey();
+  const acceptanceOpensAt = getMessengerJobAcceptanceOpensAt(first);
+  const acceptanceNotOpen = acceptanceOpensAt != null && nowMs < acceptanceOpensAt;
+  const startNotOpen = !canMessengerStartJob(first, nowMs);
   const isCoDriver = role === 'co';
   const routeNote = first.metadataJson?.dispatch?.routeNote?.trim();
 
@@ -119,7 +129,7 @@ export function MessengerTripCard({
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
-              <Route className="h-3.5 w-3.5" /> เที่ยววิ่ง
+              <Route className="h-3.5 w-3.5" /> {isPlannedPreview ? 'แผนล่วงหน้า' : 'เที่ยววิ่ง'}
               {trip.routeCode && (
                 <span className="font-mono" title={trip.routeCode}>
                   · รอบ {shortRouteCode(trip.routeCode)}
@@ -137,6 +147,11 @@ export function MessengerTripCard({
 
         {(statusChip || first.deliveryPlan?.plannedDate) && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {isPlannedPreview && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-info/30 bg-info/10 px-2.5 py-0.5 text-[11px] font-medium text-info">
+                <CalendarClock className="h-3.5 w-3.5" /> รอ Publish
+              </span>
+            )}
             {statusChip && (
               <span
                 className={cn(
@@ -240,36 +255,53 @@ export function MessengerTripCard({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-2 border-t border-border/50 p-4">
-        {onViewMap && (
-          <Button variant="outline" onClick={onViewMap}>
-            <MapIcon className="h-4 w-4" /> ดูทั้งเที่ยว
-          </Button>
-        )}
-        {!isCoDriver && awaitingAcceptance ? (
-          <Button
-            className={cn(!onViewMap && 'col-span-2')}
-            disabled={accepting}
-            onClick={onAccept}
-          >
-            {accepting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Navigation className="h-4 w-4" />
-            )}
-            รับเที่ยวนี้
-          </Button>
-        ) : !isCoDriver ? (
-          <Button
-            className={cn(!onViewMap && 'col-span-2')}
-            disabled={starting || isFuture}
-            onClick={onStart}
-          >
-            {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
-            {isFuture ? 'ยังไม่ถึงวันออกเที่ยว' : `เริ่มเที่ยว ${trip.orders.length} จุด`}
-          </Button>
-        ) : null}
-      </div>
+      {isPlannedPreview ? (
+        <div className="border-t border-info/20 bg-info/5 px-4 py-3 text-xs leading-relaxed text-info">
+          นี่คือแผนงานล่วงหน้า ยังรับหรือเริ่มเที่ยวไม่ได้ ระบบจะเปิดให้รับเที่ยวก่อนเวลาออก{' '}
+          {SCHEDULED_DELIVERY_ACCEPTANCE_LEAD_MINUTES} นาที หลังแอดมิน Publish แล้ว
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-2 border-t border-border/50 p-4">
+          {onViewMap && (
+            <Button variant="outline" onClick={onViewMap}>
+              <MapIcon className="h-4 w-4" /> ดูทั้งเที่ยว
+            </Button>
+          )}
+          {!isCoDriver && awaitingAcceptance ? (
+            <Button
+              className={cn(!onViewMap && 'col-span-2')}
+              disabled={accepting || isFuture || acceptanceNotOpen}
+              onClick={onAccept}
+            >
+              {accepting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Navigation className="h-4 w-4" />
+              )}
+              {acceptanceNotOpen
+                ? `รับได้ก่อนเวลาออก ${SCHEDULED_DELIVERY_ACCEPTANCE_LEAD_MINUTES} นาที`
+                : 'รับเที่ยวนี้'}
+            </Button>
+          ) : !isCoDriver ? (
+            <Button
+              className={cn(!onViewMap && 'col-span-2')}
+              disabled={starting || isFuture || startNotOpen}
+              onClick={onStart}
+            >
+              {starting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="h-4 w-4" />
+              )}
+              {isFuture
+                ? 'ยังไม่ถึงวันออกเที่ยว'
+                : startNotOpen
+                  ? `เริ่มได้เวลา ${first.deliveryPlan?.plannedTime ?? ''} น.`
+                  : `เริ่มเที่ยว ${trip.orders.length} จุด`}
+            </Button>
+          ) : null}
+        </div>
+      )}
     </article>
   );
 }

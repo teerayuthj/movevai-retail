@@ -29,10 +29,13 @@ import {
 import { formatOverdueDuration, formatPlanningDate, getTodayDateKey } from '@/lib/deliveryPlanning';
 import { cn } from '@/lib/utils';
 import {
+  canMessengerStartJob,
   formatInTransitStartTime,
   getMessengerAppointmentCountdown,
+  getMessengerJobAcceptanceOpensAt,
   getMessengerJobOverdue,
   getMessengerJobTiming,
+  SCHEDULED_DELIVERY_ACCEPTANCE_LEAD_MINUTES,
 } from '../messengerSchedule';
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { navigationUrl } from '../geocode';
@@ -207,6 +210,9 @@ export function JobCard({
   const deadlineOverdue = !Number.isNaN(deadlineMs) && deadlineMs < nowMs;
   const isFutureJob =
     !!order.deliveryPlan?.plannedDate && order.deliveryPlan.plannedDate > getTodayDateKey();
+  const acceptanceOpensAt = getMessengerJobAcceptanceOpensAt(order);
+  const acceptanceNotOpen = acceptanceOpensAt != null && nowMs < acceptanceOpensAt;
+  const startNotOpen = !canMessengerStartJob(order, nowMs);
   const overdue = getMessengerJobOverdue(order, nowMs);
   const isOverdue = overdue != null;
   const timing = getMessengerJobTiming(order, nowMs);
@@ -623,14 +629,16 @@ export function JobCard({
                 size="sm"
                 className="min-w-0 flex-1 rounded-full px-3"
                 onClick={onAccept}
-                disabled={isFutureJob || accepting}
+                disabled={isFutureJob || acceptanceNotOpen || accepting}
               >
                 <CheckCircle2 className="h-4 w-4" />
                 {accepting
                   ? 'กำลังรับงาน...'
-                  : order.deliveryRoute?.startPolicy === 'accept_starts'
-                    ? 'รับงานและเริ่มทันที'
-                    : 'รับงาน'}
+                  : acceptanceNotOpen
+                    ? `รับได้ก่อนเวลาออก ${SCHEDULED_DELIVERY_ACCEPTANCE_LEAD_MINUTES} นาที`
+                    : order.deliveryRoute?.startPolicy === 'accept_starts'
+                      ? 'รับงานและเริ่มทันที'
+                      : 'รับงาน'}
               </Button>
             </>
           ) : (
@@ -639,26 +647,28 @@ export function JobCard({
               variant="default"
               className="rounded-full px-4"
               onClick={onStart}
-              disabled={isFutureJob || starting}
+              disabled={isFutureJob || startNotOpen || starting}
             >
               <Navigation className="h-4 w-4" />
               {isFutureJob
                 ? 'ยังไม่ถึงวันนัด'
-                : starting
-                  ? isPickupStop
-                    ? 'กำลังเริ่มรับของ...'
-                    : 'กำลังเริ่มส่ง...'
-                  : isOverdue
+                : startNotOpen
+                  ? `เริ่มได้เวลา ${plannedTime ?? ''} น.`
+                  : starting
                     ? isPickupStop
-                      ? 'เริ่มรับของตอนนี้'
-                      : 'เริ่มส่งตอนนี้'
-                    : isUrgent
+                      ? 'กำลังเริ่มรับของ...'
+                      : 'กำลังเริ่มส่ง...'
+                    : isOverdue
                       ? isPickupStop
-                        ? 'เริ่มรับของทันที'
-                        : 'เริ่มส่งทันที'
-                      : isPickupStop
-                        ? 'เริ่มรับของ'
-                        : 'เริ่มส่ง'}
+                        ? 'เริ่มรับของตอนนี้'
+                        : 'เริ่มส่งตอนนี้'
+                      : isUrgent
+                        ? isPickupStop
+                          ? 'เริ่มรับของทันที'
+                          : 'เริ่มส่งทันที'
+                        : isPickupStop
+                          ? 'เริ่มรับของ'
+                          : 'เริ่มส่ง'}
             </Button>
           ))}
         {order.status === 'in_transit' && !isCoDriver && (

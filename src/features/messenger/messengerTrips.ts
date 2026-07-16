@@ -104,11 +104,18 @@ export function isMultiStopMessengerTrip(trip: MessengerTrip) {
   );
 }
 
+// จุดรับเป็นขั้นย่อยของงาน ไม่ใช่ "งาน" แยกใบ — count ระดับงาน/เที่ยวทั้งระบบจึงไม่นับ leg รับ
+// (ลำดับวิ่งจริงยังโชว์ครบทุกจุดทางกายภาพ) ให้ตรงกับฝั่ง admin ที่นับเป็นเที่ยว/งานส่ง
+export function isMessengerCustomerJob(order: Order) {
+  return (order.metadataJson?.dispatch?.routeLeg ?? 'dropoff') !== 'pickup';
+}
+
 export function messengerTripProgress(trip: MessengerTrip) {
-  const completed = trip.orders.filter((order) =>
+  const jobs = trip.orders.filter(isMessengerCustomerJob);
+  const completed = jobs.filter((order) =>
     ['pending_confirmation', 'delivered'].includes(order.status),
   ).length;
-  return { completed, total: trip.orders.length };
+  return { completed, total: jobs.length };
 }
 
 export function messengerTripCurrentOrder(trip: MessengerTrip) {

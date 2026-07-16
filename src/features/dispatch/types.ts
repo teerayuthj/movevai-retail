@@ -1,7 +1,8 @@
 import type { Driver, Order } from '@/data/orderTypes';
 
 export type DispatchJobType = 'order' | 'document' | 'parcel' | 'other';
-export type DispatchMethod = 'immediate' | 'planning';
+/** immediate = ส่งตอนนี้, scheduled = มอบงานตามวัน–เวลา, planning = เก็บไว้จัดรอบภายหลัง */
+export type DispatchMethod = 'immediate' | 'scheduled' | 'planning';
 export type DispatchStartPolicy = 'manual' | 'accept_starts';
 
 export type RouteStopKind = 'pickup' | 'dropoff';
@@ -19,7 +20,7 @@ export type RouteStop = {
   deliverToStopId?: string;
 };
 
-export type RouteRunDispatchMode = 'planning' | 'immediate';
+export type RouteRunDispatchMode = 'planning' | 'scheduled' | 'immediate';
 
 export type DispatchCreationOutcome = {
   destination: 'planning' | 'tracking';

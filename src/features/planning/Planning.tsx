@@ -6,6 +6,10 @@ import { Input } from '@/components/ui/input';
 import { DatePicker } from '@/components/ui/date-picker';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { ReassignRouteDialog } from '@/components/delivery/ReassignRouteDialog';
+import {
+  ConfirmDispatchDialog,
+  DriverSummaryRow,
+} from '@/components/delivery/ConfirmDispatchDialog';
 import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
 import {
   AlertTriangle,
@@ -110,6 +114,7 @@ export function PlanningPage({
   const [operationError, setOperationError] = useState('');
   const [cancelPlansOpen, setCancelPlansOpen] = useState(false);
   const [confirmPlanningWorkloadOpen, setConfirmPlanningWorkloadOpen] = useState(false);
+  const [releaseConfirmScope, setReleaseConfirmScope] = useState<'selected' | 'all' | null>(null);
   const [routeAction, setRouteAction] = useState<{
     type: 'cancel' | 'reassign';
     route: PlanningRoute;
@@ -166,6 +171,35 @@ export function PlanningPage({
   const releasableForSelectedDate = plannedForSelectedDate.filter((order) =>
     canReleasePlannedOrder(order, selectedDate),
   );
+  // ข้อมูลสำหรับ dialog ตรวจสอบก่อนปล่อยรอบส่ง — จัดกลุ่มตามคนขับแบบเดียวกับ publishGroups
+  const releaseConfirmOrders =
+    releaseConfirmScope === 'selected'
+      ? releasableSelectedOrders
+      : releaseConfirmScope === 'all'
+        ? releasableForSelectedDate
+        : [];
+  const releaseConfirmGroups = Array.from(
+    releaseConfirmOrders.reduce((groups, order) => {
+      const driverId = order.deliveryPlan?.plannedDriverId ?? '';
+      groups.set(driverId, [...(groups.get(driverId) ?? []), order]);
+      return groups;
+    }, new Map<string, Order[]>()),
+  ).map(([driverId, groupOrders]) => ({
+    driverId,
+    driver: drivers.find((driver) => driver.id === driverId) ?? null,
+    orders: groupOrders,
+  }));
+  const releaseMissingTimeCount = releaseConfirmOrders.filter(
+    (order) => !order.deliveryPlan?.plannedTime,
+  ).length;
+  const releaseConfirmErrors = [
+    ...(releaseConfirmScope && releaseConfirmOrders.length === 0
+      ? ['ไม่มีงานที่พร้อมปล่อยรอบส่งแล้ว — ปิดหน้าต่างนี้เพื่อตรวจสอบรายการอีกครั้ง']
+      : []),
+    ...(releaseMissingTimeCount > 0
+      ? [`มี ${releaseMissingTimeCount} งานยังไม่ระบุเวลาออก — กลับไประบุเวลาก่อนปล่อยรอบส่ง`]
+      : []),
+  ];
   const assignedPlannedOrders = plannedForSelectedDate.filter(
     (order) => order.deliveryPlan?.plannedDriverId,
   );
@@ -372,6 +406,10 @@ export function PlanningPage({
 
   const applyPlanning = async () => {
     if (selectedOrders.length === 0) return;
+    if (!planTime) {
+      toast.error('กรุณาระบุเวลาออกก่อนบันทึกแผน');
+      return;
+    }
     setOperationState('saving');
     setOperationError('');
     try {
@@ -487,6 +525,10 @@ export function PlanningPage({
   ).map((value) => ({ value, label: planningCancelReasonLabel[value] }));
 
   const publishGroups = async (targetOrders: Order[]) => {
+    const withoutDepartureTime = targetOrders.find((order) => !order.deliveryPlan?.plannedTime);
+    if (withoutDepartureTime) {
+      throw new Error('กรุณาระบุเวลาออกให้ครบก่อน Publish รอบส่ง');
+    }
     const groups = new Map<string, string[]>();
     targetOrders.forEach((order) => {
       const key = `${order.deliveryPlan?.plannedDate}:${order.deliveryPlan?.plannedDriverId}`;
@@ -504,6 +546,7 @@ export function PlanningPage({
       const count = releasableSelectedOrders.length;
       await publishGroups(releasableSelectedOrders);
       clearSelection();
+      setReleaseConfirmScope(null);
       toast.success(`ปล่อยรอบส่ง ${count} ออเดอร์ให้คนขับแล้ว`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -522,6 +565,7 @@ export function PlanningPage({
       const count = releasableForSelectedDate.length;
       await publishGroups(releasableForSelectedDate);
       clearSelection();
+      setReleaseConfirmScope(null);
       toast.success(`ปล่อยรอบส่งทั้งหมด ${count} ออเดอร์ให้คนขับแล้ว`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -867,11 +911,17 @@ export function PlanningPage({
             selectedCount={selectedOrders.length}
             releasableSelectedCount={releasableSelectedOrders.length}
             releasableAllCount={releasableForSelectedDate.length}
-            onReleaseSelected={() => void releaseSelected()}
+            onReleaseSelected={() => {
+              setOperationError('');
+              setReleaseConfirmScope('selected');
+            }}
             releaseSelectedDisabled={
               operationState !== 'idle' || releasableSelectedOrders.length === 0
             }
-            onReleaseAll={() => void releaseAllForSelectedDate()}
+            onReleaseAll={() => {
+              setOperationError('');
+              setReleaseConfirmScope('all');
+            }}
             releaseAllDisabled={operationState !== 'idle' || releasableForSelectedDate.length === 0}
           />
 
@@ -969,6 +1019,65 @@ export function PlanningPage({
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}
         />
       )}
+
+      <ConfirmDispatchDialog
+        open={releaseConfirmScope != null}
+        title="ตรวจสอบก่อนปล่อยรอบส่ง"
+        description={`ปล่อย ${releaseConfirmOrders.length} ออเดอร์ให้คนขับ ${releaseConfirmGroups.length} คน — งานจะแจ้งเตือนไปที่มือถือคนขับทันทีหลังยืนยัน`}
+        confirmLabel={`ยืนยันปล่อยรอบส่ง ${releaseConfirmOrders.length} ออเดอร์`}
+        submitting={operationState === 'publishing'}
+        errors={releaseConfirmErrors}
+        onCancel={() => setReleaseConfirmScope(null)}
+        onConfirm={() =>
+          void (releaseConfirmScope === 'selected'
+            ? releaseSelected()
+            : releaseAllForSelectedDate())
+        }
+      >
+        {releaseConfirmGroups.map(({ driverId, driver, orders: groupOrders }) =>
+          driver ? (
+            <DriverSummaryRow
+              key={driverId}
+              driver={driver}
+              orders={orders}
+              plannedDate={selectedDate}
+              detail={
+                <div className="space-y-0.5">
+                  <div>{groupOrders.length} ออเดอร์ในรอบนี้</div>
+                  {groupOrders.slice(0, 3).map((order) => (
+                    <div key={order.id} className="flex gap-1.5">
+                      <span
+                        className={cn(
+                          'shrink-0 font-mono tabular-nums',
+                          !order.deliveryPlan?.plannedTime && 'font-medium text-destructive',
+                        )}
+                      >
+                        {order.deliveryPlan?.plannedTime ?? 'ไม่มีเวลา'}
+                      </span>
+                      <span className="truncate">
+                        {order.customer.name} · {order.customer.address}
+                      </span>
+                    </div>
+                  ))}
+                  {groupOrders.length > 3 && <div>…อีก {groupOrders.length - 3} ออเดอร์</div>}
+                </div>
+              }
+            />
+          ) : (
+            <div
+              key={driverId}
+              className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"
+            >
+              ไม่พบข้อมูลคนขับของ {groupOrders.length} ออเดอร์ — ตรวจสอบแผนอีกครั้ง
+            </div>
+          ),
+        )}
+        {operationError && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+            ปล่อยรอบส่งไม่สำเร็จ — {operationError}
+          </div>
+        )}
+      </ConfirmDispatchDialog>
 
       {confirmPlanningWorkloadOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 sm:items-center">

@@ -3,13 +3,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { type Order, statusLabel } from '@/data/orderTypes';
 import { formatPlanningDateTime, getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
+import { groupRouteOrdersIntoJobs } from '@/lib/deliveryJobs';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp, Route } from 'lucide-react';
+import { ChevronDown, ChevronUp, Navigation, Route } from 'lucide-react';
 
 type TrackingRouteCardProps = {
   orders: Order[];
   selectedOrderId: string | null;
   onSelectStop: (order: Order) => void;
+  onViewLive: (order: Order) => void;
   actions?: ReactNode;
   nowMs: number;
 };
@@ -37,6 +39,7 @@ export function TrackingRouteCard({
   orders,
   selectedOrderId,
   onSelectStop,
+  onViewLive,
   actions,
   nowMs,
 }: TrackingRouteCardProps) {
@@ -45,10 +48,16 @@ export function TrackingRouteCard({
   );
   const first = sortedOrders[0];
   const route = first.deliveryRoute;
+  const routeJobs = groupRouteOrdersIntoJobs(sortedOrders);
   const [expanded, setExpanded] = useState(false);
-  const completed = sortedOrders.filter((order) =>
-    ['pending_confirmation', 'delivered'].includes(order.status),
-  ).length;
+  // นับความคืบหน้าเป็น "งาน" (จุดส่ง) ไม่ใช่ราย leg — งานถือว่าเสร็จเมื่อจุดส่งปิดแล้ว
+  // ส่วนจุดรับเป็นขั้นย่อยของงาน จึงไม่นับซ้ำ
+  const completed = routeJobs.filter((job) => {
+    const dropoff =
+      job.stops.find((stop) => stop.metadataJson?.dispatch?.routeLeg !== 'pickup') ??
+      job.stops[job.stops.length - 1];
+    return ['pending_confirmation', 'delivered'].includes(dropoff.status);
+  }).length;
   const pickupCount = sortedOrders.filter(
     (order) => order.metadataJson?.dispatch?.routeLeg === 'pickup',
   ).length;
@@ -80,13 +89,14 @@ export function TrackingRouteCard({
             variant={overdueMinutes > 0 ? 'destructive' : 'info'}
             className="shrink-0 text-[10px]"
           >
-            {completed}/{sortedOrders.length} จุด
+            {completed}/{routeJobs.length} จุด
           </Badge>
         </div>
 
         <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
           <span>
-            {pickupCount > 0 ? `รับ ${pickupCount} · ` : ''}ส่ง {sortedOrders.length - pickupCount}
+            {routeJobs.length} งาน · {pickupCount > 0 ? `รับ ${pickupCount} · ` : ''}ส่ง{' '}
+            {sortedOrders.length - pickupCount}
           </span>
           {first.deliveryPlan && (
             <span>
@@ -109,57 +119,81 @@ export function TrackingRouteCard({
           onClick={() => setExpanded((current) => !current)}
           aria-expanded={expanded}
         >
-          <span>ดูจุดในเที่ยวนี้ ({sortedOrders.length})</span>
+          <span>ดูงานในเที่ยวนี้ ({routeJobs.length})</span>
           {expanded ? (
             <ChevronUp className="h-3.5 w-3.5" />
           ) : (
             <ChevronDown className="h-3.5 w-3.5" />
           )}
         </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-2 h-7 w-full text-xs"
+          onClick={() => onViewLive(first)}
+        >
+          <Navigation className="h-3.5 w-3.5" />
+          ดูตำแหน่งบนแผนที่
+        </Button>
       </div>
 
       {expanded && (
-        <ol className="border-t bg-muted/10 px-4 py-3" aria-label="จุดแวะในเที่ยว">
-          {sortedOrders.map((order, index) => {
-            const kind = order.metadataJson?.dispatch?.routeLeg ?? 'dropoff';
-            const done = ['pending_confirmation', 'delivered'].includes(order.status);
-            return (
-              <li key={order.id} className="flex gap-2.5 py-1.5 first:pt-0 last:pb-0">
-                <span
-                  className={cn(
-                    'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
-                    done
-                      ? 'bg-success/15 text-success'
-                      : kind === 'pickup'
-                        ? 'bg-info text-white'
-                        : 'bg-success text-white',
-                  )}
-                >
-                  {index + 1}
+        <div className="space-y-3 border-t bg-muted/10 px-4 py-3" aria-label="งานในเที่ยวนี้">
+          {routeJobs.map((job, jobIndex) => (
+            <section key={job.id} className="rounded-md border bg-background/70 p-2.5">
+              <div className="mb-1.5 text-[11px] font-semibold text-foreground">
+                งานที่ {jobIndex + 1}
+                <span className="ml-1 font-normal text-muted-foreground">
+                  · {job.stops.length} จุด
                 </span>
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 text-left"
-                  onClick={() => onSelectStop(order)}
-                >
-                  <div className="flex items-baseline gap-1 text-[12px] font-semibold">
-                    <span className={kind === 'pickup' ? 'text-info' : 'text-success'}>
-                      {kind === 'pickup' ? 'รับ' : 'ส่ง'}
-                    </span>
-                    <span className="text-muted-foreground">·</span>
-                    <span className="truncate">{stopName(order)}</span>
-                  </div>
-                  <div className="line-clamp-1 text-[10px] text-muted-foreground">
-                    {order.customer.address}
-                  </div>
-                </button>
-                <Badge variant={done ? 'success' : 'muted'} className="h-5 shrink-0 text-[9px]">
-                  {done ? 'เสร็จแล้ว' : statusLabel[order.status]}
-                </Badge>
-              </li>
-            );
-          })}
-        </ol>
+              </div>
+              <ol>
+                {job.stops.map((order) => {
+                  const kind = order.metadataJson?.dispatch?.routeLeg ?? 'dropoff';
+                  const done = ['pending_confirmation', 'delivered'].includes(order.status);
+                  return (
+                    <li key={order.id} className="flex gap-2.5 py-1.5 first:pt-0 last:pb-0">
+                      <span
+                        className={cn(
+                          'mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold',
+                          done
+                            ? 'bg-success/15 text-success'
+                            : kind === 'pickup'
+                              ? 'bg-info text-white'
+                              : 'bg-success text-white',
+                        )}
+                      >
+                        {order.deliveryRoute?.sequence ?? 1}
+                      </span>
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 text-left"
+                        onClick={() => onSelectStop(order)}
+                      >
+                        <div className="flex items-baseline gap-1 text-[12px] font-semibold">
+                          <span className={kind === 'pickup' ? 'text-info' : 'text-success'}>
+                            {kind === 'pickup' ? 'รับ' : 'ส่ง'}
+                          </span>
+                          <span className="text-muted-foreground">·</span>
+                          <span className="truncate">{stopName(order)}</span>
+                        </div>
+                        <div className="line-clamp-1 text-[10px] text-muted-foreground">
+                          {order.customer.address}
+                        </div>
+                      </button>
+                      <Badge
+                        variant={done ? 'success' : 'muted'}
+                        className="h-5 shrink-0 text-[9px]"
+                      >
+                        {done ? 'เสร็จแล้ว' : statusLabel[order.status]}
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ))}
+        </div>
       )}
 
       {actions && <div className="border-t p-3">{actions}</div>}

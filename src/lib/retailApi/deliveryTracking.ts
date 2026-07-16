@@ -2,6 +2,7 @@ import type { Driver, Order } from '@/data/orderTypes';
 import type { DeliveryTrackingTab } from '@/lib/deliveryExecution';
 import { APP_API_BASE, request } from './client';
 import { type ApiDriver, type ApiOrder, normalizeDriver, normalizeOrder } from './shared';
+import type { AcceptanceSummary } from './drivers';
 
 export type DeliveryTrackingCounts = Record<DeliveryTrackingTab, number>;
 
@@ -38,6 +39,7 @@ export type DeliveryReportPage = {
   total: number;
   take: number;
   skip: number;
+  acceptance: AcceptanceSummary;
 };
 
 export async function fetchDeliveryReport(params: {
