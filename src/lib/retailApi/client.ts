@@ -91,10 +91,14 @@ function validationFieldSummary(details: unknown) {
   const fieldErrors = (details as { fieldErrors?: Record<string, string[]> }).fieldErrors;
   if (!fieldErrors || typeof fieldErrors !== 'object') return '';
 
-  return Object.entries(fieldErrors)
-    .filter(([, messages]) => Array.isArray(messages) && messages.length > 0)
-    .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
-    .join(' · ');
+  return (
+    Object.entries(fieldErrors)
+      .filter(([, messages]) => Array.isArray(messages) && messages.length > 0)
+      // array validation อาจคืนข้อความเดิมซ้ำหนึ่งครั้งต่อ item; แสดงเพียงครั้งเดียว
+      // เพื่อไม่ให้ toast บังทั้งหน้าจอเหมือน payload GPS หลายจุดล้มพร้อมกัน
+      .map(([field, messages]) => `${field}: ${[...new Set(messages)].join(', ')}`)
+      .join(' · ')
+  );
 }
 
 export async function request<T>(url: string, init?: RequestInit): Promise<T> {

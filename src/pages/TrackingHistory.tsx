@@ -80,13 +80,17 @@ function loadTrackingHistoryFilters(): TrackingHistoryFilters {
   }
 }
 
-function dateKeysUntil(endDateKey: string, days: RangeDays) {
-  const endDate = new Date(`${endDateKey}T00:00:00`);
-  return Array.from({ length: days }, (_, index) => {
-    const date = new Date(endDate);
-    date.setDate(endDate.getDate() - index);
-    return dateKeyOf(date);
-  });
+function filtersFromSearch(
+  locationSearch: string,
+  fallback: TrackingHistoryFilters,
+): TrackingHistoryFilters {
+  const search = new URLSearchParams(locationSearch);
+  const rangeDays = Number(search.get('rangeDays'));
+  return {
+    ...fallback,
+    driverCode: search.get('driverCode')?.trim() || fallback.driverCode,
+    rangeDays: isRangeDays(rangeDays) ? rangeDays : fallback.rangeDays,
+  };
 }
 
 function formatShortDate(value?: string | null) {
@@ -137,45 +141,27 @@ function messengerOptionLabel(driver: { id: string; name: string; zone?: string 
   return `${driver.name} (${driver.id})`;
 }
 
-async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>) {
-  const results: R[] = [];
-  let nextIndex = 0;
-  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const item = items[index];
-      if (item === undefined) return;
-      results[index] = await task(item);
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
 async function fetchTrackingSessionsInRange(input: {
   endDate: string;
   rangeDays: RangeDays;
   driverCode?: string;
 }) {
-  const dates = dateKeysUntil(input.endDate, input.rangeDays);
-  const results = await mapWithConcurrency(dates, 8, (date) =>
-    fetchTrackingSessions({ date, driverCode: input.driverCode }),
-  );
-  const seen = new Set<string>();
-  return results
-    .flat()
-    .filter((session) => {
-      if (seen.has(session.id)) return false;
-      seen.add(session.id);
-      return true;
-    })
-    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+  return fetchTrackingSessions({
+    date: input.endDate,
+    days: input.rangeDays,
+    driverCode: input.driverCode,
+  });
 }
 
-export function TrackingHistoryPage() {
+type TrackingHistoryPageProps = {
+  locationSearch?: string;
+};
+
+export function TrackingHistoryPage({ locationSearch = '' }: TrackingHistoryPageProps) {
   const { drivers } = useRetailStore();
-  const [filters, setFilters] = useState(loadTrackingHistoryFilters);
+  const [filters, setFilters] = useState(() =>
+    filtersFromSearch(locationSearch, loadTrackingHistoryFilters()),
+  );
   const { date, rangeDays, driverCode } = filters;
   const [sessions, setSessions] = useState<MessengerTrackingSessionSummary[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);

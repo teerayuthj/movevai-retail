@@ -177,7 +177,7 @@ export default function App() {
             />
           )}
           {page === 'delivery_report' && <DeliveryReportPage />}
-          {page === 'tracking_history' && <TrackingHistoryPage />}
+          {page === 'tracking_history' && <TrackingHistoryPage locationSearch={locationSearch} />}
           {page === 'notifications' && <NotificationsPage />}
           {page === 'planning' && (
             <PlanningPage
@@ -186,7 +186,15 @@ export default function App() {
             />
           )}
           {page === 'postal' && <PostalQueuePage locationSearch={locationSearch} />}
-          {page === 'drivers' && <DriversPage />}
+          {page === 'drivers' && (
+            <DriversPage
+              onOpenTrackingHistory={(driverCode) =>
+                navigateToPage('tracking_history', {
+                  search: `?driverCode=${encodeURIComponent(driverCode)}&rangeDays=90`,
+                })
+              }
+            />
+          )}
           {page === 'customers' && <CustomersPage locationSearch={locationSearch} />}
         </Suspense>
       </AppShell>

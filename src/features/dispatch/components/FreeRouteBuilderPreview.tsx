@@ -3,15 +3,15 @@ import type { DragEvent } from 'react';
 import {
   ArrowDown,
   ArrowUp,
+  Bookmark,
+  BookmarkCheck,
   CalendarDays,
   CheckCircle2,
-  CirclePlus,
   Clock3,
   GripVertical,
   Loader2,
   MapPin,
   MapPinned,
-  Package,
   PackagePlus,
   Pencil,
   Play,
@@ -34,6 +34,7 @@ import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TimePicker } from '@/components/ui/time-picker';
 import type { Driver, Order } from '@/data/orderTypes';
 import { deriveDriverDisplayStatus, formatDriverDispatchStatus } from '@/lib/deliveryExecution';
@@ -52,11 +53,13 @@ import {
 
 type LibraryAddress = RouteStop & {
   source: string;
+  favorite: boolean;
   pairedAddressId?: string;
 };
 
 type BuilderStop = RouteStop & {
   sourceLabel: string;
+  sourceAddressId: string;
 };
 
 // 1 งาน = รับ 1 จุด + ส่ง 1 จุด (จับคู่ในตัว ไม่ต้องมี dropdown เลือกปลายทาง)
@@ -74,6 +77,10 @@ function newJobId() {
   return `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function newStopId() {
+  return `stop-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 function savedAddressBookEntries(addresses: RouteAddress[]): LibraryAddress[] {
   return addresses.map((address) => ({
     id: address.id,
@@ -85,6 +92,7 @@ function savedAddressBookEntries(addresses: RouteAddress[]): LibraryAddress[] {
     lat: address.lat,
     lng: address.lng,
     source: address.routeGroup,
+    favorite: address.favorite ?? false,
   }));
 }
 
@@ -138,27 +146,28 @@ export function FreeRouteBuilderPreview({
   onCreated: (result: RouteTemplateRun) => Promise<void> | void;
 }) {
   const [jobs, setJobs] = useState<BuilderJob[]>([]);
-  const [searchByKind, setSearchByKind] = useState<Record<RouteStopKind, string>>({
-    pickup: '',
-    dropoff: '',
-  });
-  const [dropActive, setDropActive] = useState(false);
+  const [search, setSearch] = useState('');
+  const [libraryTab, setLibraryTab] = useState<'all' | 'favorite'>('favorite');
   const [libraryDragId, setLibraryDragId] = useState<string | null>(null);
   const [libraryDragOverId, setLibraryDragOverId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
-  const [addingKind, setAddingKind] = useState<RouteStopKind | null>(null);
+  const [addressDropTarget, setAddressDropTarget] = useState<{
+    jobId: string;
+    kind: RouteStopKind;
+  } | null>(null);
+  const [addingTarget, setAddingTarget] = useState<RouteStopKind | 'library' | null>(null);
   const [newName, setNewName] = useState('');
   const [newAddress, setNewAddress] = useState('');
   const [newContact, setNewContact] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [editingAddress, setEditingAddress] = useState<RouteAddress | null>(null);
   const [editRouteGroup, setEditRouteGroup] = useState('');
-  const [editKind, setEditKind] = useState<RouteStopKind>('dropoff');
   const [editName, setEditName] = useState('');
   const [editAddress, setEditAddress] = useState('');
   const [editContact, setEditContact] = useState('');
   const [editPhone, setEditPhone] = useState('');
   const [deletingAddressId, setDeletingAddressId] = useState<string | null>(null);
+  const [updatingFavoriteId, setUpdatingFavoriteId] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
   const [plannedDate, setPlannedDate] = useState(todayDateKey());
   const [plannedTime, setPlannedTime] = useState('');
@@ -171,15 +180,17 @@ export function FreeRouteBuilderPreview({
   const [submitting, setSubmitting] = useState(false);
 
   const addresses = useMemo(() => [...savedAddressBookEntries(savedAddresses)], [savedAddresses]);
-  const usedAddressIds = useMemo(
-    () =>
-      new Set(
-        jobs.flatMap((job) =>
-          [job.pickup?.id, job.dropoff?.id].filter((id): id is string => Boolean(id)),
-        ),
-      ),
-    [jobs],
-  );
+  const favoriteCount = addresses.filter((entry) => entry.favorite).length;
+  const normalizedSearch = search.trim().toLowerCase();
+  const addressesInTab =
+    libraryTab === 'favorite' ? addresses.filter((entry) => entry.favorite) : addresses;
+  const filteredAddresses = normalizedSearch
+    ? addressesInTab.filter((entry) =>
+        [entry.name, entry.address, entry.contact, entry.phone, entry.source]
+          .filter(Boolean)
+          .some((field) => field!.toLowerCase().includes(normalizedSearch)),
+      )
+    : addressesInTab;
   const savedAddressIds = useMemo(
     () => new Set(savedAddresses.map((address) => address.id)),
     [savedAddresses],
@@ -229,25 +240,22 @@ export function FreeRouteBuilderPreview({
     });
   };
 
-  const toBuilderStop = (address: LibraryAddress): BuilderStop => ({
+  const toBuilderStop = (address: LibraryAddress, kind: RouteStopKind): BuilderStop => ({
     ...address,
+    id: newStopId(),
+    kind,
     deliverToStopId: undefined,
     sourceLabel: address.source,
+    sourceAddressId: address.id,
   });
 
-  const addAddress = (addressId: string) => {
+  // บทบาทรับ/ส่งเกิดตอนวางลงช่องงาน ไม่ได้ผูกถาวรกับสถานที่ในคลัง
+  const placeAddressInJob = (jobId: string, addressId: string, kind: RouteStopKind) => {
     const address = addresses.find((entry) => entry.id === addressId);
-    if (!address || usedAddressIds.has(addressId)) return;
-    placeStop(toBuilderStop(address));
-  };
-
-  // วางที่อยู่ลงงานที่ระบุ (ลากจากคลังมาปล่อยบนการ์ดงาน) — ช่องเดิมถูกแทนที่ได้
-  const placeAddressInJob = (jobId: string, addressId: string) => {
-    const address = addresses.find((entry) => entry.id === addressId);
-    if (!address || usedAddressIds.has(addressId)) return;
+    if (!address) return;
     setJobs((current) =>
       current.map((job) =>
-        job.id === jobId ? { ...job, [address.kind]: toBuilderStop(address) } : job,
+        job.id === jobId ? { ...job, [kind]: toBuilderStop(address, kind) } : job,
       ),
     );
   };
@@ -264,8 +272,8 @@ export function FreeRouteBuilderPreview({
     setJobs((current) =>
       current.map((job) => ({
         ...job,
-        pickup: job.pickup?.id === addressId ? null : job.pickup,
-        dropoff: job.dropoff?.id === addressId ? null : job.dropoff,
+        pickup: job.pickup?.sourceAddressId === addressId ? null : job.pickup,
+        dropoff: job.dropoff?.sourceAddressId === addressId ? null : job.dropoff,
       })),
     );
   };
@@ -294,7 +302,7 @@ export function FreeRouteBuilderPreview({
   };
 
   const addManualAddress = async () => {
-    if (!addingKind || !newName.trim() || !newAddress.trim()) {
+    if (!addingTarget || !newName.trim() || !newAddress.trim()) {
       return toast.error('ระบุชื่อสถานที่และที่อยู่ให้ครบ');
     }
     setLocating(true);
@@ -302,7 +310,8 @@ export function FreeRouteBuilderPreview({
       const geo = await geocodePlace(newName, newAddress).catch(() => null);
       const saved = await createRouteAddress({
         routeGroup: 'เพิ่มเอง',
-        kind: addingKind,
+        // backend รุ่นปัจจุบันยังบังคับฟิลด์ kind แต่หน้า Route Builder ไม่ใช้ค่านี้แล้ว
+        kind: 'pickup',
         name: newName.trim(),
         contact: newContact.trim() || undefined,
         address: newAddress.trim(),
@@ -311,13 +320,13 @@ export function FreeRouteBuilderPreview({
         lng: geo?.lng,
       });
       const entry: LibraryAddress = { ...saved, source: saved.routeGroup };
-      placeStop(toBuilderStop(entry));
+      if (addingTarget !== 'library') placeStop(toBuilderStop(entry, addingTarget));
       onAddressCreated(saved);
       setNewName('');
       setNewAddress('');
       setNewContact('');
       setNewPhone('');
-      setAddingKind(null);
+      setAddingTarget(null);
     } finally {
       setLocating(false);
     }
@@ -328,7 +337,6 @@ export function FreeRouteBuilderPreview({
     if (!address) return;
     setEditingAddress(address);
     setEditRouteGroup(address.routeGroup);
-    setEditKind(address.kind);
     setEditName(address.name);
     setEditAddress(address.address);
     setEditContact(address.contact ?? '');
@@ -344,7 +352,6 @@ export function FreeRouteBuilderPreview({
       const geo = await geocodePlace(editName, editAddress).catch(() => null);
       const updated = await updateRouteAddress(editingAddress.id, {
         routeGroup: editRouteGroup.trim(),
-        kind: editKind,
         name: editName.trim(),
         address: editAddress.trim(),
         contact: editContact.trim() || undefined,
@@ -354,9 +361,9 @@ export function FreeRouteBuilderPreview({
       });
       onAddressUpdated(updated);
       setEditingAddress(null);
-      toast.success('บันทึกจุดรับ–ส่งแล้ว');
+      toast.success('บันทึกสถานที่แล้ว');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'บันทึกจุดรับ–ส่งไม่สำเร็จ');
+      toast.error(error instanceof Error ? error.message : 'บันทึกสถานที่ไม่สำเร็จ');
     } finally {
       setLocating(false);
     }
@@ -371,46 +378,85 @@ export function FreeRouteBuilderPreview({
       onAddressDeleted(address.id);
       toast.success(`ลบ “${address.name}” แล้ว`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'ลบจุดรับ–ส่งไม่สำเร็จ');
+      toast.error(error instanceof Error ? error.message : 'ลบสถานที่ไม่สำเร็จ');
     } finally {
       setDeletingAddressId(null);
     }
   };
 
-  const dropAddress = (event: DragEvent<HTMLElement>) => {
-    event.preventDefault();
-    setDropActive(false);
-    addAddress(event.dataTransfer.getData('application/x-movevai-address'));
+  const toggleAddressFavorite = async (addressId: string) => {
+    const current = savedAddresses.find((address) => address.id === addressId);
+    if (!current || updatingFavoriteId) return;
+
+    const optimistic = { ...current, favorite: !current.favorite };
+    setUpdatingFavoriteId(addressId);
+    onAddressUpdated(optimistic);
+    try {
+      const updated = await updateRouteAddress(addressId, { favorite: optimistic.favorite });
+      onAddressUpdated(updated);
+      toast.success(
+        updated.favorite
+          ? `เพิ่ม “${updated.name}” ในรายการใช้บ่อยแล้ว`
+          : `นำ “${updated.name}” ออกจากรายการใช้บ่อยแล้ว`,
+      );
+    } catch (error) {
+      onAddressUpdated(current);
+      toast.error(error instanceof Error ? error.message : 'บันทึกรายการใช้บ่อยไม่สำเร็จ');
+    } finally {
+      setUpdatingFavoriteId(null);
+    }
   };
 
-  // จัดลำดับคลังที่อยู่ใหม่ภายในกลุ่ม kind เดียว: วางการ์ดที่ลากไว้ "ก่อน" การ์ดปลายทาง
-  // อัปเดตหน้าจอทันที (optimistic) แล้วยิง API เก็บลำดับถาวร ถ้าพลาดค่อยดึงกลับ
-  const reorderLibrary = async (kind: RouteStopKind, draggedId: string, targetId: string) => {
+  const dragAddressOverSlot = (
+    event: DragEvent<HTMLElement>,
+    jobId: string,
+    kind: RouteStopKind,
+  ) => {
+    if (!event.dataTransfer.types.includes('application/x-movevai-address')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+    setAddressDropTarget({ jobId, kind });
+  };
+
+  const dropAddressInSlot = (event: DragEvent<HTMLElement>, jobId: string, kind: RouteStopKind) => {
+    const addressId = event.dataTransfer.getData('application/x-movevai-address');
+    if (!addressId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    placeAddressInJob(jobId, addressId, kind);
+    setAddressDropTarget(null);
+  };
+
+  const leaveAddressSlot = (event: DragEvent<HTMLElement>, jobId: string, kind: RouteStopKind) => {
+    if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+    setAddressDropTarget((current) =>
+      current?.jobId === jobId && current.kind === kind ? null : current,
+    );
+  };
+
+  const reorderLibrary = async (draggedId: string, targetId: string) => {
     if (draggedId === targetId) return;
-    const kindIds = savedAddresses
-      .filter((address) => address.kind === kind)
-      .map((address) => address.id);
-    const from = kindIds.indexOf(draggedId);
-    const target = kindIds.indexOf(targetId);
+    const currentIds = savedAddresses.map((address) => address.id);
+    const from = currentIds.indexOf(draggedId);
+    const target = currentIds.indexOf(targetId);
     if (from < 0 || target < 0) return;
-    const nextIds = [...kindIds];
+
+    const nextIds = [...currentIds];
     const [moved] = nextIds.splice(from, 1);
     nextIds.splice(from < target ? target - 1 : target, 0, moved);
-    if (nextIds.every((id, index) => id === kindIds[index])) return;
+    if (nextIds.every((id, index) => id === currentIds[index])) return;
 
     const previous = savedAddresses;
     const byId = new Map(savedAddresses.map((address) => [address.id, address]));
-    const reorderedKind = nextIds.map((id) => byId.get(id)!);
-    const others = savedAddresses.filter((address) => address.kind !== kind);
-    onAddressesReordered([...reorderedKind, ...others]);
-
+    onAddressesReordered(nextIds.map((id) => byId.get(id)!));
     setSavingOrder(true);
     try {
-      const saved = await reorderRouteAddresses({ kind, orderedIds: nextIds });
+      const saved = await reorderRouteAddresses({ orderedIds: nextIds });
       onAddressesReordered(saved);
     } catch (error) {
       onAddressesReordered(previous);
-      toast.error(error instanceof Error ? error.message : 'บันทึกลำดับใหม่ไม่สำเร็จ');
+      toast.error(error instanceof Error ? error.message : 'บันทึกลำดับสถานที่ไม่สำเร็จ');
     } finally {
       setSavingOrder(false);
     }
@@ -448,7 +494,9 @@ export function FreeRouteBuilderPreview({
       const result = await createAdHocRouteRun({
         name: `เที่ยว ${first} → ${last}`,
         messengerTitle: messengerTitle.trim() || undefined,
-        stops: routeStops.map(({ sourceLabel: _sourceLabel, ...stop }) => stop),
+        stops: routeStops.map(
+          ({ sourceLabel: _sourceLabel, sourceAddressId: _sourceAddressId, ...stop }) => stop,
+        ),
         plannedDate,
         plannedTime: plannedTime || undefined,
         driverId: driverId || undefined,
@@ -479,432 +527,397 @@ export function FreeRouteBuilderPreview({
       data-testid="free-route-builder"
       className="grid items-start gap-4 xl:grid-cols-[310px_minmax(390px,0.95fr)_minmax(390px,1.05fr)]"
     >
-      <div className="rounded-2xl border bg-muted/15 p-4 shadow-sm">
+      <div className="flex h-[640px] flex-col rounded-2xl border bg-muted/15 p-4 shadow-sm xl:sticky xl:top-4 xl:h-[calc(100vh-7rem)]">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm font-semibold">1. คลังที่อยู่แยกประเภท</div>
+            <div className="text-sm font-semibold">1. คลังสถานที่</div>
             <div className="text-[10px] text-muted-foreground">
               {savingOrder ? (
                 <span className="inline-flex items-center gap-1 text-primary">
                   <Loader2 className="h-3 w-3 animate-spin" /> กำลังบันทึกลำดับ…
                 </span>
               ) : (
-                'ลากจัดลำดับในคลัง หรือคลิก/ลากไปเติมงาน'
+                'ลากขึ้น–ลงเพื่อเรียงที่ใช้บ่อย หรือลากไปวางในช่องรับ/ส่ง'
               )}
             </div>
           </div>
-          <Badge variant="secondary">{addresses.length} จุด</Badge>
+          <Badge variant="secondary">{addresses.length} สถานที่</Badge>
         </div>
 
-        {(['pickup', 'dropoff'] as RouteStopKind[]).map((kind) => {
-          const kindEntries = addresses.filter((entry) => entry.kind === kind);
-          const search = searchByKind[kind].trim().toLowerCase();
-          const entries = search
-            ? kindEntries.filter((entry) =>
-                [entry.name, entry.address, entry.contact, entry.phone, entry.source]
-                  .filter(Boolean)
-                  .some((field) => field!.toLowerCase().includes(search)),
-              )
-            : kindEntries;
-          return (
-            <div key={kind} className="mt-3">
-              <div className="flex items-center justify-between gap-2">
-                <div
-                  className={`text-xs font-semibold ${kind === 'pickup' ? 'text-info' : 'text-success'}`}
-                >
-                  {kind === 'pickup' ? 'จุดรับของ' : 'จุดส่งของ'} · {kindEntries.length}
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className={`h-7 gap-1 rounded-full px-3 text-[11px] font-semibold [&_svg]:size-3.5 ${
-                    kind === 'pickup'
-                      ? 'border-info/40 text-info hover:border-info hover:bg-info/10 hover:text-info'
-                      : 'border-success/40 text-success hover:border-success hover:bg-success/10 hover:text-success'
-                  }`}
-                  onClick={() => setAddingKind(kind)}
-                >
-                  <Plus /> เพิ่มใหม่
-                </Button>
-              </div>
-              <div className="relative mt-1.5">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={searchByKind[kind]}
-                  onChange={(event) =>
-                    setSearchByKind((current) => ({ ...current, [kind]: event.target.value }))
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <div className="text-[11px] text-muted-foreground">ค้นหา แล้วลากไปยังงานด้านขวา</div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 rounded-full px-3 text-[11px] font-semibold [&_svg]:size-3.5"
+            onClick={() => setAddingTarget('library')}
+          >
+            <Plus /> เพิ่มสถานที่
+          </Button>
+        </div>
+        <Tabs
+          value={libraryTab}
+          onValueChange={(value) => setLibraryTab(value as 'all' | 'favorite')}
+          className="mt-2"
+        >
+          <TabsList className="grid h-8 w-full grid-cols-2">
+            <TabsTrigger value="all" className="h-6 gap-1 text-[11px]">
+              ทั้งหมด <span className="text-muted-foreground">· {addresses.length}</span>
+            </TabsTrigger>
+            <TabsTrigger value="favorite" className="h-6 gap-1 text-[11px]">
+              <Bookmark className="h-3 w-3" /> ใช้บ่อย{' '}
+              <span className="text-muted-foreground">· {favoriteCount}</span>
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="relative mt-1.5">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="ค้นหาชื่อ ที่อยู่ เบอร์ หรือกลุ่ม…"
+            className="h-8 pl-8 text-[11px]"
+          />
+        </div>
+        <div className="app-scroll relative mt-1.5 min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-1">
+          {filteredAddresses.length === 0 && (
+            <div className="rounded-md border border-dashed bg-muted/20 px-3 py-3 text-center text-[10px] text-muted-foreground">
+              {normalizedSearch
+                ? 'ไม่พบสถานที่ที่ตรงกับคำค้นในรายการนี้'
+                : libraryTab === 'favorite'
+                  ? 'ยังไม่มีสถานที่ใช้บ่อย กด bookmark จากแท็บทั้งหมดเพื่อเพิ่มได้ทันที'
+                  : 'ยังไม่มีสถานที่ในคลัง'}
+            </div>
+          )}
+          {filteredAddresses.map((entry) => {
+            const editable = savedAddressIds.has(entry.id);
+            const reorderable = editable && !normalizedSearch;
+            const isDragging = libraryDragId === entry.id;
+            const isDragOver = libraryDragOverId === entry.id && libraryDragId !== entry.id;
+            return (
+              <article
+                key={entry.id}
+                data-testid="route-address-item"
+                data-address-id={entry.id}
+                draggable
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = 'copyMove';
+                  event.dataTransfer.setData('application/x-movevai-address', entry.id);
+                  if (reorderable) {
+                    event.dataTransfer.setData('application/x-movevai-address-sort', entry.id);
                   }
-                  placeholder={`ค้นหา${kind === 'pickup' ? 'จุดรับ' : 'จุดส่ง'} ชื่อ ที่อยู่ เบอร์…`}
-                  className="h-8 pl-8 text-[11px]"
-                />
-              </div>
-              <div className="app-scroll relative mt-1.5 max-h-72 space-y-1.5 overflow-y-auto pr-1">
-                {entries.length === 0 && (
-                  <div className="rounded-md border border-dashed bg-muted/20 px-3 py-3 text-center text-[10px] text-muted-foreground">
-                    {search ? 'ไม่พบที่อยู่ที่ตรงกับคำค้น' : 'ยังไม่มีที่อยู่ในกลุ่มนี้'}
+                  setLibraryDragId(entry.id);
+                }}
+                onDragEnd={() => {
+                  setLibraryDragId(null);
+                  setLibraryDragOverId(null);
+                  setAddressDropTarget(null);
+                }}
+                onDragOver={(event) => {
+                  if (
+                    !reorderable ||
+                    !event.dataTransfer.types.includes('application/x-movevai-address-sort')
+                  )
+                    return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                  setLibraryDragOverId(entry.id);
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    setLibraryDragOverId((current) => (current === entry.id ? null : current));
+                  }
+                }}
+                onDrop={(event) => {
+                  const draggedId = event.dataTransfer.getData(
+                    'application/x-movevai-address-sort',
+                  );
+                  if (!reorderable || !draggedId) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setLibraryDragId(null);
+                  setLibraryDragOverId(null);
+                  void reorderLibrary(draggedId, entry.id);
+                }}
+                className={`flex cursor-grab items-start gap-2 rounded-lg border bg-background p-2 transition-colors hover:border-primary/40 ${
+                  isDragging ? 'opacity-40' : ''
+                } ${isDragOver ? 'border-primary ring-1 ring-primary' : ''}`}
+              >
+                <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[11px] font-semibold">{entry.name}</div>
+                  <div className="line-clamp-2 text-[10px] text-muted-foreground">
+                    {entry.address}
+                  </div>
+                  {(entry.contact || entry.phone) && (
+                    <div className="mt-0.5 truncate text-[9px] text-muted-foreground">
+                      {entry.contact ? `ผู้ติดต่อ: ${entry.contact}` : 'ผู้ติดต่อ: —'}
+                      {entry.phone ? ` · ${entry.phone}` : ''}
+                    </div>
+                  )}
+                  <div className="mt-0.5 truncate text-[9px] text-muted-foreground/70">
+                    {entry.source}
+                  </div>
+                </div>
+                {editable && (
+                  <div className="flex shrink-0 items-center">
+                    <Button
+                      type="button"
+                      variant={entry.favorite ? 'secondary' : 'ghost'}
+                      size="icon"
+                      className={entry.favorite ? 'h-6 w-6 text-primary' : 'h-6 w-6'}
+                      disabled={updatingFavoriteId != null || deletingAddressId === entry.id}
+                      aria-pressed={entry.favorite}
+                      onClick={() => void toggleAddressFavorite(entry.id)}
+                    >
+                      {updatingFavoriteId === entry.id ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : entry.favorite ? (
+                        <BookmarkCheck className="h-3 w-3" />
+                      ) : (
+                        <Bookmark className="h-3 w-3" />
+                      )}
+                      <span className="sr-only">
+                        {entry.favorite ? 'นำออกจากรายการใช้บ่อย' : 'เพิ่มในรายการใช้บ่อย'}{' '}
+                        {entry.name}
+                      </span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      disabled={deletingAddressId === entry.id}
+                      onClick={() => openAddressEditor(entry.id)}
+                    >
+                      <Pencil className="h-3 w-3" />
+                      <span className="sr-only">แก้ไข {entry.name}</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 text-destructive hover:text-destructive"
+                      disabled={deletingAddressId === entry.id}
+                      onClick={() => void deleteSavedAddress(entry)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      <span className="sr-only">ลบ {entry.name}</span>
+                    </Button>
                   </div>
                 )}
-                {entries.map((entry) => {
-                  const used = usedAddressIds.has(entry.id);
-                  const editable = savedAddressIds.has(entry.id);
-                  // จัดลำดับได้เฉพาะจุดที่บันทึกในคลัง และตอนไม่ได้ค้นหา (ลำดับที่เห็นตรงกับที่เก็บ)
-                  const reorderable = editable && !search;
-                  const isDragging = libraryDragId === entry.id;
-                  const isDragOver = libraryDragOverId === entry.id && libraryDragId !== entry.id;
-                  return (
-                    <article
-                      key={entry.id}
-                      draggable
-                      onDragStart={(event) => {
-                        event.dataTransfer.effectAllowed = 'copyMove';
-                        event.dataTransfer.setData('application/x-movevai-address', entry.id);
-                        if (reorderable) {
-                          event.dataTransfer.setData(
-                            'application/x-movevai-address-sort',
-                            entry.id,
-                          );
-                          setLibraryDragId(entry.id);
-                        }
-                      }}
-                      onDragEnd={() => {
-                        setLibraryDragId(null);
-                        setLibraryDragOverId(null);
-                      }}
-                      onDragOver={(event) => {
-                        if (
-                          !reorderable ||
-                          !event.dataTransfer.types.includes('application/x-movevai-address-sort')
-                        )
-                          return;
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = 'move';
-                        if (libraryDragOverId !== entry.id) setLibraryDragOverId(entry.id);
-                      }}
-                      onDragLeave={(event) => {
-                        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-                          setLibraryDragOverId((current) =>
-                            current === entry.id ? null : current,
-                          );
-                      }}
-                      onDrop={(event) => {
-                        const draggedId = event.dataTransfer.getData(
-                          'application/x-movevai-address-sort',
-                        );
-                        setLibraryDragOverId(null);
-                        setLibraryDragId(null);
-                        if (!reorderable || !draggedId) return;
-                        event.preventDefault();
-                        event.stopPropagation();
-                        void reorderLibrary(kind, draggedId, entry.id);
-                      }}
-                      className={`flex items-start gap-2 rounded-lg border bg-background p-2 transition-colors ${
-                        used ? 'opacity-60' : 'hover:border-primary/40'
-                      } ${isDragging ? 'opacity-40' : ''} ${
-                        isDragOver ? 'border-primary ring-1 ring-primary' : ''
-                      } cursor-grab`}
-                    >
-                      <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-[11px] font-semibold">{entry.name}</div>
-                        <div className="line-clamp-2 text-[10px] text-muted-foreground">
-                          {entry.address}
-                        </div>
-                        {(entry.contact || entry.phone) && (
-                          <div className="mt-0.5 truncate text-[9px] text-muted-foreground">
-                            {entry.contact ? `ผู้รับ: ${entry.contact}` : 'ผู้รับ: —'}
-                            {entry.phone ? ` · ${entry.phone}` : ''}
-                          </div>
-                        )}
-                        <div className="mt-0.5 truncate text-[9px] text-muted-foreground/70">
-                          {entry.source}
-                        </div>
-                      </div>
-                      <div className="flex shrink-0 items-center">
-                        {editable && (
-                          <>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6"
-                              disabled={deletingAddressId === entry.id}
-                              onClick={() => openAddressEditor(entry.id)}
-                            >
-                              <Pencil className="h-3 w-3" />
-                              <span className="sr-only">แก้ไข {entry.name}</span>
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 text-destructive hover:text-destructive"
-                              disabled={deletingAddressId === entry.id}
-                              onClick={() => void deleteSavedAddress(entry)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                              <span className="sr-only">ลบ {entry.name}</span>
-                            </Button>
-                          </>
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-6 w-6"
-                          disabled={used}
-                          onClick={() => addAddress(entry.id)}
-                        >
-                          {used ? (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-success" />
-                          ) : (
-                            <CirclePlus className="h-3.5 w-3.5" />
-                          )}
-                          <span className="sr-only">เพิ่ม {entry.name}</span>
-                        </Button>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-
-        {addingKind && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            onClick={() => {
-              if (!locating) setAddingKind(null);
-            }}
-          >
-            <div
-              className="w-full max-w-md rounded-2xl border bg-background shadow-xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="flex items-start justify-between border-b px-5 py-4">
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white ${
-                      addingKind === 'pickup' ? 'bg-info' : 'bg-success'
-                    }`}
-                  >
-                    {addingKind === 'pickup' ? (
-                      <Package className="h-4.5 w-4.5" />
-                    ) : (
-                      <MapPin className="h-4.5 w-4.5" />
-                    )}
-                  </span>
-                  <div>
-                    <h2 className="text-sm font-semibold">
-                      เพิ่ม{addingKind === 'pickup' ? 'จุดรับของ' : 'จุดส่งของ'}ใหม่
-                    </h2>
-                    <p className="text-[11px] text-muted-foreground">
-                      ใช้ชื่อสถานที่ค้นหาแผนที่ได้ แล้วเพิ่มเข้าเที่ยวนี้ทันที
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={locating}
-                  onClick={() => setAddingKind(null)}
-                >
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">ปิด</span>
-                </Button>
-              </div>
-              <div className="space-y-3 px-5 py-4">
-                <label className="block text-xs font-medium">
-                  ชื่อสถานที่
-                  <Input
-                    className="mt-1"
-                    autoFocus
-                    placeholder={
-                      addingKind === 'pickup' ? 'เช่น สำนักงานใหญ่' : 'เช่น ร้านสาขาวังบูรพา'
-                    }
-                    value={newName}
-                    onChange={(event) => setNewName(event.target.value)}
-                  />
-                  <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
-                    ระบบลองค้นหาชื่อสถานที่บนแผนที่ก่อน แล้วใช้ที่อยู่เป็นคำค้นสำรอง
-                  </span>
-                </label>
-                <label className="block text-xs font-medium">
-                  ที่อยู่
-                  <Input
-                    className="mt-1"
-                    placeholder="บ้านเลขที่ ถนน แขวง เขต จังหวัด"
-                    value={newAddress}
-                    onChange={(event) => setNewAddress(event.target.value)}
-                  />
-                </label>
-                <label className="block text-xs font-medium">
-                  ชื่อผู้รับ (ถ้ามี)
-                  <Input
-                    className="mt-1"
-                    placeholder="เช่น คุณสมใจ"
-                    value={newContact}
-                    onChange={(event) => setNewContact(event.target.value)}
-                  />
-                </label>
-                <label className="block text-xs font-medium">
-                  เบอร์โทร (ถ้ามี)
-                  <Input
-                    className="mt-1"
-                    placeholder="08x-xxx-xxxx"
-                    value={newPhone}
-                    onChange={(event) => setNewPhone(event.target.value)}
-                  />
-                </label>
-              </div>
-              <div className="flex justify-end gap-2 border-t px-5 py-3">
-                <Button variant="ghost" disabled={locating} onClick={() => setAddingKind(null)}>
-                  ยกเลิก
-                </Button>
-                <Button disabled={locating} onClick={() => void addManualAddress()}>
-                  {locating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <MapPin className="h-4 w-4" />
-                  )}
-                  เพิ่มและปักหมุด
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {editingAddress && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-            onClick={() => {
-              if (!locating) setEditingAddress(null);
-            }}
-          >
-            <div
-              className="w-full max-w-md rounded-2xl border bg-background shadow-xl"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="flex items-start justify-between border-b px-5 py-4">
-                <div className="flex items-center gap-2.5">
-                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
-                    <Pencil className="h-4 w-4" />
-                  </span>
-                  <div>
-                    <h2 className="text-sm font-semibold">แก้ไขจุดรับ–ส่ง</h2>
-                    <p className="text-[11px] text-muted-foreground">
-                      บันทึกกลับเข้าคลังที่อยู่ทันที
-                    </p>
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7"
-                  disabled={locating}
-                  onClick={() => setEditingAddress(null)}
-                >
-                  <X className="h-4 w-4" />
-                  <span className="sr-only">ปิด</span>
-                </Button>
-              </div>
-              <div className="space-y-3 px-5 py-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-xs font-medium">
-                    ประเภท
-                    <Select
-                      className="mt-1"
-                      value={editKind}
-                      onChange={(event) => setEditKind(event.target.value as RouteStopKind)}
-                    >
-                      <option value="pickup">จุดรับของ</option>
-                      <option value="dropoff">จุดส่งของ</option>
-                    </Select>
-                  </label>
-                  <label className="block text-xs font-medium">
-                    กลุ่ม/สาย
-                    <Input
-                      className="mt-1"
-                      value={editRouteGroup}
-                      onChange={(event) => setEditRouteGroup(event.target.value)}
-                    />
-                  </label>
-                </div>
-                <label className="block text-xs font-medium">
-                  ชื่อสถานที่
-                  <Input
-                    className="mt-1"
-                    autoFocus
-                    value={editName}
-                    onChange={(event) => setEditName(event.target.value)}
-                  />
-                  <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
-                    ระบบใช้ชื่อสถานที่ค้นหาแผนที่ได้ หากไม่พบจะลองค้นหาจากที่อยู่
-                  </span>
-                </label>
-                <label className="block text-xs font-medium">
-                  ที่อยู่
-                  <Input
-                    className="mt-1"
-                    value={editAddress}
-                    onChange={(event) => setEditAddress(event.target.value)}
-                  />
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="block text-xs font-medium">
-                    ชื่อผู้รับ
-                    <Input
-                      className="mt-1"
-                      value={editContact}
-                      onChange={(event) => setEditContact(event.target.value)}
-                    />
-                  </label>
-                  <label className="block text-xs font-medium">
-                    เบอร์ติดต่อ
-                    <Input
-                      className="mt-1"
-                      value={editPhone}
-                      onChange={(event) => setEditPhone(event.target.value)}
-                    />
-                  </label>
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 border-t px-5 py-3">
-                <Button variant="ghost" disabled={locating} onClick={() => setEditingAddress(null)}>
-                  ยกเลิก
-                </Button>
-                <Button disabled={locating} onClick={() => void saveAddressEdit()}>
-                  {locating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Pencil className="h-4 w-4" />
-                  )}
-                  บันทึกการแก้ไข
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+              </article>
+            );
+          })}
+        </div>
       </div>
 
+      {/* modal ต้องอยู่นอกคอลัมน์ xl:sticky — sticky สร้าง stacking context ทำให้ z-50 แพ้ element ฝั่งขวา */}
+      {addingTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            if (!locating) setAddingTarget(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border bg-background shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground">
+                  <MapPin className="h-4.5 w-4.5" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold">เพิ่มสถานที่ใหม่</h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    บันทึกครั้งเดียว แล้วนำไปใช้เป็นจุดรับหรือจุดส่งได้ทุกงาน
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                disabled={locating}
+                onClick={() => setAddingTarget(null)}
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">ปิด</span>
+              </Button>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              <label className="block text-xs font-medium">
+                ชื่อสถานที่
+                <Input
+                  className="mt-1"
+                  autoFocus
+                  placeholder="เช่น สำนักงานใหญ่ หรือร้านสาขาวังบูรพา"
+                  value={newName}
+                  onChange={(event) => setNewName(event.target.value)}
+                />
+                <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                  ระบบลองค้นหาชื่อสถานที่บนแผนที่ก่อน แล้วใช้ที่อยู่เป็นคำค้นสำรอง
+                </span>
+              </label>
+              <label className="block text-xs font-medium">
+                ที่อยู่
+                <Input
+                  className="mt-1"
+                  placeholder="บ้านเลขที่ ถนน แขวง เขต จังหวัด"
+                  value={newAddress}
+                  onChange={(event) => setNewAddress(event.target.value)}
+                />
+              </label>
+              <label className="block text-xs font-medium">
+                ชื่อผู้รับ (ถ้ามี)
+                <Input
+                  className="mt-1"
+                  placeholder="เช่น คุณสมใจ"
+                  value={newContact}
+                  onChange={(event) => setNewContact(event.target.value)}
+                />
+              </label>
+              <label className="block text-xs font-medium">
+                เบอร์โทร (ถ้ามี)
+                <Input
+                  className="mt-1"
+                  placeholder="08x-xxx-xxxx"
+                  value={newPhone}
+                  onChange={(event) => setNewPhone(event.target.value)}
+                />
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 border-t px-5 py-3">
+              <Button variant="ghost" disabled={locating} onClick={() => setAddingTarget(null)}>
+                ยกเลิก
+              </Button>
+              <Button disabled={locating} onClick={() => void addManualAddress()}>
+                {locating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <MapPin className="h-4 w-4" />
+                )}
+                เพิ่มและปักหมุด
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editingAddress && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => {
+            if (!locating) setEditingAddress(null);
+          }}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border bg-background shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between border-b px-5 py-4">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white">
+                  <Pencil className="h-4 w-4" />
+                </span>
+                <div>
+                  <h2 className="text-sm font-semibold">แก้ไขสถานที่</h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    บันทึกกลับเข้าคลังที่อยู่ทันที
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                disabled={locating}
+                onClick={() => setEditingAddress(null)}
+              >
+                <X className="h-4 w-4" />
+                <span className="sr-only">ปิด</span>
+              </Button>
+            </div>
+            <div className="space-y-3 px-5 py-4">
+              <label className="block text-xs font-medium">
+                กลุ่ม/สาย
+                <Input
+                  className="mt-1"
+                  value={editRouteGroup}
+                  onChange={(event) => setEditRouteGroup(event.target.value)}
+                />
+              </label>
+              <label className="block text-xs font-medium">
+                ชื่อสถานที่
+                <Input
+                  className="mt-1"
+                  autoFocus
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                />
+                <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                  ระบบใช้ชื่อสถานที่ค้นหาแผนที่ได้ หากไม่พบจะลองค้นหาจากที่อยู่
+                </span>
+              </label>
+              <label className="block text-xs font-medium">
+                ที่อยู่
+                <Input
+                  className="mt-1"
+                  value={editAddress}
+                  onChange={(event) => setEditAddress(event.target.value)}
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-medium">
+                  ชื่อผู้รับ
+                  <Input
+                    className="mt-1"
+                    value={editContact}
+                    onChange={(event) => setEditContact(event.target.value)}
+                  />
+                </label>
+                <label className="block text-xs font-medium">
+                  เบอร์ติดต่อ
+                  <Input
+                    className="mt-1"
+                    value={editPhone}
+                    onChange={(event) => setEditPhone(event.target.value)}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t px-5 py-3">
+              <Button variant="ghost" disabled={locating} onClick={() => setEditingAddress(null)}>
+                ยกเลิก
+              </Button>
+              <Button disabled={locating} onClick={() => void saveAddressEdit()}>
+                {locating ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Pencil className="h-4 w-4" />
+                )}
+                บันทึกการแก้ไข
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div
-        className={`rounded-2xl border bg-background p-4 shadow-sm transition-colors ${dropActive ? 'bg-primary/5' : ''}`}
+        className="rounded-2xl border bg-background p-4 shadow-sm"
         onDragEnter={(event) => {
-          if (event.dataTransfer.types.includes('application/x-movevai-address'))
-            setDropActive(true);
+          if (
+            jobs.length === 0 &&
+            event.dataTransfer.types.includes('application/x-movevai-address')
+          ) {
+            setJobs((current) =>
+              current.length === 0 ? [{ id: newJobId(), pickup: null, dropoff: null }] : current,
+            );
+          }
         }}
-        onDragOver={(event) => {
-          if (!event.dataTransfer.types.includes('application/x-movevai-address')) return;
-          event.preventDefault();
-          event.dataTransfer.dropEffect = 'copy';
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-            setDropActive(false);
-        }}
-        onDrop={dropAddress}
       >
         <div className="flex items-center justify-between gap-2">
           <div>
@@ -925,7 +938,7 @@ export function FreeRouteBuilderPreview({
             <PackagePlus className="h-8 w-8 text-muted-foreground/50" />
             <div className="mt-2 text-sm font-medium">เพิ่มงานแรกของเที่ยววิ่ง</div>
             <div className="mt-1 text-xs text-muted-foreground">
-              คลิกหรือลากที่อยู่จากคลัง แล้วระบบจะจัดลงช่องรับ–ส่งของงานให้เอง
+              ลากสถานที่จากคลังเข้ามา แล้ววางในช่องรับหรือส่งที่ต้องการ
             </div>
           </div>
         ) : (
@@ -941,12 +954,7 @@ export function FreeRouteBuilderPreview({
                   event.dataTransfer.setData('application/x-movevai-route-job', job.id);
                 }}
                 onDragOver={(event) => {
-                  const types = event.dataTransfer.types;
-                  if (
-                    !types.includes('application/x-movevai-route-job') &&
-                    !types.includes('application/x-movevai-address')
-                  )
-                    return;
+                  if (!event.dataTransfer.types.includes('application/x-movevai-route-job')) return;
                   event.preventDefault();
                   event.stopPropagation();
                 }}
@@ -954,12 +962,10 @@ export function FreeRouteBuilderPreview({
                   const draggedJobId = event.dataTransfer.getData(
                     'application/x-movevai-route-job',
                   );
-                  const addressId = event.dataTransfer.getData('application/x-movevai-address');
-                  if (!draggedJobId && !addressId) return;
+                  if (!draggedJobId) return;
                   event.preventDefault();
                   event.stopPropagation();
-                  if (draggedJobId) moveJobBefore(draggedJobId, job.id);
-                  else placeAddressInJob(job.id, addressId);
+                  moveJobBefore(draggedJobId, job.id);
                 }}
                 className="rounded-xl border bg-background shadow-sm transition-colors hover:border-primary/40"
               >
@@ -1005,7 +1011,21 @@ export function FreeRouteBuilderPreview({
                         <div className="ml-[1.6rem] h-2.5 border-l-2 border-border/70" />
                       )}
                       {stop ? (
-                        <div className="flex items-start gap-2 px-3 py-2">
+                        <div
+                          data-testid="route-job-slot"
+                          data-job-id={job.id}
+                          data-kind={kind}
+                          onDragOver={(event) => dragAddressOverSlot(event, job.id, kind)}
+                          onDragLeave={(event) => leaveAddressSlot(event, job.id, kind)}
+                          onDrop={(event) => dropAddressInSlot(event, job.id, kind)}
+                          className={`flex items-start gap-2 rounded-lg px-3 py-2 transition-colors ${
+                            addressDropTarget?.jobId === job.id && addressDropTarget.kind === kind
+                              ? isPickup
+                                ? 'bg-info/10 ring-1 ring-info/30'
+                                : 'bg-success/10 ring-1 ring-success/30'
+                              : ''
+                          }`}
+                        >
                           <span
                             className={`mt-0.5 inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
                               isPickup ? 'bg-info/10 text-info' : 'bg-success/10 text-success'
@@ -1038,7 +1058,21 @@ export function FreeRouteBuilderPreview({
                           </Button>
                         </div>
                       ) : (
-                        <div className="mx-3 my-2 flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2">
+                        <div
+                          data-testid="route-job-slot"
+                          data-job-id={job.id}
+                          data-kind={kind}
+                          onDragOver={(event) => dragAddressOverSlot(event, job.id, kind)}
+                          onDragLeave={(event) => leaveAddressSlot(event, job.id, kind)}
+                          onDrop={(event) => dropAddressInSlot(event, job.id, kind)}
+                          className={`mx-3 my-2 flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 transition-colors ${
+                            addressDropTarget?.jobId === job.id && addressDropTarget.kind === kind
+                              ? isPickup
+                                ? 'border-info bg-info/10 ring-1 ring-info/30'
+                                : 'border-success bg-success/10 ring-1 ring-success/30'
+                              : ''
+                          }`}
+                        >
                           <span className="flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
                             <span
                               className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${
@@ -1047,12 +1081,12 @@ export function FreeRouteBuilderPreview({
                             >
                               {isPickup ? 'รับ' : 'ส่ง'}
                             </span>
-                            เลือก{isPickup ? 'จุดรับ' : 'จุดส่ง'}จากคลัง หรือ
+                            ลากสถานที่มาวางเป็น{isPickup ? 'จุดรับ' : 'จุดส่ง'} หรือ
                           </span>
                           <button
                             type="button"
                             className="shrink-0 text-[11px] font-semibold text-primary hover:underline"
-                            onClick={() => setAddingKind(kind)}
+                            onClick={() => setAddingTarget(kind)}
                           >
                             + เพิ่มใหม่
                           </button>

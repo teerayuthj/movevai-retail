@@ -25,13 +25,19 @@ type GeoCoords = {
   speed: number | null;
 };
 
+function normalizeOptionalGpsMetric(value: number | null, max = Infinity): number | null {
+  return value !== null && Number.isFinite(value) && value >= 0 && value <= max ? value : null;
+}
+
 function toLocation(coords: GeoCoords, timestamp: number): MessengerLocation {
   return {
     lat: coords.latitude,
     lng: coords.longitude,
     accuracy: coords.accuracy,
-    heading: coords.heading,
-    speed: coords.speed,
+    // Core Location ใช้ -1 เมื่อยังไม่มีค่าความเร็ว/ทิศทาง แต่ tracking API รับ null
+    // สำหรับค่าที่วัดไม่ได้ และปฏิเสธตัวเลขติดลบ
+    heading: normalizeOptionalGpsMetric(coords.heading, 360),
+    speed: normalizeOptionalGpsMetric(coords.speed),
     timestamp,
   };
 }
