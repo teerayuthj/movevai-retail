@@ -993,6 +993,44 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         remote: false,
       };
 
+  // จุดรับเป็น checkpoint เบา ๆ: คนขับกดครั้งเดียวแล้วระบบเลื่อนไปจุดส่งที่ผูกไว้
+  // GPS แนบได้เมื่อมี แต่ไม่ใช้เป็นเงื่อนไขบล็อกการบันทึก
+  const handlePickupCheckpoint = useCallback(
+    async (order: Order) => {
+      try {
+        await submitDelivery(order.id, {
+          photoCount: 0,
+          photos: [],
+          signatureCaptured: false,
+          otpVerified: false,
+          editorRole: 'messenger',
+          location: liveLocation
+            ? {
+                lat: liveLocation.lat,
+                lng: liveLocation.lng,
+                label:
+                  liveLocation.accuracy != null
+                    ? `พิกัด GPS ขณะรับของ (±${Math.round(liveLocation.accuracy)} ม.)`
+                    : 'พิกัด GPS ขณะรับของ',
+              }
+            : undefined,
+        });
+        setDeliverySheetExpanded(false);
+        setTab('in_transit', { replace: true });
+        toast.success('บันทึกรับของแล้ว — ไปยังจุดส่งถัดไป');
+      } catch (error) {
+        if (isMessengerAuthError(error)) {
+          toast.error('เซสชันหมดอายุ กรุณาเข้าสู่ระบบใหม่');
+          return;
+        }
+        const message = error instanceof Error ? error.message : 'บันทึกรับของไม่สำเร็จ';
+        setJobsError(message);
+        toast.error(`บันทึกรับของไม่สำเร็จ — ${message}`);
+      }
+    },
+    [liveLocation, setTab, submitDelivery],
+  );
+
   const handleViewOrderMap = useCallback((order: Order) => {
     setMapFocusOrderId(order.id);
     setMapGroupKey(groupKeyOf(order));
@@ -1187,7 +1225,13 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                   role={getMessengerOrderRole(activeDeliveryJob, messengerCode) ?? 'main'}
                   expanded={deliverySheetExpanded}
                   onExpandedChange={setDeliverySheetExpanded}
-                  onClose={() => setCloseTargetId(activeDeliveryJob.id)}
+                  onClose={() => {
+                    if (activeDeliveryJob.metadataJson?.dispatch?.routeLeg === 'pickup') {
+                      void handlePickupCheckpoint(activeDeliveryJob);
+                      return;
+                    }
+                    setCloseTargetId(activeDeliveryJob.id);
+                  }}
                 />
               )}
             </div>
