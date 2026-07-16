@@ -372,6 +372,10 @@ export function PlanningPage({
 
   const applyPlanning = async () => {
     if (selectedOrders.length === 0) return;
+    if (!planTime) {
+      toast.error('กรุณาระบุเวลาออกก่อนบันทึกแผน');
+      return;
+    }
     setOperationState('saving');
     setOperationError('');
     try {
@@ -487,6 +491,10 @@ export function PlanningPage({
   ).map((value) => ({ value, label: planningCancelReasonLabel[value] }));
 
   const publishGroups = async (targetOrders: Order[]) => {
+    const withoutDepartureTime = targetOrders.find((order) => !order.deliveryPlan?.plannedTime);
+    if (withoutDepartureTime) {
+      throw new Error('กรุณาระบุเวลาออกให้ครบก่อน Publish รอบส่ง');
+    }
     const groups = new Map<string, string[]>();
     targetOrders.forEach((order) => {
       const key = `${order.deliveryPlan?.plannedDate}:${order.deliveryPlan?.plannedDriverId}`;

@@ -202,6 +202,7 @@ export function FreeRouteBuilderPreview({
   const selectedDriver = drivers.find((driver) => driver.id === driverId);
   const availableDrivers = drivers.filter((driver) => driver.status !== 'off_duty');
   const validationError = jobError(jobs);
+  const missingDispatchRequirement = !selectedDriver || (mode === 'planning' && !plannedTime);
 
   // เติมจุดลงงานแรกที่ช่องประเภทเดียวกันยังว่าง ถ้าไม่มีก็เปิดงานใหม่ให้
   const placeStop = (stop: BuilderStop) => {
@@ -412,7 +413,14 @@ export function FreeRouteBuilderPreview({
 
   const submit = async () => {
     if (validationError) return toast.error(validationError);
-    if (mode === 'immediate' && !selectedDriver) return toast.error('เลือกคนขับก่อนส่งงานทันที');
+    if (!selectedDriver) {
+      return toast.error(
+        mode === 'immediate' ? 'เลือกคนขับก่อนส่งงานทันที' : 'เลือกคนขับก่อนส่งแผนงานให้ Messenger',
+      );
+    }
+    if (mode === 'planning' && !plannedTime) {
+      return toast.error('กรุณาเลือกเวลาออกก่อนสร้างเข้า Planning');
+    }
     setSubmitting(true);
     try {
       const first = routeStops[0]?.name ?? 'จุดรับ';
@@ -434,7 +442,7 @@ export function FreeRouteBuilderPreview({
       toast.success(
         result.status === 'dispatched'
           ? `ส่งเที่ยวให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`
-          : `สร้าง ${result.orderIds.length} จุดเข้า Planning แล้ว`,
+          : `ส่งแผนงานให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`,
       );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'สร้างเที่ยวไม่สำเร็จ');
@@ -1211,28 +1219,31 @@ export function FreeRouteBuilderPreview({
             </label>
             <label className="text-xs font-medium">
               <span className="inline-flex items-center gap-1">
-                <Clock3 className="h-3.5 w-3.5" /> เวลาออก
+                <Clock3 className="h-3.5 w-3.5" /> เวลาออก (จำเป็น)
               </span>
-              <TimePicker value={plannedTime} onChange={setPlannedTime} className="mt-1 w-full" />
+              <TimePicker
+                value={plannedTime}
+                onChange={setPlannedTime}
+                className="mt-1 w-full"
+                required
+              />
+              <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
+                ต้องระบุเวลา · ระบบจะแจ้ง Messenger ล่วงหน้า 10 นาทีเมื่อ Publish
+              </span>
             </label>
           </div>
         )}
 
         <label className="mt-3 block text-xs font-medium">
           <span className="inline-flex items-center gap-1">
-            <UserRound className="h-3.5 w-3.5" />{' '}
-            {mode === 'immediate' ? 'คนขับ (จำเป็น)' : 'คนขับ (เลือกภายหลังได้)'}
+            <UserRound className="h-3.5 w-3.5" /> คนขับ (จำเป็น)
           </span>
           <Select
             className="mt-1"
             value={driverId}
             onChange={(event) => setDriverId(event.target.value)}
           >
-            <option value="">
-              {mode === 'immediate'
-                ? '— เลือกคนขับเพื่อส่งงาน —'
-                : '— ยังไม่เลือก (จัดตอน Planning) —'}
-            </option>
+            <option value="">— เลือกคนขับ —</option>
             {availableDrivers.map((driver) => (
               <option key={driver.id} value={driver.id}>
                 {driver.name} · {formatDriverDispatchStatus(driver, orders)}
@@ -1259,10 +1270,7 @@ export function FreeRouteBuilderPreview({
           </div>
         ) : (
           <div className="mt-2 flex items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-[11px] text-muted-foreground">
-            <UserRound className="h-4 w-4" />{' '}
-            {mode === 'immediate'
-              ? 'เลือกคนขับก่อนจึงจะส่งงานได้'
-              : 'เลือกคนขับเพื่อดูรูป โปรไฟล์ รถ และสถานะงาน'}
+            <UserRound className="h-4 w-4" /> เลือกคนขับก่อนจึงจะส่งแผนงานได้
           </div>
         )}
 
@@ -1280,9 +1288,7 @@ export function FreeRouteBuilderPreview({
         <Button
           data-testid="create-route-run"
           className="mt-3 w-full"
-          disabled={
-            submitting || Boolean(validationError) || (mode === 'immediate' && !selectedDriver)
-          }
+          disabled={submitting || Boolean(validationError) || missingDispatchRequirement}
           onClick={() => void submit()}
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
@@ -1290,12 +1296,12 @@ export function FreeRouteBuilderPreview({
             ? 'กำลังสร้างเที่ยว…'
             : mode === 'immediate'
               ? `ส่ง 1 เที่ยว (${routeStops.length} จุด) ให้ Messenger`
-              : `สร้าง 1 เที่ยว (${routeStops.length} จุด) เข้า Planning`}
+              : `ส่งแผนงาน 1 เที่ยว (${routeStops.length} จุด) ให้ Messenger`}
         </Button>
         <p className="mt-1.5 text-center text-[10px] text-muted-foreground">
           {mode === 'immediate'
             ? 'ส่งทันทีจะเริ่มวันนี้ โดยใช้คนขับที่เลือก'
-            : 'วันที่ เวลา และคนขับสามารถแก้ต่อได้ใน Planning'}
+            : 'วันที่ เวลาออก และคนขับจำเป็น · ระบบส่งแผนงานให้ Messenger ทันที'}
         </p>
       </div>
     </section>

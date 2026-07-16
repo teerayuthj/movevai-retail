@@ -79,6 +79,7 @@ export type DeliveryPlan = {
 export type DeliveryRoute = {
   id: string;
   code: string;
+  publishedAt?: string;
   plannedDate: string;
   plannedTime?: string;
   dispatchMode?: 'scheduled' | 'urgent';

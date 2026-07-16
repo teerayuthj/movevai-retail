@@ -82,7 +82,9 @@ export function PlanSettingsCard({
             <DatePicker value={planDate} onChange={onPlanDate} className="w-full" />
           </div>
           <div className="grid gap-2">
-            <label className="text-[11px] font-medium text-muted-foreground">เวลาจัดส่ง</label>
+            <label className="text-[11px] font-medium text-muted-foreground">
+              เวลาออก (จำเป็น)
+            </label>
             <div className="flex items-center gap-1">
               <input
                 type="time"

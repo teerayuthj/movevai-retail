@@ -36,6 +36,29 @@ export type MessengerProfileUpdateInput = {
   addressPostalCode?: string;
 };
 
+export type AcceptanceSummary = {
+  totalRoutes: number;
+  acceptedRoutes: number;
+  onTimeRoutes: number;
+  lateRoutes: number;
+  overdueUnacceptedRoutes: number;
+  pendingRoutes: number;
+  onTimeRatePercent: number | null;
+  averageResponseMinutes: number | null;
+  averageLateMinutes: number | null;
+};
+
+export type AcceptanceHistoryItem = {
+  routeId: string;
+  routeCode: string;
+  publishedAt: string;
+  acceptBy: string;
+  acceptedAt: string | null;
+  state: 'on_time' | 'late' | 'overdue_unaccepted' | 'pending';
+  responseMinutes: number | null;
+  lateMinutes: number;
+};
+
 export type DriverStats = {
   driver: Driver;
   totals: {
@@ -45,6 +68,8 @@ export type DriverStats = {
     completedOrders: number;
     routes: number;
   };
+  acceptance: AcceptanceSummary;
+  recentAcceptances: AcceptanceHistoryItem[];
   frequentDestinations: { label: string; count: number }[];
   recentSessions: {
     id: string;

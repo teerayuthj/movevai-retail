@@ -13,6 +13,8 @@ type DetailDrawerProps = {
   footer?: ReactNode;
   /** override ความกว้างพาเนลบนเดสก์ท็อป (lg ขึ้นไป) — ดีฟอลต์ lg:w-[460px] */
   widthClassName?: string;
+  /** สำหรับ drawer ที่ใช้ควบคู่แผนที่: บน desktop ไม่ทำให้พื้นหลังมืด แต่กดพื้นที่ว่างเพื่อปิดได้ */
+  desktopMapFriendly?: boolean;
   children: ReactNode;
 };
 
@@ -27,6 +29,7 @@ export function DetailDrawer({
   onClose,
   footer,
   widthClassName = 'lg:w-[460px]',
+  desktopMapFriendly = false,
   children,
 }: DetailDrawerProps) {
   // ล็อค scroll ของ body ระหว่างเปิด drawer เพื่อกันไม่ให้ scrollbar ของหน้าเบื้องหลัง
@@ -45,12 +48,16 @@ export function DetailDrawer({
   return (
     <div className="fixed inset-0 z-50">
       <div
-        className="absolute inset-0 bg-black/40 duration-200 animate-in fade-in"
+        className={`absolute inset-0 bg-black/40 duration-200 animate-in fade-in ${
+          desktopMapFriendly ? 'lg:bg-transparent' : ''
+        }`}
         onClick={onClose}
         aria-hidden
       />
       <div
-        className={`absolute inset-0 flex flex-col bg-background duration-200 animate-in slide-in-from-right lg:inset-y-0 lg:left-auto lg:right-0 lg:border-l lg:shadow-2xl ${widthClassName}`}
+        className={`absolute inset-0 flex flex-col bg-background duration-200 animate-in slide-in-from-right lg:inset-y-0 lg:left-auto lg:right-0 lg:border-l lg:shadow-2xl ${widthClassName} ${
+          desktopMapFriendly ? 'lg:pointer-events-auto' : ''
+        }`}
       >
         <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background px-3 pb-3 pt-safe lg:pt-3">
           <button

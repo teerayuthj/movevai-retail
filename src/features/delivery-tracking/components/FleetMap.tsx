@@ -13,7 +13,7 @@ import {
   type MessengerPresence,
   type MessengerTrackingHistory,
 } from '@/lib/retailApi';
-import { BANGKOK_CENTER } from '@/features/messenger/geocode';
+import { BANGKOK_CENTER, isPlausibleThaiCoord } from '@/features/messenger/geocode';
 import { useRouteStops } from '@/features/messenger/hooks/useRouteStops';
 import type { Order } from '@/data/orderTypes';
 import {
@@ -47,16 +47,22 @@ const messengerIcon = (tone: MessengerMarkerTone) =>
     };border:3px solid white;box-shadow:0 1px 6px #0006"></div>`,
   });
 
-// หมุดปลายทาง — รูปหยดน้ำสีแดง แยกชัดจากหมุด messenger; จางลงเมื่อ stop ส่งแล้ว
-const destinationIcon = (delivered: boolean) =>
-  L.divIcon({
+// หมุดปลายทาง — รูปหยดน้ำ แยกชัดจากหมุด messenger; ใส่เลขลำดับ stop เพื่อแยกหลายงานพร้อมกัน,
+// จางลงเมื่อส่งแล้ว และขยาย+เปลี่ยนเป็นสีน้ำเงินเมื่อเป็นงานที่เลือกจาก panel
+const destinationIcon = (opts: { delivered: boolean; focused: boolean; sequence?: number }) => {
+  const size = opts.focused ? 36 : 26;
+  const fill = opts.focused ? '#2563eb' : opts.delivered ? '#94a3b8' : '#dc2626';
+  const core =
+    opts.sequence != null
+      ? `<circle cx="12" cy="10" r="4.5" fill="white" stroke="none"/><text x="12" y="12.6" text-anchor="middle" font-size="7.5" font-weight="700" fill="${fill}" stroke="none">${opts.sequence}</text>`
+      : `<circle cx="12" cy="10" r="3" fill="white" stroke="none"/>`;
+  return L.divIcon({
     className: '',
-    iconSize: [26, 26],
-    iconAnchor: [13, 26],
-    html: `<svg width="26" height="26" viewBox="0 0 24 24" fill="${
-      delivered ? '#94a3b8' : '#dc2626'
-    }" stroke="white" stroke-width="2" style="filter:drop-shadow(0 1px 3px #0006)"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3" fill="white" stroke="none"/></svg>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size],
+    html: `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="${fill}" stroke="white" stroke-width="2" style="filter:drop-shadow(0 1px 3px #0006)"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/>${core}</svg>`,
   });
+};
 
 /**
  * ปรับ viewport เฉพาะเมื่อ fitId เปลี่ยน (เปิดครั้งแรก / เลือกคนขับ / focus งาน)
@@ -76,14 +82,6 @@ function FitBounds({ points, fitId }: { points: [number, number][]; fitId: strin
     map.fitBounds(L.latLngBounds(points), { padding: [56, 56], maxZoom: 15, animate: false });
   }, [fitId, map, points]);
   return null;
-}
-
-function currentDestination<T extends { status?: string | null; sequence?: number }>(items: T[]) {
-  return items
-    .filter((item) => item.status !== 'delivered')
-    .sort(
-      (a, b) => (a.sequence ?? Number.MAX_SAFE_INTEGER) - (b.sequence ?? Number.MAX_SAFE_INTEGER),
-    )[0];
 }
 
 function asNumber(value: number | string | null | undefined): number | null {
@@ -153,8 +151,12 @@ function routeLabel(messenger: Pick<LiveMessengerTracking, 'route' | 'label' | '
 }
 
 type FleetMapProps = {
-  /** งานที่เลือกจาก panel รายการ — แผนที่จะ pan ไปหาคนขับ/ปลายทางของงานนั้น */
+  /** งานที่เลือกจาก panel รายการ — แผนที่จะ highlight จุดส่งของงานนั้นและ pan ไปหาคนขับ+จุดส่ง */
   focusOrder: Order | null;
+  /** คลิกหมุดปลายทางบนแผนที่ → เปิดรายละเอียดงานนั้นใน panel/drawer */
+  onFocusOrder?: (orderId: string) => void;
+  /** เพิ่มค่าเมื่อผู้ใช้กด “ดู Live เที่ยวนี้” เพื่อให้ refocus แม้เลือก Route เดิมอยู่แล้ว */
+  focusVersion?: number;
 };
 
 /**
@@ -162,7 +164,7 @@ type FleetMapProps = {
  * คลิกหมุดคนขับเพื่อโหลดเส้นทางย้อนหลัง + playback; render เป็น absolute overlay
  * ภายใน container relative ของหน้าแม่
  */
-export function FleetMap({ focusOrder }: FleetMapProps) {
+export function FleetMap({ focusOrder, onFocusOrder, focusVersion = 0 }: FleetMapProps) {
   const [messengers, setMessengers] = useState<LiveMessengerTracking[]>([]);
   const [presences, setPresences] = useState<MessengerPresence[]>([]);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
@@ -174,8 +176,8 @@ export function FleetMap({ focusOrder }: FleetMapProps) {
   const [presenceFeedError, setPresenceFeedError] = useState('');
   const [playbackIndex, setPlaybackIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [focusPoint, setFocusPoint] = useState<[number, number] | null>(null);
-  const lastFocusedOrderId = useRef<string | null>(null);
+  const [focusPoints, setFocusPoints] = useState<[number, number][]>([]);
+  const lastFocusedOrderKey = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -205,7 +207,8 @@ export function FleetMap({ focusOrder }: FleetMapProps) {
             error instanceof Error ? error.message : 'โหลดสถานะ Messenger ไม่สำเร็จ',
           );
         });
-      void fetchDeliveryTrackingOrders({ tab: 'in_transit', take: 100, skip: 0 })
+      // ดึงงานที่ยังไม่ปิดทั้งหมด (ไม่ใช่แค่ in_transit) เพื่อวาดหมุดปลายทางแยกราย order
+      void fetchDeliveryTrackingOrders({ tab: 'all_open', take: 100, skip: 0 })
         .then((result) => {
           if (active) setActiveOrders(result.orders);
         })
@@ -285,89 +288,129 @@ export function FleetMap({ focusOrder }: FleetMapProps) {
     () => selectedHistory?.plannedGeometryJson?.map((p) => [p.lat, p.lng]) ?? [],
     [selectedHistory],
   );
-  const currentDestinations = useMemo(
-    () =>
-      messengers.flatMap((messenger) => {
-        const fromLiveFeed = currentDestination(messenger.destinations ?? []);
-        if (fromLiveFeed) return [{ messengerId: messenger.id, destination: fromLiveFeed }];
-
-        const fromOrder = currentDestination(
-          activeOrderStops
-            .filter(
-              (stop) =>
-                stop.coords &&
-                (stop.order.assignedDriverId === messenger.driver.code ||
-                  stop.order.deliveryRoute?.id === messenger.routeId),
-            )
-            .map((stop) => ({
-              orderId: stop.order.id,
-              label: stop.order.customer.name,
-              address: stop.order.customer.address,
-              lat: stop.coords!.lat,
-              lng: stop.coords!.lng,
-              status: stop.order.status,
-              sequence: stop.order.deliveryRoute?.sequence,
-            })),
-        );
-        return fromOrder ? [{ messengerId: messenger.id, destination: fromOrder }] : [];
-      }),
-    [activeOrderStops, messengers],
-  );
+  // หมุดปลายทางแยกราย order — ทุกจุดของทุกเที่ยวที่ยังเปิดอยู่ (ไม่ใช่แค่จุดปัจจุบันต่อคนขับ)
+  // รวมจาก live feed ก่อน แล้วเติมด้วยงาน in_transit ที่ feed ยังไม่ครอบคลุม (dedupe ด้วย orderId)
+  const destinationMarkers = useMemo(() => {
+    const markers: {
+      key: string;
+      orderId: string | null;
+      messengerId: string | null;
+      point: [number, number];
+      label: string | null;
+      address: string | null;
+      delivered: boolean;
+      sequence?: number;
+    }[] = [];
+    const seenOrderIds = new Set<string>();
+    for (const messenger of messengers) {
+      for (const destination of messenger.destinations ?? []) {
+        const point = toPoint(destination);
+        if (!point) continue;
+        if (destination.orderId) {
+          if (seenOrderIds.has(destination.orderId)) continue;
+          seenOrderIds.add(destination.orderId);
+        }
+        markers.push({
+          key: `dest-${messenger.id}-${destination.orderId ?? markers.length}`,
+          orderId: destination.orderId ?? null,
+          messengerId: messenger.id,
+          point,
+          label: destination.label ?? null,
+          address: destination.address ?? null,
+          delivered: destination.status === 'delivered',
+          sequence: destination.sequence,
+        });
+      }
+    }
+    for (const stop of activeOrderStops) {
+      if (!stop.coords || seenOrderIds.has(stop.order.id)) continue;
+      seenOrderIds.add(stop.order.id);
+      const messenger = messengers.find(
+        (item) =>
+          (stop.order.deliveryRoute && item.routeId === stop.order.deliveryRoute.id) ||
+          (stop.order.assignedDriverId && item.driver.code === stop.order.assignedDriverId),
+      );
+      markers.push({
+        key: `dest-order-${stop.order.id}`,
+        orderId: stop.order.id,
+        messengerId: messenger?.id ?? null,
+        point: [stop.coords.lat, stop.coords.lng],
+        label: stop.order.customer.name,
+        address: stop.order.customer.address,
+        delivered: stop.order.status === 'delivered',
+        sequence: stop.order.deliveryRoute?.sequence,
+      });
+    }
+    return markers;
+  }, [activeOrderStops, messengers]);
   const selectedMessenger = useMemo(
     () => messengers.find((messenger) => messenger.id === selectedId) ?? null,
     [messengers, selectedId],
   );
-  const selectedDestination = useMemo(
-    () => currentDestinations.find((item) => item.messengerId === selectedId)?.destination ?? null,
-    [currentDestinations, selectedId],
-  );
   const livePoint = toPoint(selectedMessenger?.latest);
   const historyHead = path[path.length - 1] ?? null;
   const currentPoint = livePoint ?? historyHead;
-  const selectedDestinationPoint = toPoint(selectedDestination);
+  // จุดส่งของงานที่เลือกจาก panel — ใช้ทั้ง highlight หมุดและเล็ง viewport
+  const focusedOrderDestination = useMemo<[number, number] | null>(() => {
+    if (!focusOrder) return null;
+    const marker = destinationMarkers.find((item) => item.orderId === focusOrder.id);
+    if (marker) return marker.point;
+    return isPlausibleThaiCoord(focusOrder.customer.geo)
+      ? [focusOrder.customer.geo.lat, focusOrder.customer.geo.lng]
+      : null;
+  }, [destinationMarkers, focusOrder]);
+  const selectedRoutePoints = useMemo<[number, number][]>(
+    () =>
+      destinationMarkers
+        .filter((marker) => marker.messengerId === selectedId && !marker.delivered)
+        .map((marker) => marker.point),
+    [destinationMarkers, selectedId],
+  );
   const viewportPoints = useMemo<[number, number][]>(() => {
     if (!selectedMessenger) return [];
     return [
       ...path,
       ...(currentPoint ? [currentPoint] : []),
-      ...(selectedDestinationPoint ? [selectedDestinationPoint] : []),
+      // focus งานจาก panel → เล็งเฉพาะจุดส่งของงานนั้น; เลือกคนขับตรงๆ → เห็นทุกจุดของเที่ยว
+      ...(focusedOrderDestination ? [focusedOrderDestination] : selectedRoutePoints),
     ];
-  }, [currentPoint, path, selectedDestinationPoint, selectedMessenger]);
+  }, [currentPoint, focusedOrderDestination, path, selectedRoutePoints, selectedMessenger]);
 
-  // เลือกงานจาก panel → หาคนขับที่ถือ route นั้นแล้วเปิดตาม / ถ้าไม่มี GPS ให้ pan ไปพิกัดปลายทางแทน
+  // เลือกงานจาก panel → หาคนขับที่ถือ route นั้นแล้วเปิดตาม (viewport จะรวมจุดส่งของงานนั้นให้เอง)
+  // ถ้าไม่มี session GPS ให้ fit ไปที่จุดส่งของงาน + ตำแหน่งล่าสุดของคนขับ (เท่าที่มี) แทน
   useEffect(() => {
     if (!focusOrder) {
-      lastFocusedOrderId.current = null;
-      setFocusPoint(null);
+      lastFocusedOrderKey.current = null;
+      setFocusPoints([]);
       return;
     }
-    if (lastFocusedOrderId.current === focusOrder.id) return;
+    const focusKey = `${focusOrder.id}:${focusVersion}`;
+    if (lastFocusedOrderKey.current === focusKey) return;
     const messenger = messengers.find(
       (item) =>
         (focusOrder.deliveryRoute && item.routeId === focusOrder.deliveryRoute.id) ||
         (focusOrder.assignedDriverId && item.driver.code === focusOrder.assignedDriverId),
     );
     if (messenger) {
-      lastFocusedOrderId.current = focusOrder.id;
-      setFocusPoint(null);
-      if (messenger.id !== selectedId) void selectMessenger(messenger.id);
+      lastFocusedOrderKey.current = focusKey;
+      setFocusPoints([]);
+      // กดปุ่ม Live ซ้ำได้เพื่อโหลดเส้น GPS ล่าสุดของ Route เดิมอีกครั้ง
+      void selectMessenger(messenger.id);
       return;
     }
     const presence = presences.find(
       (item) => focusOrder.assignedDriverId && item.driver.code === focusOrder.assignedDriverId,
     );
     const presencePoint = toPoint(presence?.presence?.location);
-    if (presencePoint) {
-      lastFocusedOrderId.current = focusOrder.id;
-      setFocusPoint(presencePoint);
-      return;
+    const points: [number, number][] = [
+      ...(focusedOrderDestination ? [focusedOrderDestination] : []),
+      ...(presencePoint ? [presencePoint] : []),
+    ];
+    if (points.length > 0) {
+      lastFocusedOrderKey.current = focusKey;
+      setFocusPoints(points);
     }
-    const stop = activeOrderStops.find((item) => item.order.id === focusOrder.id && item.coords);
-    if (stop?.coords) {
-      lastFocusedOrderId.current = focusOrder.id;
-      setFocusPoint([stop.coords.lat, stop.coords.lng]);
-    }
-  }, [activeOrderStops, focusOrder, messengers, presences, selectedId]);
+  }, [focusVersion, focusedOrderDestination, focusOrder, messengers, presences, selectedId]);
 
   const presenceOnlyMarkers = useMemo(
     () =>
@@ -389,18 +432,21 @@ export function FleetMap({ focusOrder }: FleetMapProps) {
       ...presenceOnlyMarkers
         .map((item) => toPoint(item.presence?.location))
         .filter((point): point is [number, number] => Boolean(point)),
-      ...currentDestinations
-        .map((item) => toPoint(item.destination))
-        .filter((point): point is [number, number] => Boolean(point)),
+      ...destinationMarkers.map((item) => item.point),
     ],
-    [currentDestinations, messengers, presenceOnlyMarkers],
+    [destinationMarkers, messengers, presenceOnlyMarkers],
   );
 
-  const fitPoints = selectedMessenger ? viewportPoints : focusPoint ? [focusPoint] : allPoints;
+  const fitPoints = selectedMessenger
+    ? viewportPoints
+    : focusPoints.length > 0
+      ? focusPoints
+      : allPoints;
+  // ใส่ order id ที่ focus ลงใน fitId ด้วย เพื่อให้สลับงานคนละจุดบนเที่ยวเดียวกันแล้ว refit ใหม่
   const fitId = selectedMessenger
-    ? `sel:${selectedMessenger.id}:${selectedHistory && selectedHistory.points.length > 0 ? 'history' : 'live'}`
-    : focusPoint
-      ? `focus:${focusPoint[0]},${focusPoint[1]}`
+    ? `sel:${selectedMessenger.id}:${selectedHistory && selectedHistory.points.length > 0 ? 'history' : 'live'}${focusOrder ? `:o:${focusOrder.id}:v:${focusVersion}` : ''}`
+    : focusPoints.length > 0
+      ? `focus:${focusOrder?.id ?? ''}`
       : 'all';
 
   const onlineDriverCodes = new Set([
@@ -529,29 +575,60 @@ export function FleetMap({ focusOrder }: FleetMapProps) {
               </Marker>
             );
           })}
-          {currentDestinations.map(({ messengerId, destination }) => {
-            const point = toPoint(destination);
-            if (!point) return null;
+          {destinationMarkers.map((marker) => {
+            const isFocused = marker.orderId != null && marker.orderId === focusOrder?.id;
             return (
               <Marker
-                key={`dest-${messengerId}-${destination.orderId ?? 'current'}`}
-                icon={destinationIcon(destination.status === 'delivered')}
-                position={point}
+                key={marker.key}
+                icon={destinationIcon({
+                  delivered: marker.delivered,
+                  focused: isFocused,
+                  sequence: marker.sequence,
+                })}
+                position={marker.point}
+                zIndexOffset={isFocused ? 1000 : 0}
+                eventHandlers={
+                  marker.orderId && onFocusOrder
+                    ? { click: () => onFocusOrder(marker.orderId!) }
+                    : undefined
+                }
               >
                 <Popup>
-                  <b>ปลายทาง{destination.sequence ? ` #${destination.sequence}` : ''}</b>
+                  <b>ปลายทาง{marker.sequence ? ` #${marker.sequence}` : ''}</b>
                   <br />
-                  {destination.label ?? 'จุดส่งปัจจุบัน'}
-                  {destination.address && (
+                  {marker.label ?? 'จุดส่ง'}
+                  {marker.address && (
                     <>
                       <br />
-                      <span style={{ color: '#64748b' }}>{destination.address}</span>
+                      <span style={{ color: '#64748b' }}>{marker.address}</span>
                     </>
                   )}
                 </Popup>
               </Marker>
             );
           })}
+          {/* งานที่ focus แต่ไม่อยู่ในชุดหมุดหลัก (เช่น อยู่หน้าถัดไป/tab ปิดแล้ว) — วาดหมุด highlight จากพิกัดลูกค้าให้เห็นตำแหน่ง */}
+          {focusOrder &&
+            focusedOrderDestination &&
+            !destinationMarkers.some((marker) => marker.orderId === focusOrder.id) && (
+              <Marker
+                icon={destinationIcon({
+                  delivered: false,
+                  focused: true,
+                  sequence: focusOrder.deliveryRoute?.sequence,
+                })}
+                position={focusedOrderDestination}
+                zIndexOffset={1000}
+              >
+                <Popup>
+                  <b>ปลายทาง</b>
+                  <br />
+                  {focusOrder.customer.name}
+                  <br />
+                  <span style={{ color: '#64748b' }}>{focusOrder.customer.address}</span>
+                </Popup>
+              </Marker>
+            )}
           {planned.length > 1 && (
             <Polyline
               positions={planned}

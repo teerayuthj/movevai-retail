@@ -23,9 +23,15 @@ import {
 import { useRetailStore } from '@/state/retailStore';
 import {
   fetchDeliveryReport,
+  type AcceptanceSummary,
   type DeliveryReportStatus,
   type DeliveryReportItem,
 } from '@/lib/retailApi';
+import {
+  acceptanceLabel,
+  getOrderAcceptance,
+  summarizeOrderAcceptance,
+} from '@/lib/acceptanceMetrics';
 import { downloadCsv } from '@/lib/export';
 import { cn } from '@/lib/utils';
 import { formatElapsedDuration, getDeliveryDurationMinutes } from '@/lib/deliveryExecution';
@@ -49,7 +55,19 @@ import {
 const PAGE_SIZE = 20;
 const EXPORT_LIMIT = 5000;
 const REPORT_STATUSES: OrderStatus[] = ['delivered', 'failed', 'returning', 'returned'];
-const DELIVERY_REPORT_API_ENABLED = import.meta.env.VITE_DELIVERY_REPORT_API_ENABLED === 'true';
+const DELIVERY_REPORT_API_ENABLED = import.meta.env.VITE_DELIVERY_REPORT_API_ENABLED !== 'false';
+
+const EMPTY_ACCEPTANCE_SUMMARY: AcceptanceSummary = {
+  totalRoutes: 0,
+  acceptedRoutes: 0,
+  onTimeRoutes: 0,
+  lateRoutes: 0,
+  overdueUnacceptedRoutes: 0,
+  pendingRoutes: 0,
+  onTimeRatePercent: null,
+  averageResponseMinutes: null,
+  averageLateMinutes: null,
+};
 
 type ReportRow = {
   order: Order;
@@ -271,6 +289,12 @@ function buildReportCsv(rows: ReportRow[]) {
     'ลูกค้า',
     'เบอร์',
     'Messenger',
+    'เวลามอบหมายเที่ยว',
+    'กำหนดรับเที่ยว',
+    'เวลารับจริง',
+    'สถานะการรับ',
+    'นาทีหลังมอบหมาย',
+    'นาทีที่รับช้า',
     'Route',
     'วันนัด',
     'เวลาปิดงาน',
@@ -280,6 +304,7 @@ function buildReportCsv(rows: ReportRow[]) {
   ];
   const lines = [headers.map(csvEscape).join(',')];
   rows.forEach(({ order, driver, closedAt, plannedAt }) => {
+    const acceptance = getOrderAcceptance(order);
     lines.push(
       [
         order.orderNo,
@@ -287,6 +312,12 @@ function buildReportCsv(rows: ReportRow[]) {
         order.customer.name,
         order.customer.phone,
         driver?.name ?? order.assignedDriverId ?? '',
+        order.deliveryRoute?.publishedAt ? formatDateTime(order.deliveryRoute.publishedAt) : '',
+        order.deliveryRoute?.acceptBy ? formatDateTime(order.deliveryRoute.acceptBy) : '',
+        order.deliveryRoute?.acceptedAt ? formatDateTime(order.deliveryRoute.acceptedAt) : '',
+        acceptanceLabel(acceptance),
+        acceptance.responseMinutes ?? '',
+        acceptance.lateMinutes || '',
         order.deliveryRoute?.code ?? '',
         plannedAt ? formatDateTime(plannedAt) : '',
         closedAt ? formatDateTime(closedAt) : '',
@@ -312,6 +343,7 @@ export function DeliveryReportPage() {
   const [page, setPage] = useState(1);
   const [rows, setRows] = useState<ReportRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [acceptance, setAcceptance] = useState<AcceptanceSummary>(EMPTY_ACCEPTANCE_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -363,6 +395,7 @@ export function DeliveryReportPage() {
       const fallback = loadLocalRows(PAGE_SIZE, (page - 1) * PAGE_SIZE);
       setRows(fallback.rows);
       setTotal(fallback.total);
+      setAcceptance(summarizeOrderAcceptance(fallback.allRows.map((row) => row.order)));
       setUsingLocalFallback(false);
       setLoading(false);
       return;
@@ -379,8 +412,12 @@ export function DeliveryReportPage() {
     })
       .then((result) => {
         if (id !== requestId.current) return;
-        setRows(rowsFromApiItems(result.items, drivers));
+        const nextRows = rowsFromApiItems(result.items, drivers);
+        setRows(nextRows);
         setTotal(result.total);
+        setAcceptance(
+          result.acceptance ?? summarizeOrderAcceptance(nextRows.map((row) => row.order)),
+        );
         setUsingLocalFallback(false);
       })
       .catch((err: unknown) => {
@@ -388,6 +425,7 @@ export function DeliveryReportPage() {
         const fallback = loadLocalRows(PAGE_SIZE, (page - 1) * PAGE_SIZE);
         setRows(fallback.rows);
         setTotal(fallback.total);
+        setAcceptance(summarizeOrderAcceptance(fallback.allRows.map((row) => row.order)));
         setUsingLocalFallback(true);
         setError(err instanceof Error ? err.message : 'โหลด report จาก backend ไม่สำเร็จ');
       })
@@ -543,6 +581,68 @@ export function DeliveryReportPage() {
         </div>
       )}
 
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm">ประสิทธิภาพการรับเที่ยว</CardTitle>
+          <div className="text-xs text-muted-foreground">
+            นับเที่ยวไม่ซ้ำตามช่วงและตัวกรองด้านบน · ตรงเวลาเทียบกำหนดรับเที่ยว
+          </div>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+          {[
+            {
+              label: 'เที่ยวที่วัด SLA',
+              value: acceptance.totalRoutes,
+            },
+            {
+              label: 'รับตรงเวลา',
+              value: acceptance.onTimeRoutes,
+              tone: 'text-success',
+            },
+            {
+              label: 'รับช้า',
+              value: acceptance.lateRoutes,
+              tone: 'text-destructive',
+            },
+            {
+              label: 'ยังไม่รับเกินกำหนด',
+              value: acceptance.overdueUnacceptedRoutes,
+              tone: 'text-warning',
+            },
+            {
+              label: 'รอรับในกำหนด',
+              value: acceptance.pendingRoutes,
+            },
+            {
+              label: 'ตรงเวลา',
+              value:
+                acceptance.onTimeRatePercent == null ? '—' : `${acceptance.onTimeRatePercent}%`,
+            },
+            {
+              label: 'เวลารับเฉลี่ย',
+              value:
+                acceptance.averageResponseMinutes == null
+                  ? '—'
+                  : formatElapsedDuration(acceptance.averageResponseMinutes),
+            },
+            {
+              label: 'รับช้าเฉลี่ย',
+              value:
+                acceptance.averageLateMinutes == null
+                  ? '—'
+                  : formatElapsedDuration(acceptance.averageLateMinutes),
+            },
+          ].map((item) => (
+            <div key={item.label} className="rounded-lg border px-3 py-2.5">
+              <div className="text-xs text-muted-foreground">{item.label}</div>
+              <div className={cn('mt-1 text-xl font-semibold tabular-nums', item.tone)}>
+                {item.value}
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <Card className="overflow-hidden">
         <CardHeader className="flex-row items-center justify-between gap-3 border-b py-3">
           <div>
@@ -564,74 +664,97 @@ export function DeliveryReportPage() {
           </div>
 
           <div className="divide-y">
-            {rows.map(({ order, driver, closedAt, plannedAt }) => (
-              <div
-                key={order.id}
-                className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[1.15fr_1fr_1fr_1fr_0.9fr_1.1fr] lg:items-center"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-mono text-xs font-semibold">{order.orderNo}</span>
-                    <Badge
-                      variant={statusBadgeVariant(order.status)}
-                      className="h-5 px-1.5 text-[10px]"
+            {rows.map(({ order, driver, closedAt, plannedAt }) => {
+              const orderAcceptance = getOrderAcceptance(order);
+              return (
+                <div
+                  key={order.id}
+                  className="grid gap-3 px-4 py-3 text-sm lg:grid-cols-[1.15fr_1fr_1fr_1fr_0.9fr_1.1fr] lg:items-center"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-semibold">{order.orderNo}</span>
+                      <Badge
+                        variant={statusBadgeVariant(order.status)}
+                        className="h-5 px-1.5 text-[10px]"
+                      >
+                        {statusLabel[order.status]}
+                      </Badge>
+                    </div>
+                    <div className="mt-1 truncate font-medium">{order.customer.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {maskPhone(order.customer.phone)}
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 text-xs">
+                    <div className="truncate font-medium">
+                      {driver?.name ?? order.assignedDriverId ?? '—'}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {driver?.phone ? maskPhone(driver.phone) : '—'}
+                    </div>
+                    {orderAcceptance.state !== 'not_required' && (
+                      <Badge
+                        variant={
+                          orderAcceptance.state === 'on_time'
+                            ? 'success'
+                            : orderAcceptance.state === 'late'
+                              ? 'destructive'
+                              : 'warning'
+                        }
+                        className="mt-1 h-5 px-1.5 text-[10px]"
+                      >
+                        {acceptanceLabel(orderAcceptance)}
+                        {orderAcceptance.state === 'late' &&
+                          ` ${formatElapsedDuration(orderAcceptance.lateMinutes)}`}
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="space-y-1 text-xs">
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <CalendarDays className="h-3.5 w-3.5" />
+                      {formatDateTime(closedAt)}
+                    </div>
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <Clock3 className="h-3.5 w-3.5" />
+                      {deliveryDuration(order, closedAt)}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 text-xs">
+                    <div>{codSummary(order)}</div>
+                    <div className="flex items-center gap-1.5 text-muted-foreground">
+                      <ShieldCheck className="h-3.5 w-3.5" />
+                      {proofSummary(order)}
+                    </div>
+                  </div>
+
+                  <div className="min-w-0 text-xs">
+                    <div className="truncate font-medium">{order.deliveryRoute?.code ?? '—'}</div>
+                    <div className="text-muted-foreground">
+                      {plannedAt ? formatDateTime(plannedAt) : 'ไม่ระบุวันนัด'}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedOrderId(order.id)}
                     >
-                      {statusLabel[order.status]}
-                    </Badge>
-                  </div>
-                  <div className="mt-1 truncate font-medium">{order.customer.name}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {maskPhone(order.customer.phone)}
-                  </div>
-                </div>
-
-                <div className="min-w-0 text-xs">
-                  <div className="truncate font-medium">
-                    {driver?.name ?? order.assignedDriverId ?? '—'}
-                  </div>
-                  <div className="text-muted-foreground">
-                    {driver?.phone ? maskPhone(driver.phone) : '—'}
+                      <Eye className="h-3.5 w-3.5" />
+                      รายละเอียด
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => setMapOrderId(order.id)}>
+                      <Map className="h-3.5 w-3.5" />
+                      เส้นทาง
+                    </Button>
                   </div>
                 </div>
-
-                <div className="space-y-1 text-xs">
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    {formatDateTime(closedAt)}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <Clock3 className="h-3.5 w-3.5" />
-                    {deliveryDuration(order, closedAt)}
-                  </div>
-                </div>
-
-                <div className="space-y-1 text-xs">
-                  <div>{codSummary(order)}</div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground">
-                    <ShieldCheck className="h-3.5 w-3.5" />
-                    {proofSummary(order)}
-                  </div>
-                </div>
-
-                <div className="min-w-0 text-xs">
-                  <div className="truncate font-medium">{order.deliveryRoute?.code ?? '—'}</div>
-                  <div className="text-muted-foreground">
-                    {plannedAt ? formatDateTime(plannedAt) : 'ไม่ระบุวันนัด'}
-                  </div>
-                </div>
-
-                <div className="flex flex-wrap justify-start gap-1.5 lg:justify-end">
-                  <Button variant="outline" size="sm" onClick={() => setSelectedOrderId(order.id)}>
-                    <Eye className="h-3.5 w-3.5" />
-                    รายละเอียด
-                  </Button>
-                  <Button variant="outline" size="sm" onClick={() => setMapOrderId(order.id)}>
-                    <Map className="h-3.5 w-3.5" />
-                    เส้นทาง
-                  </Button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {!loading && rows.length === 0 && (

@@ -1,9 +1,6 @@
-import * as React from 'react';
 import { Clock3 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
 interface TimePickerProps {
@@ -12,6 +9,7 @@ interface TimePickerProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  required?: boolean;
   size?: 'sm' | 'default';
 }
 
@@ -21,40 +19,28 @@ export function TimePicker({
   placeholder = 'เลือกเวลา',
   className,
   disabled,
+  required,
   size = 'default',
 }: TimePickerProps) {
-  const [open, setOpen] = React.useState(false);
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size={size}
-          disabled={disabled}
-          data-empty={!value}
-          className={cn(
-            'justify-start text-left font-normal data-[empty=true]:text-muted-foreground',
-            className,
-          )}
-        >
-          <Clock3 className={cn('mr-2 size-4', size === 'sm' && 'size-3.5')} />
-          {value ? `${value} น.` : <span>{placeholder}</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-3" align="start">
-        <Input
-          type="time"
-          value={value ?? ''}
-          onChange={(event) => {
-            onChange?.(event.target.value);
-            setOpen(false);
-          }}
-          autoFocus
-          aria-label={placeholder}
-        />
-      </PopoverContent>
-    </Popover>
+    <div className={cn('relative', className)}>
+      <Clock3
+        aria-hidden="true"
+        className={cn(
+          'pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground',
+          size === 'sm' && 'size-3.5',
+        )}
+      />
+      <Input
+        type="time"
+        value={value ?? ''}
+        onChange={(event) => onChange?.(event.target.value)}
+        disabled={disabled}
+        required={required}
+        aria-required={required || undefined}
+        aria-label={placeholder}
+        className={cn('pl-9 tabular-nums', size === 'sm' && 'h-8 text-xs')}
+      />
+    </div>
   );
 }

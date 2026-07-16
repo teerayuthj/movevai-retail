@@ -59,6 +59,7 @@ import { cn } from '@/lib/utils';
 import {
   getMessengerOrderRole,
   isMessengerOrderParticipant,
+  isMessengerPlannedPreview,
   type MessengerOrderRole,
 } from '@/lib/messengerJobs';
 import type { Order } from '@/data/orderTypes';
@@ -408,8 +409,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     () =>
       orders.filter(
         (order) =>
-          isMessengerOrderParticipant(order, messengerCode) &&
-          MESSENGER_JOB_STATUSES.includes(order.status),
+          (isMessengerOrderParticipant(order, messengerCode) &&
+            MESSENGER_JOB_STATUSES.includes(order.status)) ||
+          isMessengerPlannedPreview(order, messengerCode),
       ),
     [orders, messengerCode],
   );
@@ -420,7 +422,9 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const deliveredOrderCount = myJobs.filter((o) => o.status === 'delivered').length;
   const myTrips = useMemo(() => groupMessengerTrips(myJobs), [myJobs]);
   const assignedTripCount = myTrips.filter((trip) =>
-    trip.orders.some((order) => order.status === 'assigned'),
+    trip.orders.some(
+      (order) => order.status === 'assigned' || isMessengerPlannedPreview(order, messengerCode),
+    ),
   ).length;
   const inTransitTripCount = myTrips.filter((trip) =>
     trip.orders.some((order) => order.status === 'in_transit'),
@@ -739,7 +743,11 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     () =>
       activeTab
         ? myJobs
-            .filter((order) => order.status === activeTab)
+            .filter(
+              (order) =>
+                order.status === activeTab ||
+                (activeTab === 'assigned' && isMessengerPlannedPreview(order, messengerCode)),
+            )
             .sort((a, b) => {
               const aOverdue = getMessengerJobOverdueMinutes(a, nowMs) != null;
               const bOverdue = getMessengerJobOverdueMinutes(b, nowMs) != null;
@@ -1161,7 +1169,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
                                 ).toLocaleDateString('th-TH', { dateStyle: 'full' })}
                               </div>
                             )}
-                            {isMultiStopMessengerTrip(trip) ? (
+                            {isMessengerPlannedPreview(first, messengerCode) ||
+                            isMultiStopMessengerTrip(trip) ? (
                               <MessengerTripCard
                                 trip={trip}
                                 nowMs={nowMs}

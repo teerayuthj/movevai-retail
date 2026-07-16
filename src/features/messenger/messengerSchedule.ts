@@ -7,6 +7,8 @@ import {
 } from '@/lib/deliveryPlanning';
 
 export const SCHEDULED_DELIVERY_REMINDER_MINUTES = 15;
+/** Planning เปิดให้ Messenger รับเที่ยวในช่วง 10 นาทีก่อนเวลาออก */
+export const SCHEDULED_DELIVERY_ACCEPTANCE_LEAD_MINUTES = 10;
 
 export type MessengerJobTiming =
   | { phase: 'scheduled'; minutes: number }
@@ -18,6 +20,25 @@ export function getMessengerJobScheduledAt(order: Order): number | null {
   if (!plan?.plannedDate || !plan.plannedTime) return null;
 
   return getPlanningDateTimeMs(plan.plannedDate, plan.plannedTime);
+}
+
+export function getMessengerJobAcceptanceOpensAt(order: Order): number | null {
+  if (order.deliveryRoute?.dispatchMode !== 'scheduled') return null;
+  const scheduledAt = getMessengerJobScheduledAt(order);
+  return scheduledAt == null
+    ? null
+    : scheduledAt - SCHEDULED_DELIVERY_ACCEPTANCE_LEAD_MINUTES * 60_000;
+}
+
+export function canMessengerAcceptJob(order: Order, nowMs: number) {
+  const acceptanceOpensAt = getMessengerJobAcceptanceOpensAt(order);
+  return acceptanceOpensAt == null || nowMs >= acceptanceOpensAt;
+}
+
+export function canMessengerStartJob(order: Order, nowMs: number) {
+  if (order.deliveryRoute?.dispatchMode !== 'scheduled') return true;
+  const scheduledAt = getMessengerJobScheduledAt(order);
+  return scheduledAt == null || nowMs >= scheduledAt;
 }
 
 export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJobTiming | null {

@@ -145,6 +145,7 @@ export function DeliveryTrackingPage({
   const [view, setView] = useState<TrackingView>(parsedSearch.view ?? 'all_open');
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(parsedSearch.orderId);
   const [isPanelOpen, setIsPanelOpen] = useState(true);
+  const [mapFocusVersion, setMapFocusVersion] = useState(0);
 
   const selectedOrder =
     (selectedOrderDetail?.id === selectedOrderId ? selectedOrderDetail : null) ??
@@ -175,6 +176,21 @@ export function DeliveryTrackingPage({
   const routeGroupsOnPage = trackingListGroups.filter(
     (group) => group[0]?.deliveryRoute?.id,
   ).length;
+  // เมื่อเลือกจุดในเที่ยว ให้ drawer คงบริบทของทั้งเที่ยวไว้ แล้วสลับเฉพาะรายละเอียด
+  // ของจุดที่เลือกอยู่ภายใน drawer เดิม
+  const selectedRouteOrders = useMemo(() => {
+    if (!selectedOrder) return [];
+    const group = trackingListGroups.find((ordersInGroup) =>
+      ordersInGroup.some((order) => order.id === selectedOrder.id),
+    );
+    if (!group) return [selectedOrder];
+    return group.map((order) => (order.id === selectedOrder.id ? selectedOrder : order));
+  }, [selectedOrder, trackingListGroups]);
+
+  function openLiveRoute(order: Order) {
+    setSelectedOrderId(order.id);
+    setMapFocusVersion((current) => current + 1);
+  }
 
   useEffect(() => {
     if (parsedSearch.view) setView(parsedSearch.view);
@@ -528,7 +544,11 @@ export function DeliveryTrackingPage({
   return (
     // full-bleed map-first: หักล้าง padding ของ <main> แล้วกินความสูงที่เหลือใต้ topbar (h-14) พอดีจอ
     <div className="relative -m-4 h-[calc(100dvh-3.5rem)] overflow-hidden sm:-m-6">
-      <FleetMap focusOrder={selectedOrder} />
+      <FleetMap
+        focusOrder={selectedOrder}
+        onFocusOrder={setSelectedOrderId}
+        focusVersion={mapFocusVersion}
+      />
 
       {/* แถบบนลอยเหนือแผนที่ — chip สถานะ (คุม view ของ panel) + ปุ่มไปหน้ารายงาน */}
       <div className="absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-2">
@@ -795,6 +815,7 @@ export function DeliveryTrackingPage({
                     orders={group}
                     selectedOrderId={selectedOrderId}
                     onSelectStop={(order) => setSelectedOrderId(order.id)}
+                    onViewLive={openLiveRoute}
                     actions={first.status === 'assigned' ? renderActions(first) : undefined}
                     nowMs={nowMs}
                   />
@@ -882,8 +903,10 @@ export function DeliveryTrackingPage({
         order={selectedOrder}
         driver={selectedDriver}
         drivers={drivers}
+        routeOrders={selectedRouteOrders}
         isDetailLoading={isDetailLoading}
         onClose={() => setSelectedOrderId(null)}
+        onSelectStop={(order) => setSelectedOrderId(order.id)}
         actions={selectedOrder ? renderActions(selectedOrder) : undefined}
         nowMs={nowMs}
       />
