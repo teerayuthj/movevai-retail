@@ -16,12 +16,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { useAdminAuth } from '@/auth/AuthContext';
 
 const EMPTY_FORM = { name: '', email: '', password: '', roleId: '' };
 
 type UserAction = 'password' | 'logout' | 'status';
 
 export function UsersPage() {
+  const { user: currentUser } = useAdminAuth();
   const [users, setUsers] = useState<RetailUser[]>([]);
   const [roles, setRoles] = useState<RetailRole[]>([]);
   const [loading, setLoading] = useState(true);
@@ -52,6 +54,9 @@ export function UsersPage() {
   useEffect(() => void load(), [load]);
 
   const activeCount = useMemo(() => users.filter((user) => user.isActive).length, [users]);
+
+  const isCurrentAdmin = (user: RetailUser) =>
+    user.id === currentUser?.id && currentUser.role.code === 'admin';
 
   const createUser = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -87,6 +92,10 @@ export function UsersPage() {
   };
 
   const openActionModal = (action: UserAction, user: RetailUser) => {
+    if (action === 'status' && user.isActive && isCurrentAdmin(user)) {
+      toast.error('ไม่สามารถปิดบัญชี Admin ที่กำลังใช้งานอยู่ได้');
+      return;
+    }
     setUserAction(action);
     setActionUser(user);
     setNewPassword('');
@@ -129,6 +138,11 @@ export function UsersPage() {
 
   const confirmStatusChange = async () => {
     if (!actionUser) return;
+    if (actionUser.isActive && isCurrentAdmin(actionUser)) {
+      toast.error('ไม่สามารถปิดบัญชี Admin ที่กำลังใช้งานอยู่ได้');
+      closeActionModal(true);
+      return;
+    }
     setSaving(true);
     try {
       await updateRetailUser(actionUser.id, { isActive: !actionUser.isActive });
@@ -444,6 +458,12 @@ export function UsersPage() {
                       <Button
                         size="sm"
                         variant={user.isActive ? 'destructive' : 'secondary'}
+                        disabled={user.isActive && isCurrentAdmin(user)}
+                        title={
+                          user.isActive && isCurrentAdmin(user)
+                            ? 'ไม่สามารถปิดบัญชี Admin ที่กำลังใช้งานอยู่ได้'
+                            : undefined
+                        }
                         onClick={() => openActionModal('status', user)}
                       >
                         <UserCog />
