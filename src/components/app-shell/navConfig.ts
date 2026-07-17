@@ -14,7 +14,6 @@ import {
   FileText,
   Smartphone,
   BellRing,
-  Columns3,
   Waypoints,
 } from 'lucide-react';
 import type { PageKey } from '@/lib/routes';
@@ -25,6 +24,8 @@ export type NavItem = {
   icon: React.ElementType;
   // แสดง badge จำนวนงานค้าง (ค่าจริงคำนวณจาก store ใน AppShell)
   showBadge?: boolean;
+  // แสดง badge สีแดงจำนวนงานผิดปกติที่ต้องรีบแก้ (ค่าจริงคำนวณจาก store ใน AppShell)
+  showAlertBadge?: boolean;
 };
 
 export type NavSection = {
@@ -53,7 +54,6 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'จัดส่ง & มอบหมาย',
     items: [
       { key: 'queue', label: 'ส่งทันที', icon: Truck, showBadge: true },
-      { key: 'dispatch_board', label: 'Dispatch Board', icon: Columns3, showBadge: true },
       { key: 'route_builder', label: 'สร้างเที่ยววิ่ง', icon: Waypoints },
       { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
     ],
@@ -62,7 +62,13 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'tracking',
     label: 'ติดตาม',
     items: [
-      { key: 'delivery_tracking', label: 'ติดตามการจัดส่ง', icon: Route, showBadge: true },
+      {
+        key: 'delivery_tracking',
+        label: 'ติดตามการจัดส่ง',
+        icon: Route,
+        showBadge: true,
+        showAlertBadge: true,
+      },
       { key: 'live_view', label: 'Live View', icon: Eye },
       { key: 'notifications', label: 'แจ้งเตือนลูกค้า', icon: BellRing },
     ],

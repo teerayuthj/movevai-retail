@@ -1,753 +1,973 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, CalendarClock, MapPin, Repeat2, Send, Timer, X, Zap } from 'lucide-react';
+import {
+  ArrowDown,
+  BookmarkPlus,
+  ChevronDown,
+  ChevronRight,
+  MapPin,
+  Navigation,
+  Plus,
+  Search,
+  Send,
+  Timer,
+  UserRound,
+  X,
+  Zap,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import {
-  ConfirmDispatchDialog,
-  DriverSummaryRow,
-} from '@/components/delivery/ConfirmDispatchDialog';
-import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { TimePicker } from '@/components/ui/time-picker';
 import type { Driver, Order } from '@/data/orderTypes';
 import { createDispatchJobs } from '@/features/dispatch/dispatchJobs';
-import { formatDriverDispatchStatus } from '@/lib/deliveryExecution';
-import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
-import {
-  getRoutePickupTasks,
-  stopsForSelectedPickupTasks,
-} from '@/features/dispatch/routeTemplateStops';
-import type {
-  DispatchJobType,
-  DispatchMethod,
-  DispatchStartPolicy,
-  DispatchCreationOutcome,
-  RouteTemplate,
-} from '@/features/dispatch/types';
+import type { DispatchCreationOutcome, DispatchJobType } from '@/features/dispatch/types';
 import { dispatchJobTypeLabel } from '@/features/dispatch/types';
-import { getNextHourTime, getTodayDateKey } from '@/lib/deliveryPlanning';
-import { createRouteTemplateRun, fetchRouteTemplates } from '@/lib/retailApi';
+import { formatDriverDispatchStatus } from '@/lib/deliveryExecution';
+import { getTodayDateKey } from '@/lib/deliveryPlanning';
+import {
+  createQuickRoutePreset,
+  createRouteAddress,
+  fetchQuickRoutePresets,
+  markQuickRoutePresetUsed,
+  type QuickRoutePreset,
+  type RouteAddress,
+} from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
+
+type PointTarget = 'pickup' | 'dropoff';
+
+type SelectedPoint = {
+  addressId?: string;
+  name: string;
+  contact?: string;
+  phone?: string;
+  address: string;
+};
 
 type Props = {
   open: boolean;
+  savedAddresses: RouteAddress[];
   drivers: Driver[];
   orders: Order[];
-  initialTemplateId?: string;
+  onAddressCreated: (address: RouteAddress) => void;
   onClose: () => void;
   onCreated: (outcome: DispatchCreationOutcome) => Promise<void> | void;
 };
 
-const SLA_OPTIONS = [5, 10, 15, 30];
+const URGENT_ACCEPT_WITHIN_MINUTES = 5;
+const TOP_PRESET_COUNT = 4;
+
+function toSelectedPoint(address: RouteAddress): SelectedPoint {
+  return {
+    addressId: address.id,
+    name: address.name,
+    contact: address.contact,
+    phone: address.phone,
+    address: address.address,
+  };
+}
+
+function sortPresets(presets: QuickRoutePreset[]) {
+  return [...presets].sort((left, right) => {
+    if (left.pinned !== right.pinned) return Number(right.pinned) - Number(left.pinned);
+    const lastUsed =
+      new Date(right.lastUsedAt ?? 0).getTime() - new Date(left.lastUsedAt ?? 0).getTime();
+    if (lastUsed !== 0) return lastUsed;
+    if (left.useCount !== right.useCount) return right.useCount - left.useCount;
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+  });
+}
+
+function pointSummary(point: SelectedPoint) {
+  return [point.address, point.contact, point.phone].filter(Boolean).join(' · ');
+}
+
+function pointDispatchName(point: SelectedPoint) {
+  return point.contact?.trim() || point.name.trim();
+}
+
+function AddressPickerDialog({
+  initialTarget,
+  chainToDropoff,
+  pickedPickup,
+  addresses,
+  onClose,
+  onSelected,
+  onManual,
+}: {
+  initialTarget: PointTarget;
+  /** เปิดจากจุดรับตอนยังไม่มีจุดส่ง = เลือกรับเสร็จแล้วต่อด้วยจุดส่งทันทีในหน้าต่างเดียว */
+  chainToDropoff: boolean;
+  pickedPickup: SelectedPoint | null;
+  addresses: RouteAddress[];
+  onClose: () => void;
+  onSelected: (target: PointTarget, address: RouteAddress) => void;
+  onManual: (
+    target: PointTarget,
+    point: SelectedPoint,
+    saveToAddressBook: boolean,
+  ) => Promise<boolean>;
+}) {
+  const [target, setTarget] = useState<PointTarget>(initialTarget);
+  const [search, setSearch] = useState('');
+  const [addingNew, setAddingNew] = useState(false);
+  const [name, setName] = useState('');
+  const [contact, setContact] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [saveToAddressBook, setSaveToAddressBook] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const onDropoffStep = target === 'dropoff';
+  const targetLabel = onDropoffStep ? 'จุดส่ง' : 'จุดรับ';
+  // ขั้นเลือกจุดส่ง: ตัดสถานที่ที่เพิ่งเลือกเป็นจุดรับออก กันรับ–ส่งจุดเดียวกัน
+  const selectableAddresses =
+    onDropoffStep && pickedPickup?.addressId
+      ? addresses.filter((item) => item.id !== pickedPickup.addressId)
+      : addresses;
+
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredAddresses = normalizedSearch
+    ? selectableAddresses.filter((item) =>
+        [item.name, item.contact, item.phone, item.address, item.routeGroup]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(normalizedSearch)),
+      )
+    : selectableAddresses;
+  const favorites = selectableAddresses.filter((item) => item.favorite).slice(0, TOP_PRESET_COUNT);
+
+  const resetEntry = () => {
+    setSearch('');
+    setAddingNew(false);
+    setName('');
+    setContact('');
+    setPhone('');
+    setAddress('');
+  };
+
+  const advanceOrClose = () => {
+    if (!onDropoffStep && chainToDropoff) {
+      setTarget('dropoff');
+      resetEntry();
+      return;
+    }
+    onClose();
+  };
+
+  const selectAddress = (item: RouteAddress) => {
+    onSelected(target, item);
+    advanceOrClose();
+  };
+
+  const submitManual = async () => {
+    if (!address.trim()) {
+      toast.error(`ระบุที่อยู่${targetLabel}ก่อน`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const selected = await onManual(
+        target,
+        {
+          name: name.trim() || `จุด${onDropoffStep ? 'ส่ง' : 'รับ'}ใหม่`,
+          contact: contact.trim() || undefined,
+          phone: phone.trim() || undefined,
+          address: address.trim(),
+        },
+        saveToAddressBook,
+      );
+      if (selected) advanceOrClose();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+      <div className="app-scroll max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border bg-background shadow-2xl sm:rounded-3xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-background px-5 py-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-semibold">เลือก{targetLabel}</h3>
+              {chainToDropoff && (
+                <Badge variant="secondary">ขั้นที่ {onDropoffStep ? '2' : '1'}/2</Badge>
+              )}
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {chainToDropoff
+                ? onDropoffStep
+                  ? 'เลือกจุดส่งต่อได้เลย ไม่ต้องเปิดใหม่'
+                  : 'เลือกจุดรับก่อน แล้วต่อด้วยจุดส่งทันที'
+                : 'เลือกจากคลังเดียวกับหน้าสร้างเที่ยววิ่ง'}
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose} disabled={saving}>
+            <X className="h-4 w-4" />
+            <span className="sr-only">ปิด</span>
+          </Button>
+        </header>
+
+        <div className="space-y-4 p-5">
+          {chainToDropoff && onDropoffStep && pickedPickup && (
+            <div className="flex items-center justify-between gap-3 rounded-xl bg-info/10 p-3">
+              <span className="flex min-w-0 items-center gap-2 text-xs">
+                <MapPin className="h-4 w-4 shrink-0 text-info" />
+                <span className="min-w-0">
+                  <span className="block font-medium">จุดรับ: {pickedPickup.name}</span>
+                  <span className="block truncate text-muted-foreground">
+                    {pickedPickup.address}
+                  </span>
+                </span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0"
+                onClick={() => {
+                  setTarget('pickup');
+                  resetEntry();
+                }}
+                disabled={saving}
+              >
+                เปลี่ยน
+              </Button>
+            </div>
+          )}
+          {!addingNew ? (
+            <>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  className="pl-9"
+                  placeholder="ค้นหาชื่อ กลุ่ม ที่อยู่ หรือเบอร์…"
+                  autoFocus
+                />
+              </div>
+
+              {!normalizedSearch && favorites.length > 0 && (
+                <section>
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-xs font-semibold">สถานที่ใช้บ่อย</h4>
+                    <span className="text-xs text-muted-foreground">{favorites.length} รายการ</span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {favorites.map((item) => (
+                      <AddressOption
+                        key={item.id}
+                        address={item}
+                        onClick={() => selectAddress(item)}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <section>
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-xs font-semibold">
+                    {normalizedSearch ? 'ผลการค้นหา' : 'ทุกสถานที่ในคลัง'}
+                  </h4>
+                  <span className="text-xs text-muted-foreground">
+                    {filteredAddresses.length} รายการ
+                  </span>
+                </div>
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {filteredAddresses.map((item) => (
+                    <AddressOption
+                      key={item.id}
+                      address={item}
+                      onClick={() => selectAddress(item)}
+                    />
+                  ))}
+                  {filteredAddresses.length === 0 && (
+                    <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">
+                      ไม่พบสถานที่ในคลัง
+                    </div>
+                  )}
+                </div>
+              </section>
+
+              <Button variant="outline" className="w-full" onClick={() => setAddingNew(true)}>
+                <Plus className="h-4 w-4" /> ใช้ที่อยู่ใหม่
+              </Button>
+            </>
+          ) : (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-sm font-semibold">ใช้ที่อยู่ใหม่</h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setAddingNew(false)}
+                  disabled={saving}
+                >
+                  กลับไปคลัง
+                </Button>
+              </div>
+              <label className="block text-xs font-medium">
+                ชื่อสถานที่
+                <Input
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  className="mt-1"
+                  placeholder={target === 'pickup' ? 'เช่น สำนักงานลูกค้า' : 'เช่น บ้านผู้รับ'}
+                />
+              </label>
+              <label className="block text-xs font-medium">
+                ที่อยู่ *
+                <Input
+                  value={address}
+                  onChange={(event) => setAddress(event.target.value)}
+                  className="mt-1"
+                  placeholder="ระบุที่อยู่หรือจุดนัดพบ"
+                  autoFocus
+                />
+              </label>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs font-medium">
+                  ผู้ติดต่อ
+                  <Input
+                    value={contact}
+                    onChange={(event) => setContact(event.target.value)}
+                    className="mt-1"
+                    placeholder="ถ้ามี"
+                  />
+                </label>
+                <label className="text-xs font-medium">
+                  เบอร์โทร
+                  <Input
+                    value={phone}
+                    onChange={(event) => setPhone(event.target.value)}
+                    className="mt-1"
+                    placeholder="08x-xxx-xxxx"
+                  />
+                </label>
+              </div>
+              <label className="flex cursor-pointer items-start gap-2 rounded-xl bg-muted/50 p-3 text-xs">
+                <input
+                  type="checkbox"
+                  checked={saveToAddressBook}
+                  onChange={(event) => setSaveToAddressBook(event.target.checked)}
+                  className="mt-0.5"
+                />
+                <span>
+                  <span className="block font-medium">บันทึกในคลังสถานที่</span>
+                  <span className="text-muted-foreground">
+                    ใช้ซ้ำได้จากงานด่วนและสร้างเที่ยววิ่ง
+                  </span>
+                </span>
+              </label>
+              <Button className="w-full" onClick={() => void submitManual()} disabled={saving}>
+                {saving ? 'กำลังเลือกจุด…' : `ใช้เป็น${targetLabel}`}
+              </Button>
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AddressOption({ address, onClick }: { address: RouteAddress; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full rounded-xl border bg-background p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium">{address.name}</span>
+          <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">
+            {address.address}
+          </span>
+        </span>
+        {address.favorite && <Badge variant="secondary">ใช้บ่อย</Badge>}
+      </div>
+      {(address.contact || address.phone) && (
+        <span className="mt-1 block truncate text-xs text-muted-foreground">
+          {[address.contact, address.phone].filter(Boolean).join(' · ')}
+        </span>
+      )}
+      <span className="mt-1 block truncate text-[11px] text-muted-foreground/80">
+        {address.routeGroup}
+      </span>
+    </button>
+  );
+}
+
+function RoutePresetPickerDialog({
+  presets,
+  onClose,
+  onSelected,
+}: {
+  presets: QuickRoutePreset[];
+  onClose: () => void;
+  onSelected: (preset: QuickRoutePreset) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const normalizedSearch = search.trim().toLowerCase();
+  const filteredPresets = normalizedSearch
+    ? presets.filter((preset) =>
+        [
+          preset.label,
+          preset.pickup.name,
+          preset.pickup.address,
+          preset.dropoff.name,
+          preset.dropoff.address,
+        ]
+          .filter(Boolean)
+          .some((value) => value!.toLowerCase().includes(normalizedSearch)),
+      )
+    : presets;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
+      <div className="app-scroll max-h-[92dvh] w-full max-w-lg overflow-y-auto rounded-t-3xl border bg-background shadow-2xl sm:rounded-3xl">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b bg-background px-5 py-4">
+          <div>
+            <h3 className="text-base font-semibold">เส้นทางด่วนทั้งหมด</h3>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {presets.length} รายการจาก database
+            </p>
+          </div>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-4 w-4" />
+            <span className="sr-only">ปิด</span>
+          </Button>
+        </header>
+        <div className="space-y-3 p-5">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              className="pl-9"
+              placeholder="ค้นหาจุดรับ จุดส่ง หรือชื่อเส้นทาง…"
+              autoFocus
+            />
+          </div>
+          <div className="space-y-2">
+            {filteredPresets.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => onSelected(preset)}
+                className="w-full rounded-xl border bg-background p-3 text-left transition-colors hover:border-primary hover:bg-primary/5"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-medium">
+                      {preset.label || `${preset.pickup.name} → ${preset.dropoff.name}`}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-muted-foreground">
+                      รับ {preset.pickup.name} → ส่ง {preset.dropoff.name}
+                    </span>
+                  </span>
+                  <ChevronRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                </div>
+              </button>
+            ))}
+            {filteredPresets.length === 0 && (
+              <div className="rounded-xl border border-dashed p-4 text-center text-xs text-muted-foreground">
+                ไม่พบเส้นทางที่ตรงกับคำค้น
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function QuickCreateDialog({
   open,
+  savedAddresses,
   drivers,
   orders,
-  initialTemplateId,
+  onAddressCreated,
   onClose,
   onCreated,
 }: Props) {
-  const [templates, setTemplates] = useState<RouteTemplate[]>([]);
-  const [mode, setMode] = useState<'single' | 'template'>('single');
-  const [templateId, setTemplateId] = useState('');
-  const [selectedPickupStopIds, setSelectedPickupStopIds] = useState<string[]>([]);
-  const [jobType, setJobType] = useState<Exclude<DispatchJobType, 'order'>>('document');
-  const [title, setTitle] = useState('ส่งเอกสาร');
-  const [messengerTitle, setMessengerTitle] = useState('');
-  const [pickupName, setPickupName] = useState('');
-  const [pickupPhone, setPickupPhone] = useState('');
-  const [pickupAddress, setPickupAddress] = useState('');
-  const [destinationName, setDestinationName] = useState('');
-  const [destinationPhone, setDestinationPhone] = useState('');
-  const [destinationAddress, setDestinationAddress] = useState('');
-  const [method, setMethod] = useState<DispatchMethod>('immediate');
+  const [jobType, setJobType] = useState<Exclude<DispatchJobType, 'order'>>('other');
+  const [title, setTitle] = useState('งานด่วน');
   const [driverId, setDriverId] = useState('');
-  const [plannedDate, setPlannedDate] = useState(getTodayDateKey());
-  const [plannedTime, setPlannedTime] = useState(getNextHourTime());
-  const [acceptWithinMinutes, setAcceptWithinMinutes] = useState(15);
-  const [startWithinMinutes, setStartWithinMinutes] = useState(10);
-  const [startPolicy, setStartPolicy] = useState<DispatchStartPolicy>('manual');
-  const [note, setNote] = useState('');
-  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
+  const [pickup, setPickup] = useState<SelectedPoint | null>(null);
+  const [dropoff, setDropoff] = useState<SelectedPoint | null>(null);
+  const [routePresets, setRoutePresets] = useState<QuickRoutePreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+  const [picker, setPicker] = useState<{ target: PointTarget; chainToDropoff: boolean } | null>(
+    null,
+  );
+  const [presetPickerOpen, setPresetPickerOpen] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [savingPreset, setSavingPreset] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const selectedTemplate = templates.find((template) => template.id === templateId);
-  const selectedDriver = drivers.find((driver) => driver.id === driverId);
-  const templateTasks = useMemo(
-    () => getRoutePickupTasks(selectedTemplate?.stops ?? []),
-    [selectedTemplate],
+  const availableDrivers = useMemo(
+    () => drivers.filter((driver) => driver.status !== 'off_duty'),
+    [drivers],
   );
-  const selectedTemplateStops = useMemo(
-    () => stopsForSelectedPickupTasks(selectedTemplate?.stops ?? [], selectedPickupStopIds),
-    [selectedPickupStopIds, selectedTemplate],
-  );
-
-  useEffect(() => {
-    if (open) {
-      void fetchRouteTemplates()
-        .then((items) => setTemplates(items.filter((template) => template.active)))
-        .catch((error) =>
-          toast.error(error instanceof Error ? error.message : 'โหลด Route Templates ไม่สำเร็จ'),
-        );
-    }
-  }, [open]);
+  const selectedDriver = availableDrivers.find((driver) => driver.id === driverId);
+  const topPresets = routePresets.slice(0, TOP_PRESET_COUNT);
+  const canSavePreset =
+    pickup?.addressId != null &&
+    dropoff?.addressId != null &&
+    pickup.addressId !== dropoff.addressId &&
+    selectedPresetId == null;
 
   useEffect(() => {
     if (!open) return;
-    setConfirmSendOpen(false);
-    if (initialTemplateId && templates.some((template) => template.id === initialTemplateId)) {
-      setMode('template');
-      setTemplateId(initialTemplateId);
-      setMethod('scheduled');
-      return;
-    }
-    setMode('single');
-    setTemplateId('');
-  }, [initialTemplateId, open, templates]);
-
-  useEffect(() => {
-    if (!selectedTemplate) return;
-    setSelectedPickupStopIds([]);
-    setTitle(selectedTemplate.name);
-    setMessengerTitle('');
-    setJobType(selectedTemplate.jobType);
-    setDriverId(selectedTemplate.defaultDriverId ?? '');
-    setPlannedTime(selectedTemplate.plannedTime ?? '');
-    setAcceptWithinMinutes(selectedTemplate.acceptWithinMinutes);
-    setStartWithinMinutes(selectedTemplate.startWithinMinutes);
-    setStartPolicy(selectedTemplate.startPolicy);
-  }, [selectedTemplate]);
+    setJobType('other');
+    setTitle('งานด่วน');
+    setDriverId('');
+    setPickup(null);
+    setDropoff(null);
+    setSelectedPresetId(null);
+    setPicker(null);
+    setPresetPickerOpen(false);
+    setShowMore(false);
+    void fetchQuickRoutePresets()
+      .then((presets) => setRoutePresets(sortPresets(presets)))
+      .catch((error) =>
+        toast.error(
+          error instanceof Error ? error.message : 'โหลดเส้นทางด่วนที่บันทึกไว้ไม่สำเร็จ',
+        ),
+      );
+  }, [open]);
 
   if (!open) return null;
 
+  // เปิดจากจุดรับตอนยังไม่มีจุดส่ง = flow ต่อเนื่อง เลือกรับแล้วต่อส่งในหน้าต่างเดียว
+  const openPicker = (target: PointTarget) => {
+    setPicker({ target, chainToDropoff: target === 'pickup' && !dropoff });
+  };
+
+  const selectPoint = (target: PointTarget, address: RouteAddress) => {
+    const point = toSelectedPoint(address);
+    if (target === 'pickup') setPickup(point);
+    else setDropoff(point);
+    setSelectedPresetId(null);
+  };
+
+  const selectPreset = (preset: QuickRoutePreset) => {
+    setPickup(toSelectedPoint(preset.pickup));
+    setDropoff(toSelectedPoint(preset.dropoff));
+    setSelectedPresetId(preset.id);
+    setPresetPickerOpen(false);
+  };
+
+  const selectManualPoint = async (target: PointTarget, point: SelectedPoint, save: boolean) => {
+    let nextPoint = point;
+    if (save) {
+      try {
+        const saved = await createRouteAddress({
+          routeGroup: 'งานด่วน',
+          kind: target,
+          name: point.name,
+          contact: point.contact,
+          phone: point.phone,
+          address: point.address,
+          favorite: true,
+        });
+        onAddressCreated(saved);
+        nextPoint = toSelectedPoint(saved);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'บันทึกสถานที่ใหม่ไม่สำเร็จ');
+        return false;
+      }
+    }
+    if (target === 'pickup') setPickup(nextPoint);
+    else setDropoff(nextPoint);
+    setSelectedPresetId(null);
+    return true;
+  };
+
+  const savePreset = async () => {
+    if (!pickup?.addressId || !dropoff?.addressId) return;
+    setSavingPreset(true);
+    try {
+      const saved = await createQuickRoutePreset({
+        pickupAddressId: pickup.addressId,
+        dropoffAddressId: dropoff.addressId,
+      });
+      setRoutePresets((current) =>
+        sortPresets([saved, ...current.filter((item) => item.id !== saved.id)]),
+      );
+      setSelectedPresetId(saved.id);
+      toast.success('บันทึกเส้นทางไว้ใช้ครั้งถัดไปแล้ว');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'บันทึกเส้นทางด่วนไม่สำเร็จ');
+    } finally {
+      setSavingPreset(false);
+    }
+  };
+
   const validate = () => {
-    if (!title.trim()) {
-      toast.error('กรุณาระบุชื่องาน');
+    if (!selectedDriver) {
+      toast.error('เลือก Messenger ที่จะรับงานด่วนก่อน');
       return false;
     }
-    if (mode === 'template' && !selectedTemplate) {
-      toast.error('กรุณาเลือก Route Template');
+    if (!pickup) {
+      toast.error('เลือกจุดรับงานก่อน');
       return false;
     }
-    if (mode === 'template' && selectedPickupStopIds.length === 0) {
-      toast.error('เลือกอย่างน้อย 1 คู่รับ → ส่งสำหรับเที่ยวนี้');
-      return false;
-    }
-    if (mode === 'single' && (!pickupAddress.trim() || !destinationAddress.trim())) {
-      toast.error('กรุณาระบุจุดรับและจุดส่ง');
-      return false;
-    }
-    if (method !== 'planning' && !selectedDriver) {
-      toast.error('กรุณาเลือกคนขับ');
-      return false;
-    }
-    if (method === 'scheduled' && !plannedTime) {
-      toast.error('กรุณาระบุเวลาออกก่อนมอบงานตามวัน–เวลา');
+    if (!dropoff) {
+      toast.error('เลือกจุดส่งก่อน');
       return false;
     }
     return true;
   };
 
   const submit = async () => {
-    if (!validate()) return;
+    if (!validate() || !selectedDriver || !pickup || !dropoff) return;
 
     setSubmitting(true);
     try {
-      if (mode === 'template' && selectedTemplate) {
-        const result = await createRouteTemplateRun(selectedTemplate.id, {
-          selectedPickupStopIds,
-          plannedDate,
-          plannedTime: plannedTime || undefined,
-          driverId: driverId || undefined,
-          dispatchMode: method,
-          messengerTitle: messengerTitle.trim() || undefined,
-          note: note.trim() || undefined,
-        });
-        await onCreated({
-          destination: result.status === 'dispatched' ? 'tracking' : 'planning',
-          orderIds: result.orderIds,
-          plannedDate: result.status === 'planned' ? result.plannedDate : undefined,
-        });
-        toast.success(
-          result.status === 'dispatched'
-            ? method === 'immediate'
-              ? `สร้างและส่ง ${selectedTemplate.name} ให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว`
-              : `มอบ ${selectedTemplate.name} ให้ ${selectedDriver?.name ?? 'Messenger'} ตามเวลาแล้ว`
-            : `สร้าง Route Run ของ ${selectedTemplate.name} เข้า Planning แล้ว`,
-        );
-        onClose();
-        return;
-      }
       const result = await createDispatchJobs({
-        mode,
-        title,
-        messengerTitle: messengerTitle.trim() || undefined,
+        mode: 'single',
+        title: title.trim() || 'งานด่วน',
         jobType,
-        pickupName,
-        pickupPhone,
-        pickupAddress,
-        destinationName,
-        destinationPhone,
-        destinationAddress,
-        method,
+        pickupName: pointDispatchName(pickup),
+        pickupPhone: pickup.phone?.trim() || undefined,
+        pickupAddress: pickup.address,
+        destinationName: pointDispatchName(dropoff),
+        destinationPhone: dropoff.phone?.trim() || undefined,
+        destinationAddress: dropoff.address,
+        method: 'immediate',
         driver: selectedDriver,
-        plannedDate,
-        plannedTime,
-        acceptWithinMinutes,
-        startWithinMinutes,
-        startPolicy,
-        note,
+        plannedDate: getTodayDateKey(),
+        acceptWithinMinutes: URGENT_ACCEPT_WITHIN_MINUTES,
+        startWithinMinutes: 0,
+        startPolicy: 'accept_starts',
       });
+      if (selectedPresetId) {
+        void markQuickRoutePresetUsed(selectedPresetId).catch(() => undefined);
+      }
       await onCreated({
-        destination: method === 'planning' ? 'planning' : 'tracking',
+        destination: 'tracking',
         orderIds: result.orders.map((order) => order.id),
-        plannedDate: method === 'planning' ? plannedDate : undefined,
       });
-      toast.success(
-        method === 'immediate'
-          ? `สร้างงานและส่งให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว`
-          : method === 'scheduled'
-            ? `มอบงานให้ ${selectedDriver?.name ?? 'Messenger'} ตามเวลาแล้ว`
-            : 'สร้างงานเข้า Planning แล้ว',
-      );
+      toast.success(`ส่งงานด่วนให้ ${selectedDriver.name} แล้ว`);
       onClose();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'สร้างงานไม่สำเร็จ');
+      toast.error(error instanceof Error ? error.message : 'ส่งงานด่วนไม่สำเร็จ');
     } finally {
       setSubmitting(false);
     }
   };
 
-  // งานที่มอบให้ Messenger แล้ว (ทันที/ตามเวลา) ต้องยืนยันก่อนส่งจริง
-  // ส่วน Planning เป็นเพียงงานรอจัดรอบ จึงยังไม่ต้องยืนยันการมอบงาน
-  const requestSubmit = () => {
-    if (method !== 'planning') {
-      if (!validate()) return;
-      setConfirmSendOpen(true);
-      return;
-    }
-    void submit();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-      <div className="app-scroll max-h-[95dvh] w-full max-w-4xl overflow-y-auto rounded-t-2xl border bg-background shadow-xl sm:rounded-2xl">
-        <div className="sticky top-0 z-10 flex items-start justify-between border-b bg-background px-4 py-4 sm:px-6">
-          <div>
-            <h2 className="text-lg font-semibold">สร้างงานรับ–ส่ง</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              สร้างงานเดี่ยวหรือใช้ Route เดิม แล้วเลือกส่งทันทีหรือเข้า Planning
-            </p>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4">
+      <div className="app-scroll w-full max-w-lg overflow-y-auto rounded-t-3xl border bg-background shadow-2xl sm:max-h-[94dvh] sm:rounded-3xl">
+        <header className="sticky top-0 z-10 flex items-start justify-between border-b bg-background px-5 py-4 sm:px-6">
+          <div className="flex min-w-0 gap-3">
+            <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-warning/15 text-warning">
+              <Zap className="h-5 w-5" />
+            </span>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-lg font-semibold">ส่งงานด่วน</h2>
+                <Badge variant="warning">ส่งทันที</Badge>
+              </div>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                เลือกเส้นทางเดิม แล้วแจ้ง Messenger ตอนนี้
+              </p>
+            </div>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} disabled={submitting}>
             <X className="h-4 w-4" />
             <span className="sr-only">ปิด</span>
           </Button>
-        </div>
+        </header>
 
-        <div className="grid gap-6 px-4 py-5 lg:grid-cols-[1fr_300px] lg:px-6">
-          <div className="space-y-6">
-            <section>
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">1. รูปแบบงาน</h3>
-                <Badge variant="info">Quick Create</Badge>
+        <div className="space-y-5 px-5 py-5 sm:px-6">
+          <section className="rounded-2xl border bg-muted/20 p-4">
+            <label className="text-xs font-semibold text-muted-foreground">ส่งให้ใคร</label>
+            <div className="mt-2 flex items-center gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-primary/10 text-primary">
+                <UserRound className="h-4 w-4" />
+              </span>
+              <Select
+                value={driverId}
+                onChange={(event) => setDriverId(event.target.value)}
+                containerClassName="min-w-0 flex-1"
+              >
+                <option value="">เลือก Messenger</option>
+                {availableDrivers.map((driver) => (
+                  <option key={driver.id} value={driver.id}>
+                    {driver.name} · {formatDriverDispatchStatus(driver, orders)}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            {selectedDriver?.activeOrders ? (
+              <p className="mt-2 text-xs text-warning">
+                {selectedDriver.name} มีงานค้างอยู่ {selectedDriver.activeOrders} งาน
+              </p>
+            ) : null}
+          </section>
+
+          <section>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold">เส้นทางที่ใช้บ่อย</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">คู่จุดรับ → ส่งจาก database</p>
               </div>
+              {routePresets.length > TOP_PRESET_COUNT && (
+                <Button variant="ghost" size="sm" onClick={() => setPresetPickerOpen(true)}>
+                  ดูทั้งหมด {routePresets.length} <ChevronRight className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+            {topPresets.length > 0 ? (
               <div className="grid gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('single');
-                    setMethod('immediate');
-                  }}
-                  className={cn(
-                    'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
-                    mode === 'single' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40',
-                  )}
-                >
-                  <MapPin className="mt-0.5 h-4 w-4" />
-                  <span>
-                    <span className="block text-sm font-medium">งานเดี่ยว</span>
-                    <span className="text-xs text-muted-foreground">กรอกจุดรับและจุดส่ง</span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('template');
-                    setMethod('scheduled');
-                  }}
-                  className={cn(
-                    'flex items-start gap-3 rounded-xl border p-3 text-left transition-colors',
-                    mode === 'template' ? 'border-primary bg-primary/5' : 'hover:bg-muted/40',
-                  )}
-                >
-                  <Repeat2 className="mt-0.5 h-4 w-4" />
-                  <span>
-                    <span className="block text-sm font-medium">ใช้ Route เดิม</span>
-                    <span className="text-xs text-muted-foreground">
-                      เลือกเฉพาะคู่รับ → ส่งที่ต้องวิ่งในเที่ยวนี้
+                {topPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => selectPreset(preset)}
+                    className={cn(
+                      'rounded-xl border bg-background p-3 text-left transition-colors hover:border-primary hover:bg-primary/5',
+                      selectedPresetId === preset.id &&
+                        'border-primary bg-primary/5 ring-1 ring-primary',
+                    )}
+                  >
+                    <span className="block truncate text-sm font-medium">
+                      {preset.label || `${preset.pickup.name} → ${preset.dropoff.name}`}
                     </span>
-                  </span>
-                </button>
-              </div>
-            </section>
-
-            {mode === 'template' && (
-              <section>
-                <label className="text-xs font-medium">Route Template</label>
-                <Select
-                  value={templateId}
-                  onChange={(event) => setTemplateId(event.target.value)}
-                  className="mt-1"
-                >
-                  <option value="">เลือกเส้นทางประจำ</option>
-                  {templates.map((template) => {
-                    const pickups = template.stops.filter((stop) => stop.kind === 'pickup').length;
-                    return (
-                      <option key={template.id} value={template.id}>
-                        {template.routeGroup} · {template.name} — {pickups} รับ ·{' '}
-                        {template.stops.length - pickups} ส่ง
-                      </option>
-                    );
-                  })}
-                </Select>
-                {templates.length === 0 && (
-                  <p className="mt-2 text-xs text-warning">
-                    ยังไม่มี Route Template — สร้างได้จากเมนูเส้นทางประจำ
-                  </p>
-                )}
-              </section>
-            )}
-
-            <section>
-              <h3 className="mb-2 text-sm font-semibold">2. รายละเอียดงาน</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-medium">
-                  ประเภทงาน
-                  <Select
-                    value={jobType}
-                    onChange={(event) => setJobType(event.target.value as typeof jobType)}
-                    className="mt-1"
-                    disabled={mode === 'template'}
-                  >
-                    {(['document', 'parcel', 'other'] as const).map((value) => (
-                      <option key={value} value={value}>
-                        {dispatchJobTypeLabel[value]}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-                {mode === 'single' && (
-                  <label className="text-xs font-medium">
-                    ชื่องานภายใน
-                    <Input
-                      value={title}
-                      onChange={(event) => setTitle(event.target.value)}
-                      className="mt-1"
-                      placeholder="เช่น รับเอกสารสัญญา"
-                    />
-                  </label>
-                )}
-                <label className="text-xs font-medium sm:col-span-2">
-                  ชื่อที่แสดงบน Messenger{' '}
-                  <span className="font-normal text-muted-foreground">(ไม่บังคับ)</span>
-                  <Input
-                    value={messengerTitle}
-                    onChange={(event) => setMessengerTitle(event.target.value)}
-                    className="mt-1"
-                    placeholder="เช่น รอบเอกสารสุขุมวิทเช้า"
-                    maxLength={50}
-                  />
-                  <span className="mt-1 block text-[10px] font-normal text-muted-foreground">
-                    เว้นว่างเพื่อไม่แสดงหัวเรื่องบน Card
-                  </span>
-                </label>
-                {mode === 'single' && (
-                  <>
-                    <label className="text-xs font-medium">
-                      ชื่อจุดรับ
-                      <Input
-                        value={pickupName}
-                        onChange={(event) => setPickupName(event.target.value)}
-                        className="mt-1"
-                        placeholder="สำนักงานใหญ่"
-                      />
-                    </label>
-                    <label className="text-xs font-medium">
-                      เบอร์ติดต่อจุดรับ
-                      <Input
-                        value={pickupPhone}
-                        onChange={(event) => setPickupPhone(event.target.value)}
-                        className="mt-1"
-                        placeholder="08x-xxx-xxxx"
-                      />
-                    </label>
-                    <label className="text-xs font-medium sm:col-span-2">
-                      ที่อยู่จุดรับ
-                      <Input
-                        value={pickupAddress}
-                        onChange={(event) => setPickupAddress(event.target.value)}
-                        className="mt-1"
-                      />
-                    </label>
-                    <label className="text-xs font-medium">
-                      ชื่อผู้รับ/จุดส่ง
-                      <Input
-                        value={destinationName}
-                        onChange={(event) => setDestinationName(event.target.value)}
-                        className="mt-1"
-                      />
-                    </label>
-                    <label className="text-xs font-medium">
-                      เบอร์ติดต่อจุดส่ง
-                      <Input
-                        value={destinationPhone}
-                        onChange={(event) => setDestinationPhone(event.target.value)}
-                        className="mt-1"
-                      />
-                    </label>
-                    <label className="text-xs font-medium sm:col-span-2">
-                      ที่อยู่จุดส่ง
-                      <Input
-                        value={destinationAddress}
-                        onChange={(event) => setDestinationAddress(event.target.value)}
-                        className="mt-1"
-                      />
-                    </label>
-                  </>
-                )}
-              </div>
-              {mode === 'template' && selectedTemplate && (
-                <div className="mt-3 rounded-lg border bg-muted/20 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-medium">เลือกงานของเที่ยวนี้</div>
-                    <span className="text-[11px] text-info">
-                      {selectedPickupStopIds.length}/{templateTasks.length} งาน
+                    <span className="mt-1 block truncate text-xs text-muted-foreground">
+                      รับ {preset.pickup.name}
                     </span>
-                  </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    ระบบไม่เลือกทุกจุดให้อัตโนมัติ
-                  </p>
-                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                    {templateTasks.map((task) => {
-                      const checked = selectedPickupStopIds.includes(task.pickup.id);
-                      return (
-                        <label
-                          key={task.pickup.id}
-                          className={`flex cursor-pointer items-start gap-2 rounded-md border bg-background p-2 text-xs ${checked ? 'border-primary' : ''}`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="mt-0.5"
-                            checked={checked}
-                            onChange={() =>
-                              setSelectedPickupStopIds((current) =>
-                                current.includes(task.pickup.id)
-                                  ? current.filter((id) => id !== task.pickup.id)
-                                  : [...current, task.pickup.id],
-                              )
-                            }
-                          />
-                          <span className="min-w-0">
-                            <span className="block truncate text-info">รับ {task.pickup.name}</span>
-                            <span className="mt-0.5 flex items-center gap-1 truncate text-success">
-                              <ArrowRight className="h-3 w-3 shrink-0" /> ส่ง {task.dropoff.name}
-                            </span>
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                  <RouteStopsMap stops={selectedTemplateStops} className="mt-3 h-48" />
-                </div>
-              )}
-            </section>
-
-            <section>
-              <h3 className="mb-2 text-sm font-semibold">3. การจัดส่งและคนขับ</h3>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-xs font-medium">
-                  วิธีดำเนินการ
-                  <Select
-                    value={method}
-                    onChange={(event) => setMethod(event.target.value as DispatchMethod)}
-                    className="mt-1"
-                  >
-                    <option value="immediate">มอบงานทันที</option>
-                    <option value="scheduled">มอบงานตามวัน–เวลา</option>
-                    <option value="planning">เข้า Planning</option>
-                  </Select>
-                </label>
-                <label className="text-xs font-medium">
-                  คนขับ
-                  <Select
-                    value={driverId}
-                    onChange={(event) => setDriverId(event.target.value)}
-                    className="mt-1"
-                  >
-                    <option value="">
-                      {method === 'planning' ? 'เลือกภายหลัง' : 'เลือกคนขับ'}
-                    </option>
-                    {drivers
-                      .filter((driver) => driver.status !== 'off_duty')
-                      .map((driver) => (
-                        <option key={driver.id} value={driver.id}>
-                          {driver.name} · {formatDriverDispatchStatus(driver, orders)}
-                        </option>
-                      ))}
-                  </Select>
-                </label>
-                {method !== 'immediate' && (
-                  <>
-                    <label className="text-xs font-medium">
-                      วันที่ส่ง
-                      <DatePicker
-                        value={plannedDate}
-                        onChange={setPlannedDate}
-                        className="mt-1 w-full"
-                      />
-                    </label>
-                    <label className="text-xs font-medium">
-                      เวลาออก
-                      <TimePicker
-                        value={plannedTime}
-                        onChange={setPlannedTime}
-                        className="mt-1 w-full"
-                      />
-                    </label>
-                  </>
-                )}
+                    <span className="block truncate text-xs text-muted-foreground">
+                      ส่ง {preset.dropoff.name}
+                    </span>
+                    {preset.useCount > 0 && (
+                      <span className="mt-1.5 block text-[11px] text-muted-foreground/80">
+                        ใช้แล้ว {preset.useCount} ครั้ง
+                      </span>
+                    )}
+                  </button>
+                ))}
               </div>
-            </section>
-
-            {method === 'immediate' && (
-              <section>
-                <div className="mb-2 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold">4. SLA การเริ่มงาน</h3>
-                  <Badge variant="warning">
-                    <Timer className="h-3 w-3" /> ตั้งค่าได้
-                  </Badge>
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="text-xs font-medium">
-                    ต้องรับงานภายใน
-                    <Select
-                      value={acceptWithinMinutes}
-                      onChange={(event) => setAcceptWithinMinutes(Number(event.target.value))}
-                      className="mt-1"
-                    >
-                      {SLA_OPTIONS.map((value) => (
-                        <option key={value} value={value}>
-                          {value} นาที{value === 15 ? ' — ค่าเริ่มต้น' : ''}
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                  <label className="text-xs font-medium">
-                    ต้องเริ่มภายใน
-                    <Select
-                      value={startWithinMinutes}
-                      onChange={(event) => setStartWithinMinutes(Number(event.target.value))}
-                      className="mt-1"
-                    >
-                      {SLA_OPTIONS.map((value) => (
-                        <option key={value} value={value}>
-                          {value} นาทีหลังรับ
-                        </option>
-                      ))}
-                    </Select>
-                  </label>
-                  <label className="text-xs font-medium sm:col-span-2">
-                    วิธีเริ่มงาน
-                    <Select
-                      value={startPolicy}
-                      onChange={(event) =>
-                        setStartPolicy(event.target.value as DispatchStartPolicy)
-                      }
-                      className="mt-1"
-                    >
-                      <option value="manual">Messenger กดรับ แล้วกดเริ่มเอง</option>
-                      <option value="accept_starts">กดรับแล้วเริ่มงานทันที</option>
-                    </Select>
-                  </label>
-                </div>
-              </section>
+            ) : (
+              <button
+                type="button"
+                onClick={() => openPicker('pickup')}
+                className="flex w-full items-center justify-between rounded-xl border border-dashed p-3 text-left text-xs text-muted-foreground hover:border-primary hover:text-foreground"
+              >
+                <span>ยังไม่มีเส้นทางด่วน — เลือกจุดรับและจุดส่งจากคลังเพื่อเริ่มต้น</span>
+                <ChevronRight className="h-4 w-4 shrink-0" />
+              </button>
             )}
+          </section>
 
-            <label className="block text-xs font-medium">
-              หมายเหตุ
-              <Input
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                className="mt-1"
-                placeholder="ไม่บังคับ"
+          <section>
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold">เส้นทางงาน</h3>
+              <span className="text-xs text-muted-foreground">
+                เลือกจากคลัง — รับต่อด้วยส่งในครั้งเดียว
+              </span>
+            </div>
+            <div className="rounded-2xl border">
+              <RoutePoint target="pickup" point={pickup} onSelect={() => openPicker('pickup')} />
+              <div className="ml-7 flex h-6 items-center border-l-2 border-dashed border-muted-foreground/30">
+                <ArrowDown className="-ml-2 h-4 w-4 rounded-full bg-background text-muted-foreground" />
+              </div>
+              <div className="border-t">
+                <RoutePoint
+                  target="dropoff"
+                  point={dropoff}
+                  onSelect={() => openPicker('dropoff')}
+                />
+              </div>
+            </div>
+            {canSavePreset && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-2"
+                onClick={() => void savePreset()}
+                disabled={savingPreset}
+              >
+                <BookmarkPlus className="h-3.5 w-3.5" />
+                {savingPreset ? 'กำลังบันทึก…' : 'บันทึกคู่นี้เป็นเส้นทางใช้บ่อย'}
+              </Button>
+            )}
+          </section>
+
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-semibold text-muted-foreground">ลักษณะงาน</label>
+              <div className="flex gap-1 rounded-lg bg-muted p-1">
+                {(['document', 'parcel', 'other'] as const).map((value) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => setJobType(value)}
+                    className={cn(
+                      'rounded-md px-2.5 py-1 text-xs transition-colors',
+                      jobType === value
+                        ? 'bg-background font-medium shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {dispatchJobTypeLabel[value]}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <Input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="ระบุของหรือสิ่งที่ต้องทำ (ไม่บังคับ)"
+            />
+          </section>
+
+          <section className="rounded-xl bg-warning/10 px-3 py-2.5 text-xs text-foreground">
+            <div className="flex gap-2">
+              <Timer className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+              <p>
+                Messenger ต้องรับงานภายใน <strong>{URGENT_ACCEPT_WITHIN_MINUTES} นาที</strong>{' '}
+                และเริ่มงานทันทีหลังรับ เพื่อให้งานออกตัวเร็วที่สุด
+              </p>
+            </div>
+          </section>
+
+          <section>
+            <button
+              type="button"
+              onClick={() => setShowMore((current) => !current)}
+              className="flex w-full items-center justify-between py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+              aria-expanded={showMore}
+            >
+              รายละเอียดเพิ่มเติม (เบอร์โทร)
+              <ChevronDown
+                className={cn('h-4 w-4 transition-transform', showMore && 'rotate-180')}
               />
-            </label>
-          </div>
-
-          <aside className="h-fit rounded-xl border bg-muted/20 p-4 lg:sticky lg:top-24">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">สรุปก่อนสร้าง</h3>
-              <Badge variant="outline">{mode === 'template' ? 'Route เดิม' : 'งานเดี่ยว'}</Badge>
-            </div>
-            <div className="mt-4 space-y-3 text-sm">
-              <div className="flex gap-2">
-                <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                <div>
-                  <div className="font-medium">{title || 'ยังไม่ได้ระบุชื่องาน'}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {mode === 'template'
-                      ? selectedTemplate
-                        ? `${selectedTemplate.name} · ${selectedTemplate.stops.length} จุดแวะ`
-                        : 'เลือกสายวิ่งประจำ'
-                      : '1 จุดรับ → 1 จุดส่ง'}
-                  </div>
-                </div>
+            </button>
+            {showMore && (
+              <div className="mt-3 grid gap-3 rounded-xl border p-3 sm:grid-cols-2">
+                <PointContactInput
+                  label="เบอร์จุดรับ"
+                  point={pickup}
+                  onChange={(phone) =>
+                    setPickup((current) => (current ? { ...current, phone } : current))
+                  }
+                />
+                <PointContactInput
+                  label="เบอร์ผู้รับ"
+                  point={dropoff}
+                  onChange={(phone) =>
+                    setDropoff((current) => (current ? { ...current, phone } : current))
+                  }
+                />
               </div>
-              <div className="flex gap-2">
-                {method === 'planning' ? (
-                  <CalendarClock className="mt-0.5 h-4 w-4 text-info" />
-                ) : method === 'scheduled' ? (
-                  <CalendarClock className="mt-0.5 h-4 w-4 text-info" />
-                ) : (
-                  <Zap className="mt-0.5 h-4 w-4 text-warning" />
-                )}
-                <div>
-                  <div className="font-medium">
-                    {method === 'immediate'
-                      ? 'มอบงานทันที'
-                      : method === 'scheduled'
-                        ? 'มอบงานตามวัน–เวลา'
-                        : 'เข้า Planning'}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {selectedDriver ? `มอบหมายให้ ${selectedDriver.name}` : 'เลือกคนขับภายหลัง'}
-                  </div>
-                </div>
-              </div>
-              {method === 'immediate' && (
-                <div className="flex gap-2">
-                  <Timer className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                  <div>
-                    <div className="font-medium">รับภายใน {acceptWithinMinutes} นาที</div>
-                    <div className="text-xs text-muted-foreground">
-                      เริ่มภายใน {startWithinMinutes} นาทีหลังรับ
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            <Button className="mt-5 w-full" onClick={requestSubmit} disabled={submitting}>
-              <Send className="h-4 w-4" />
-              {submitting
-                ? 'กำลังสร้างงาน…'
-                : method === 'immediate'
-                  ? mode === 'template'
-                    ? 'ยืนยันมอบ Route ให้คนขับ'
-                    : 'สร้างและส่งให้คนขับ'
-                  : method === 'scheduled'
-                    ? 'ยืนยันมอบงานตามเวลา'
-                    : mode === 'template'
-                      ? 'สร้าง Route Run เข้า Planning'
-                      : 'สร้างเข้า Planning'}
-            </Button>
-          </aside>
+            )}
+          </section>
         </div>
+
+        <footer className="sticky bottom-0 border-t bg-background p-4 sm:px-6">
+          <Button className="w-full" onClick={() => void submit()} disabled={submitting}>
+            <Send className="h-4 w-4" />
+            {submitting
+              ? 'กำลังส่งงานด่วน…'
+              : selectedDriver
+                ? `ส่งงานด่วนให้ ${selectedDriver.name}`
+                : 'เลือก Messenger เพื่อส่งงานด่วน'}
+          </Button>
+        </footer>
       </div>
 
-      {selectedDriver && method !== 'planning' && (
-        <ConfirmDispatchDialog
-          open={confirmSendOpen}
-          title={
-            method === 'immediate' ? 'ตรวจสอบก่อนส่งให้ Messenger' : 'ตรวจสอบก่อนมอบงานตามเวลา'
-          }
-          description={
-            method === 'immediate'
-              ? 'สร้างงานแล้วแจ้งเตือนไปที่มือถือคนขับทันทีหลังยืนยัน'
-              : 'ยืนยันแล้ว Messenger จะได้รับรอบงานตามวัน–เวลาที่กำหนด'
-          }
-          confirmLabel={method === 'immediate' ? 'ยืนยันสร้างและส่งงาน' : 'ยืนยันมอบงาน'}
-          submitting={submitting}
-          overlayClassName="z-[60]"
-          warnings={
-            selectedDriver.activeOrders > 0
-              ? [
-                  `${selectedDriver.name} มีงานค้างอยู่ ${selectedDriver.activeOrders} งาน — ตรวจสอบก่อนยืนยัน`,
-                ]
-              : undefined
-          }
-          onCancel={() => setConfirmSendOpen(false)}
-          onConfirm={() => void submit()}
-        >
-          <div className="rounded-lg border p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-sm font-medium">{title}</span>
-              <Badge
-                variant={method === 'immediate' ? 'warning' : 'secondary'}
-                className="shrink-0"
-              >
-                {method === 'immediate' ? (
-                  <Zap className="h-3 w-3" />
-                ) : (
-                  <CalendarClock className="h-3 w-3" />
-                )}
-                {method === 'immediate' ? 'ส่งทันที' : 'มอบงานตามเวลา'}
-              </Badge>
-            </div>
-            <div className="mt-2 space-y-1.5 text-xs">
-              {mode === 'template' ? (
-                <div className="flex items-start gap-1.5">
-                  <Repeat2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                  <span>
-                    {selectedTemplate?.name} · {selectedPickupStopIds.length} งาน ·{' '}
-                    {selectedTemplateStops.length} จุดแวะ
-                  </span>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-start gap-1.5">
-                    <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span>
-                      <span className="text-muted-foreground">รับ:</span>{' '}
-                      {[pickupName.trim(), pickupAddress.trim(), pickupPhone.trim()]
-                        .filter(Boolean)
-                        .join(' — ')}
-                    </span>
-                  </div>
-                  <div className="flex items-start gap-1.5">
-                    <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span>
-                      <span className="text-muted-foreground">ส่ง:</span>{' '}
-                      {[destinationName.trim(), destinationAddress.trim(), destinationPhone.trim()]
-                        .filter(Boolean)
-                        .join(' — ')}
-                    </span>
-                  </div>
-                </>
-              )}
-              {note.trim() && <div className="text-muted-foreground">หมายเหตุ: {note.trim()}</div>}
-            </div>
-          </div>
-          <DriverSummaryRow
-            driver={selectedDriver}
-            orders={orders}
-            plannedDate={method === 'scheduled' ? plannedDate : undefined}
-            detail={
-              method === 'immediate' ? (
-                <>
-                  รับใน {acceptWithinMinutes} นาที · เริ่มใน {startWithinMinutes} นาที ·{' '}
-                  {startPolicy === 'manual' ? 'รับแล้วกดเริ่มเอง' : 'รับแล้วเริ่มทันที'}
-                </>
-              ) : (
-                `เวลาออก ${plannedTime}`
-              )
-            }
-          />
-        </ConfirmDispatchDialog>
+      {picker && (
+        <AddressPickerDialog
+          initialTarget={picker.target}
+          chainToDropoff={picker.chainToDropoff}
+          pickedPickup={pickup}
+          addresses={savedAddresses}
+          onClose={() => setPicker(null)}
+          onSelected={selectPoint}
+          onManual={selectManualPoint}
+        />
+      )}
+      {presetPickerOpen && (
+        <RoutePresetPickerDialog
+          presets={routePresets}
+          onClose={() => setPresetPickerOpen(false)}
+          onSelected={selectPreset}
+        />
       )}
     </div>
+  );
+}
+
+function RoutePoint({
+  target,
+  point,
+  onSelect,
+}: {
+  target: PointTarget;
+  point: SelectedPoint | null;
+  onSelect: () => void;
+}) {
+  const isPickup = target === 'pickup';
+  const Icon = isPickup ? MapPin : Navigation;
+  const label = isPickup ? 'จุดรับ' : 'จุดส่ง';
+
+  return (
+    <div className="flex gap-3 p-4">
+      <span
+        className={cn(
+          'mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full',
+          isPickup ? 'bg-info/10 text-info' : 'bg-success/10 text-success',
+        )}
+      >
+        <Icon className="h-4 w-4" />
+      </span>
+      <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left">
+        <span className="block text-xs font-semibold">{label}</span>
+        {point ? (
+          <span className="mt-1 block min-w-0">
+            <span className="block truncate text-sm font-medium">{point.name}</span>
+            <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">
+              {pointSummary(point)}
+            </span>
+          </span>
+        ) : (
+          <span className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
+            เลือกจากคลังสถานที่ <ChevronRight className="h-4 w-4" />
+          </span>
+        )}
+      </button>
+      <Button variant="ghost" size="sm" onClick={onSelect}>
+        {point ? 'เปลี่ยน' : 'เลือก'}
+      </Button>
+    </div>
+  );
+}
+
+function PointContactInput({
+  label,
+  point,
+  onChange,
+}: {
+  label: string;
+  point: SelectedPoint | null;
+  onChange: (phone: string) => void;
+}) {
+  return (
+    <label className="text-xs font-medium">
+      {label}
+      <Input
+        value={point?.phone ?? ''}
+        onChange={(event) => onChange(event.target.value)}
+        className="mt-1"
+        placeholder="08x-xxx-xxxx"
+        disabled={!point}
+      />
+    </label>
   );
 }

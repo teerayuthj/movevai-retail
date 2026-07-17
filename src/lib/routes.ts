@@ -2,7 +2,6 @@ export type PageKey =
   | 'overview'
   | 'script_transform'
   | 'inbox'
-  | 'dispatch_board'
   | 'route_builder'
   | 'queue'
   | 'delivery_tracking'
@@ -28,8 +27,12 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'overview', path: '/', aliases: ['/overview'] },
   { page: 'script_transform', path: '/script-transform' },
   { page: 'inbox', path: '/order-inbox' },
-  { page: 'dispatch_board', path: '/dispatch-board' },
-  { page: 'route_builder', path: '/route-builder', aliases: ['/route-templates'] },
+  // '/dispatch-board' เป็น alias เพราะหน้า Dispatch Board ถูกยุบ — งานด่วนย้ายมาที่สร้างเที่ยววิ่ง
+  {
+    page: 'route_builder',
+    path: '/route-builder',
+    aliases: ['/route-templates', '/dispatch-board'],
+  },
   { page: 'queue', path: '/driver-queue' },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
   { page: 'live_view', path: '/live-view' },

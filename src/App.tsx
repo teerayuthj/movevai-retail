@@ -12,9 +12,6 @@ const ScriptTransformPage = lazy(() =>
   import('@/pages/ScriptTransform').then((m) => ({ default: m.ScriptTransformPage })),
 );
 const InboxPage = lazy(() => import('@/pages/Inbox').then((m) => ({ default: m.InboxPage })));
-const DispatchBoardPage = lazy(() =>
-  import('@/pages/DispatchBoard').then((m) => ({ default: m.DispatchBoardPage })),
-);
 const RouteBuilderPage = lazy(() =>
   import('@/pages/RouteBuilder').then((m) => ({ default: m.RouteBuilderPage })),
 );
@@ -152,15 +149,10 @@ export default function App() {
               onOpenPlanning={(search) => navigateToPage('planning', { search })}
             />
           )}
-          {page === 'dispatch_board' && (
-            <DispatchBoardPage
-              locationSearch={locationSearch}
-              onOpenPlanning={(search) => navigateToPage('planning', { search })}
-              onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
-            />
-          )}
           {page === 'route_builder' && (
             <RouteBuilderPage
+              locationSearch={locationSearch}
+              onOpenPlanning={(search) => navigateToPage('planning', { search })}
               onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
             />
           )}
