@@ -22,6 +22,9 @@ const QueuePage = lazy(() => import('@/pages/Queue').then((m) => ({ default: m.Q
 const DeliveryTrackingPage = lazy(() =>
   import('@/pages/DeliveryTracking').then((m) => ({ default: m.DeliveryTrackingPage })),
 );
+const LiveViewPage = lazy(() =>
+  import('@/pages/LiveView').then((m) => ({ default: m.LiveViewPage })),
+);
 const DeliveryReportPage = lazy(() =>
   import('@/pages/DeliveryReport').then((m) => ({ default: m.DeliveryReportPage })),
 );
@@ -176,6 +179,7 @@ export default function App() {
               onOpenDeliveryReport={() => navigateToPage('delivery_report')}
             />
           )}
+          {page === 'live_view' && <LiveViewPage />}
           {page === 'delivery_report' && <DeliveryReportPage />}
           {page === 'tracking_history' && <TrackingHistoryPage locationSearch={locationSearch} />}
           {page === 'notifications' && <NotificationsPage />}

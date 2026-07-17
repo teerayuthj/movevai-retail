@@ -6,6 +6,7 @@ export type PageKey =
   | 'route_builder'
   | 'queue'
   | 'delivery_tracking'
+  | 'live_view'
   | 'delivery_report'
   | 'tracking_history'
   | 'notifications'
@@ -31,6 +32,7 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'route_builder', path: '/route-builder', aliases: ['/route-templates'] },
   { page: 'queue', path: '/driver-queue' },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
+  { page: 'live_view', path: '/live-view' },
   { page: 'delivery_report', path: '/delivery-report' },
   { page: 'tracking_history', path: '/tracking-history' },
   { page: 'notifications', path: '/notifications' },

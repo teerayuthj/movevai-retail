@@ -1,5 +1,6 @@
 import type React from 'react';
 import {
+  Eye,
   LayoutDashboard,
   Inbox,
   Truck,
@@ -56,6 +57,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: 'route_builder', label: 'สร้างเที่ยววิ่ง', icon: Waypoints },
       { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
       { key: 'delivery_tracking', label: 'ติดตามการจัดส่ง', icon: Route, showBadge: true },
+      { key: 'live_view', label: 'Live View (ดูอย่างเดียว)', icon: Eye },
       { key: 'delivery_report', label: 'รายงานงานส่ง', icon: FileText },
       { key: 'tracking_history', label: 'ประวัติการติดตาม', icon: History },
       { key: 'notifications', label: 'แจ้งเตือนลูกค้า', icon: BellRing },
