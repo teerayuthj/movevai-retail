@@ -57,6 +57,7 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   delivery_started: { Icon: Route, tone: 'info' },
   delivery_submitted: { Icon: ClipboardCheck, tone: 'warning' },
   delivery_proof_revised: { Icon: Pencil, tone: 'warning' },
+  delivery_reviewed: { Icon: ClipboardCheck, tone: 'warning' },
   delivery_confirmed: { Icon: CheckCircle2, tone: 'success' },
   delivery_completed: { Icon: PackageCheck, tone: 'success' },
   postal_batch_exported: { Icon: FileSpreadsheet, tone: 'info' },
@@ -500,6 +501,7 @@ export function OrderTimeline({
   title = 'Timeline / Activity Log',
   description,
   compact,
+  defaultExpanded = true,
 }: {
   order: Order | null | undefined;
   className?: string;
@@ -507,8 +509,9 @@ export function OrderTimeline({
   title?: string;
   description?: string;
   compact?: boolean;
+  defaultExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
 
   if (!order) {
     return (

@@ -4,6 +4,7 @@ import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { DriverAvatar } from '@/components/DriverAvatar';
 import { LineOrderSource } from '@/components/LineOrderSource';
 import {
+  AlertTriangle,
   Ban,
   Bike,
   Car,
@@ -30,6 +31,8 @@ import {
   type FailReason,
   type Order,
   cancelReasonLabel,
+  deliveryProofReviewReasonLabel,
+  deliveryRecipientRelationshipLabel,
   failNextActionLabel,
   failReasonLabel,
   formatTHB,
@@ -39,10 +42,12 @@ import { cn } from '@/lib/utils';
 import {
   deriveDriverDisplayStatus,
   describeProof,
+  getDispatchStopDisplayName,
   getDriverWorkloadSummary,
   getOrderDriverTeam,
   type DriverWorkloadSummary,
 } from '@/lib/deliveryExecution';
+import { assessProofLocation, formatProofDistance } from '@/lib/deliveryProofReview';
 import { formatFastDispatchDueAt, getFastDispatchSla } from '@/lib/fastDispatch';
 import { formatRouteDistance } from '@/lib/routeDistance';
 
@@ -356,8 +361,41 @@ export function QueueOrderCard({
   );
 }
 
-export function OrderSummary({ order }: { order: Order }) {
-  const fastSla = getFastDispatchSla(order);
+function hasMeaningfulItemValue(value: string | undefined) {
+  const normalized = value?.trim();
+  return Boolean(normalized && normalized !== '-');
+}
+
+export function OrderSummary({
+  order,
+  slaOrder = order,
+  showSla = true,
+}: {
+  order: Order;
+  slaOrder?: Order;
+  showSla?: boolean;
+}) {
+  const fastSla = getFastDispatchSla(slaOrder);
+  const jobType = order.metadataJson?.dispatch?.jobType ?? 'order';
+  const isCommerceOrder = jobType === 'order';
+  const visibleItems = order.items.filter((item) => {
+    if (isCommerceOrder) return hasMeaningfulItemValue(item.name);
+    return (
+      hasMeaningfulItemValue(item.sku) ||
+      hasMeaningfulItemValue(item.weight) ||
+      hasMeaningfulItemValue(item.purity) ||
+      hasMeaningfulItemValue(item.note) ||
+      item.unitPrice > 0
+    );
+  });
+  const jobTypeLabel =
+    jobType === 'document'
+      ? 'เอกสาร'
+      : jobType === 'parcel'
+        ? 'พัสดุ'
+        : jobType === 'other'
+          ? 'งานทั่วไป'
+          : null;
 
   return (
     <div className="rounded-lg border p-3">
@@ -366,18 +404,20 @@ export function OrderSummary({ order }: { order: Order }) {
           <span className="font-mono text-sm font-medium">{order.orderNo}</span>
           <CopyOrderNoButton orderNo={order.orderNo} />
         </div>
-        <Badge variant="muted">{order.items.length} รายการ</Badge>
+        <Badge variant="muted">
+          {jobTypeLabel ?? `${visibleItems.length.toLocaleString('th-TH')} รายการ`}
+        </Badge>
       </div>
-      <div className="mt-1 text-sm">{order.customer.name}</div>
+      <div className="mt-1 text-sm">{getDispatchStopDisplayName(order.customer.name)}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">{order.customer.address}</div>
-      {order.items.length > 0 && (
+      {visibleItems.length > 0 && (
         <div className="mt-2 space-y-1.5 border-t pt-2">
           <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
             <Package className="h-3 w-3" />
             สินค้าที่จัดส่ง
           </div>
           <ul className="space-y-1.5">
-            {order.items.map((item, i) => (
+            {visibleItems.map((item, i) => (
               <li
                 key={`${item.sku ?? 'item'}-${i}`}
                 className="flex items-start justify-between gap-2 text-xs"
@@ -385,34 +425,40 @@ export function OrderSummary({ order }: { order: Order }) {
                 <div className="min-w-0">
                   <div className="truncate font-medium text-foreground">{item.name}</div>
                   <div className="text-[10px] text-muted-foreground">
-                    {[item.weight, item.purity].filter(Boolean).join(' · ')}
+                    {[item.weight, item.purity].filter(hasMeaningfulItemValue).join(' · ')}
                     {item.note ? ` · ${item.note}` : ''}
                   </div>
                 </div>
                 <div className="shrink-0 text-right tabular-nums">
                   <div className="text-muted-foreground">× {item.qty}</div>
-                  <div className="font-medium text-foreground">
-                    {formatTHB(item.unitPrice * item.qty)}
-                  </div>
+                  {(isCommerceOrder || item.unitPrice > 0) && (
+                    <div className="font-medium text-foreground">
+                      {formatTHB(item.unitPrice * item.qty)}
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
           </ul>
         </div>
       )}
-      <div className="mt-2 flex items-center justify-between border-t pt-2">
-        <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
-        <span className="text-sm font-semibold tabular-nums text-warning">
-          {formatTHB(order.totalValue)}
-        </span>
-      </div>
-      {fastSla.urgent && (
+      {isCommerceOrder && (
+        <div className="mt-2 flex items-center justify-between border-t pt-2">
+          <span className="text-[11px] text-muted-foreground">มูลค่ารวม</span>
+          <span className="text-sm font-semibold tabular-nums text-warning">
+            {formatTHB(order.totalValue)}
+          </span>
+        </div>
+      )}
+      {showSla && fastSla.urgent && (
         <div
           className={cn(
             'mt-2 rounded-md border px-2.5 py-2 text-xs',
             fastSla.state === 'overdue'
               ? 'border-destructive/30 bg-destructive/5 text-destructive'
-              : 'border-warning/30 bg-warning/10 text-warning',
+              : fastSla.frozenAtProof
+                ? 'border-success/30 bg-success/10 text-success'
+                : 'border-warning/30 bg-warning/10 text-warning',
           )}
         >
           <div className="flex items-center gap-1.5 font-medium">
@@ -438,10 +484,12 @@ export function OrderSummary({ order }: { order: Order }) {
           </div>
         )}
       <div className="mt-1 flex flex-wrap gap-1">
-        <Badge variant="muted" className="gap-1 text-[10px]">
-          <Coins className="h-2.5 w-2.5" />
-          {paymentLabel[order.payment]}
-        </Badge>
+        {isCommerceOrder && (
+          <Badge variant="muted" className="gap-1 text-[10px]">
+            <Coins className="h-2.5 w-2.5" />
+            {paymentLabel[order.payment]}
+          </Badge>
+        )}
         {order.requiresIdCheck && (
           <Badge variant="warning" className="gap-1 text-[10px]">
             <IdCard className="h-2.5 w-2.5" />
@@ -464,12 +512,15 @@ export function DriverSummary({
   order,
   orders,
   workloadDate,
+  compact = false,
 }: {
   driver: Driver | null;
   order?: Order | null;
   /** ถ้าส่งมา จะ derive สถานะ "ว่าง/กำลังส่ง" จากงานจริงให้ตรงกับ messenger */
   orders?: Order[];
   workloadDate?: string;
+  /** มุมมองในรายละเอียดงาน: ตัดภาระงานรวม/สถานะกว้างที่ไม่ช่วยตัดสินงานนี้ */
+  compact?: boolean;
 }) {
   if (!driver) {
     return (
@@ -497,20 +548,26 @@ export function DriverSummary({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className="truncate text-sm font-medium">{driver.name}</span>
-            <Badge
-              variant={displayStatus === 'available' ? 'success' : 'muted'}
-              className="h-5 px-1.5 text-[10px]"
-            >
-              {displayStatus === 'available'
-                ? 'ว่าง'
-                : displayStatus === 'on_delivery'
-                  ? 'กำลังส่ง'
-                  : 'หยุด'}
-            </Badge>
+            {!compact && (
+              <Badge
+                variant={displayStatus === 'available' ? 'success' : 'muted'}
+                className="h-5 px-1.5 text-[10px]"
+              >
+                {displayStatus === 'available'
+                  ? 'ว่าง'
+                  : displayStatus === 'on_delivery'
+                    ? 'กำลังส่ง'
+                    : 'หยุด'}
+              </Badge>
+            )}
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <VehicleIcon v={driver.vehicle} />
-            <span>{vehicleLabel(driver.vehicle)}</span>
+            <span>
+              {[vehicleLabel(driver.vehicle), driver.vehicleColor, driver.licensePlate]
+                .filter(Boolean)
+                .join(' · ')}
+            </span>
           </div>
           <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
             <Phone className="h-3 w-3" />
@@ -519,23 +576,33 @@ export function DriverSummary({
         </div>
       </div>
 
-      <div className="mt-4 text-sm">
-        <div className="rounded-lg bg-muted/40 p-3">
-          <div className="text-[11px] text-muted-foreground">ภาระงาน messenger</div>
-          <DriverWorkloadChips workload={workload} className="mt-2" />
+      {!compact && (
+        <div className="mt-4 text-sm">
+          <div className="rounded-lg bg-muted/40 p-3">
+            <div className="text-[11px] text-muted-foreground">ภาระงาน messenger</div>
+            <DriverWorkloadChips workload={workload} className="mt-2" />
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="mt-4 space-y-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5">
-          <Route className="h-3 w-3" />
-          {order?.status === 'in_transit' ? 'กำลังวิ่งงานนี้อยู่' : 'ติดตามงานตามสถานะปัจจุบัน'}
+      {!compact && (
+        <div className="mt-4 space-y-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <Route className="h-3 w-3" />
+            {order?.status === 'in_transit' ? 'กำลังวิ่งงานนี้อยู่' : 'ติดตามงานตามสถานะปัจจุบัน'}
+          </div>
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="h-3 w-3" />
+            {driver.highValueCertified ? 'ผ่านอบรมขนส่งของมีค่า' : 'ไม่มีใบรับรอง high-value'}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5">
+      )}
+      {compact && (order?.totalValue ?? 0) >= 500_000 && (
+        <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
           <ShieldCheck className="h-3 w-3" />
-          {driver.highValueCertified ? 'ผ่านอบรมขนส่งของมีค่า' : 'ไม่มีใบรับรอง high-value'}
+          {driver.highValueCertified ? 'ผ่านอบรมขนส่งของมีค่า' : 'ยังไม่ผ่านอบรมของมีค่า'}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -660,19 +727,49 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
   );
   if (!pod) return null;
 
-  const items = describeProof(pod);
+  const items = describeProof(pod).filter(
+    (item) => item !== pod.location?.label && item !== `ผู้รับ ${pod.recipient?.name}`,
+  );
   const capturedBy = driverName || pod.capturedByDriverId || 'คนขับ';
   const proofHistory = order.proofHistory ?? [];
+  const locationAssessment = assessProofLocation(order);
+  const proofReview = order.proofReview;
+  const pendingReview = order.status === 'pending_confirmation';
+  const proofRejected = proofReview?.decision === 'rejected';
+  const revisionRequested = proofReview?.decision === 'needs_revision';
+  const criticalLocation = locationAssessment?.tone === 'critical' && !proofReview?.gpsOverride;
+  const panelTone =
+    proofRejected || criticalLocation
+      ? 'border-destructive/40 bg-destructive/5'
+      : revisionRequested || pendingReview
+        ? 'border-warning/40 bg-warning/5'
+        : 'border-success/30 bg-success/10';
+  const headingTone =
+    proofRejected || criticalLocation
+      ? 'text-destructive'
+      : revisionRequested || pendingReview
+        ? 'text-warning'
+        : 'text-success';
 
   return (
-    <div className="rounded-lg border border-success/30 bg-success/10 p-3 text-xs">
-      <div className="flex items-center justify-between font-medium text-success">
+    <div className={cn('rounded-lg border p-3 text-xs', panelTone)}>
+      <div className={cn('flex items-center justify-between font-medium', headingTone)}>
         <span className="flex items-center gap-1.5">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          หลักฐานปิดงานจาก messenger
+          {proofRejected || criticalLocation ? (
+            <AlertTriangle className="h-3.5 w-3.5" />
+          ) : (
+            <ShieldCheck className="h-3.5 w-3.5" />
+          )}
+          {proofRejected
+            ? 'หลักฐานถูกปฏิเสธ'
+            : revisionRequested
+              ? 'หลักฐานต้องแก้ไข'
+              : pendingReview
+                ? 'หลักฐานรอตรวจจาก Messenger'
+                : 'หลักฐานส่งมอบ'}
         </span>
         <span className="text-[10px] opacity-75">
-          {new Date(pod.capturedAt).toLocaleString('th', {
+          {new Date(pod.handedOverAt ?? pod.capturedAt).toLocaleString('th', {
             dateStyle: 'short',
             timeStyle: 'short',
           })}
@@ -680,12 +777,101 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
       </div>
       <ul className="mt-2 space-y-1">
         {items.map((item, i) => (
-          <li key={i} className="flex items-start gap-1.5 text-success">
+          <li key={i} className="flex items-start gap-1.5 text-foreground/80">
             <CheckCircle2 className="mt-0.5 h-3 w-3 shrink-0 text-success" />
             <span>{item}</span>
           </li>
         ))}
       </ul>
+
+      {pod.recipient ? (
+        <div className="mt-2 rounded-md border bg-background/60 px-2.5 py-2 text-foreground/80">
+          <div className="font-medium">ผู้รับจริง: {pod.recipient.name}</div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">
+            {[
+              pod.recipient.relationship
+                ? deliveryRecipientRelationshipLabel[pod.recipient.relationship]
+                : undefined,
+              pod.recipient.phone,
+            ]
+              .filter(Boolean)
+              .join(' · ') || 'ไม่ได้ระบุความสัมพันธ์หรือเบอร์โทร'}
+          </div>
+        </div>
+      ) : (
+        pendingReview && (
+          <div className="mt-2 rounded-md border border-warning/30 bg-background/70 px-2.5 py-2 font-medium text-warning">
+            ยังไม่มีชื่อผู้รับจริง — ตรวจสอบกับรูปและลายเซ็นก่อนอนุมัติ
+          </div>
+        )
+      )}
+
+      {proofReview && proofReview.decision !== 'approved' && (
+        <div
+          className={cn(
+            'mt-2 rounded-md border bg-background/70 px-2.5 py-2',
+            proofReview.decision === 'rejected'
+              ? 'border-destructive/30 text-destructive'
+              : 'border-warning/30 text-warning',
+          )}
+        >
+          <div className="font-medium">
+            {proofReview.decision === 'rejected' ? 'Admin ปฏิเสธหลักฐาน' : 'Admin ขอแก้หลักฐาน'}
+          </div>
+          <div className="mt-0.5 text-[10px]">
+            {[
+              proofReview.reasonCode
+                ? deliveryProofReviewReasonLabel[proofReview.reasonCode]
+                : undefined,
+              proofReview.note,
+            ]
+              .filter(Boolean)
+              .join(' · ')}
+          </div>
+        </div>
+      )}
+
+      {pod.location && (
+        <div
+          className={cn(
+            'mt-2 rounded-md border px-2.5 py-2',
+            criticalLocation
+              ? 'border-destructive/30 bg-background/70 text-destructive'
+              : locationAssessment?.tone === 'warning'
+                ? 'border-warning/30 bg-background/70 text-warning'
+                : 'border-border bg-background/60 text-muted-foreground',
+          )}
+        >
+          <div className="flex items-start gap-1.5 font-medium">
+            {locationAssessment?.tone === 'critical' || locationAssessment?.tone === 'warning' ? (
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            ) : (
+              <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            )}
+            <span>
+              {locationAssessment
+                ? `GPS หลักฐานห่างจากจุดส่งประมาณ ${formatProofDistance(locationAssessment.distanceMeters)}`
+                : (pod.location.label ?? 'บันทึก GPS ตอนส่งมอบแล้ว')}
+            </span>
+          </div>
+          {locationAssessment?.accuracyMeters != null && (
+            <div className="mt-0.5 pl-5 text-[10px] opacity-80">
+              ความแม่นยำที่อุปกรณ์รายงาน ±
+              {Math.round(locationAssessment.accuracyMeters).toLocaleString('th-TH')} ม.
+            </div>
+          )}
+          {criticalLocation && (
+            <div className="mt-1 pl-5 text-[10px] font-medium">
+              ควรตรวจสอบพิกัดปลายทางและรูปหลักฐานก่อนยืนยันปิดงาน
+            </div>
+          )}
+          {proofReview?.gpsOverride && (
+            <div className="mt-1 pl-5 text-[10px] font-medium text-warning">
+              Admin อนุมัติพิกัดต่างจุด · {proofReview.gpsOverrideReason}
+            </div>
+          )}
+        </div>
+      )}
 
       {pod.photos && pod.photos.length > 0 && (
         <div className="mt-2 grid grid-cols-3 gap-1.5">
@@ -694,7 +880,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
               key={i}
               type="button"
               onClick={() => setPreview({ src, alt: `รูปหลักฐาน ${i + 1}` })}
-              className="aspect-4/3 overflow-hidden rounded-md border border-success/30 transition hover:opacity-90"
+              className="aspect-4/3 overflow-hidden rounded-md border transition hover:opacity-90"
             >
               <img src={src} alt={`รูปหลักฐาน ${i + 1}`} className="h-full w-full object-cover" />
             </button>
@@ -704,7 +890,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
 
       {pod.signatureDataUrl && (
         <div className="mt-2">
-          <div className="text-[10px] text-success/80">ลายเซ็นผู้รับ</div>
+          <div className="text-[10px] text-muted-foreground">ตัวอย่างลายเซ็นผู้รับ</div>
           <button
             type="button"
             onClick={() =>
@@ -715,7 +901,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
             <img
               src={pod.signatureDataUrl}
               alt="ลายเซ็นผู้รับ"
-              className="h-16 w-full rounded-md border border-success/30 bg-white object-contain transition hover:opacity-90"
+              className="h-16 w-full rounded-md border bg-white object-contain transition hover:opacity-90"
             />
           </button>
         </div>
@@ -790,7 +976,7 @@ export function ProofOfDeliveryInfo({ order, driverName }: { order: Order; drive
         </div>
       )}
 
-      <div className="mt-2 text-[10px] text-success/80">บันทึกโดย {capturedBy}</div>
+      <div className="mt-2 text-[10px] text-muted-foreground">บันทึกโดย {capturedBy}</div>
 
       {preview && (
         <ImageLightbox

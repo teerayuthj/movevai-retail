@@ -116,10 +116,71 @@ export type ProofOfDelivery = {
   signatureDataUrl?: string; // ภาพลายเซ็นจริง
   otpVerified: boolean; // ยืนยัน OTP กับเบอร์ลูกค้า
   idVerified?: boolean; // ตรวจบัตร ปชช. (เฉพาะ requiresIdCheck)
-  location?: { lat: number; lng: number; label?: string }; // GPS ตอนปิดงาน
+  recipient?: {
+    name: string;
+    phone?: string;
+    relationship?: DeliveryRecipientRelationship;
+  };
+  handedOverAt?: string;
+  location?: { lat: number; lng: number; label?: string; accuracyMeters?: number }; // GPS ตอนปิดงาน
+  locationAssessment?: {
+    expected: { lat: number; lng: number };
+    distanceMeters: number;
+  };
   cod?: CodCollection; // การรับเงิน (เฉพาะ COD)
   capturedByDriverId: string;
   capturedAt: string;
+};
+
+export type DeliveryRecipientRelationship =
+  | 'customer'
+  | 'family'
+  | 'employee'
+  | 'security'
+  | 'other';
+
+export const deliveryRecipientRelationshipLabel: Record<DeliveryRecipientRelationship, string> = {
+  customer: 'ลูกค้าเจ้าของงาน',
+  family: 'ครอบครัว/ผู้พักอาศัย',
+  employee: 'พนักงาน/ผู้ร่วมงาน',
+  security: 'รปภ./นิติบุคคล',
+  other: 'อื่น ๆ',
+};
+
+export type DeliveryProofReviewDecision = 'approved' | 'needs_revision' | 'rejected';
+export type DeliveryProofReviewReason =
+  | 'recipient_unknown'
+  | 'photos_unclear'
+  | 'signature_invalid'
+  | 'gps_mismatch'
+  | 'information_mismatch'
+  | 'other';
+
+export const deliveryProofReviewReasonLabel: Record<DeliveryProofReviewReason, string> = {
+  recipient_unknown: 'ยืนยันผู้รับไม่ได้',
+  photos_unclear: 'รูปถ่ายไม่ชัดหรือไม่ครบ',
+  signature_invalid: 'ลายเซ็นไม่ถูกต้อง',
+  gps_mismatch: 'GPS ไม่ตรงจุดส่ง',
+  information_mismatch: 'ข้อมูลหลักฐานไม่ตรงกับงาน',
+  other: 'อื่น ๆ',
+};
+
+export type DeliveryProofReview = {
+  id: string;
+  decision: DeliveryProofReviewDecision;
+  reasonCode?: DeliveryProofReviewReason;
+  note?: string;
+  gpsOverride: boolean;
+  gpsOverrideReason?: string;
+  proofCapturedAt: string;
+  reviewedBy: Handler;
+  reviewedAt: string;
+  locationAssessment?: {
+    expected: { lat: number; lng: number };
+    actual?: { lat: number; lng: number };
+    accuracyMeters?: number;
+    distanceMeters: number;
+  };
 };
 
 export type DeliveryProofEditorRole = 'messenger' | 'admin';
@@ -177,6 +238,7 @@ export type OrderActivityEventType =
   | 'delivery_job_accepted'
   | 'delivery_submitted'
   | 'delivery_proof_revised'
+  | 'delivery_reviewed'
   | 'delivery_confirmed'
   | 'delivery_completed'
   | 'postal_batch_exported'
@@ -280,6 +342,8 @@ export type Order = {
   deliveryRoute?: DeliveryRoute;
   proofOfDelivery?: ProofOfDelivery; // หลักฐานปิดงานจาก messenger
   proofHistory?: ProofOfDeliveryHistoryEntry[]; // หลักฐานชุดเก่าที่ถูกแก้ไข เก็บไว้ตรวจสอบย้อนหลัง
+  proofReview?: DeliveryProofReview;
+  proofReviewHistory?: DeliveryProofReview[];
   postalBatch?: PostalBatch;
   resolution?: OrderResolution; // บันทึกการยกเลิก/ส่งไม่สำเร็จ/ส่งกลับ
   activityLog?: OrderActivityEvent[]; // timeline กิจกรรมของออเดอร์ (newest last)

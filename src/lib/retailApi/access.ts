@@ -53,6 +53,7 @@ export type RetailSecurityPolicy = {
   idleTimeoutMinutes: number;
   maxDevicesPerUser: number;
   revokeSessionsOnPasswordChange: boolean;
+  auditRetentionDays: number;
   updatedAt: string;
 };
 
@@ -194,10 +195,20 @@ export type RetailAuditLog = {
   targetType: string;
   targetId: string | null;
   metadata: unknown;
+  ipAddress: string | null;
+  userAgent: string | null;
   createdAt: string;
   actor: { id: string; name: string; email: string } | null;
+  target: { name: string; email?: string } | null;
 };
 
-export function fetchRetailAuditLogs(take = 50) {
-  return request<RetailAuditLog[]>(`${APP_API_BASE}/admin/audit-logs?take=${take}`);
+export type RetailAuditLogPage = {
+  items: RetailAuditLog[];
+  nextCursor: string | null;
+};
+
+export function fetchRetailAuditLogs(options: { take?: number; cursor?: string } = {}) {
+  const params = new URLSearchParams({ take: String(options.take ?? 50) });
+  if (options.cursor) params.set('cursor', options.cursor);
+  return request<RetailAuditLogPage>(`${APP_API_BASE}/admin/audit-logs?${params.toString()}`);
 }

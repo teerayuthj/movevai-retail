@@ -6,7 +6,7 @@ import type {
   OrderActivityEvent,
   PlanningCancelReason,
 } from '@/data/orderTypes';
-import type { SubmitDeliveryInput } from '@/state/retail/types';
+import type { ConfirmDeliveryInput, SubmitDeliveryInput } from '@/state/retail/types';
 import { APP_API_BASE, proofPayload, request } from './client';
 import { type ApiOrder, normalizeOrder, serializeOrderForBackend } from './shared';
 
@@ -116,10 +116,7 @@ export async function submitAppDeliveryProof(orderId: string, input: SubmitDeliv
   return normalizeOrder(result);
 }
 
-export async function confirmAppDelivery(
-  orderId: string,
-  input?: { note?: string; recordedBy?: { name: string; department: string; role?: string } },
-) {
+export async function confirmAppDelivery(orderId: string, input?: ConfirmDeliveryInput) {
   const result = await request<ApiOrder>(
     `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/confirm-delivery`,
     {

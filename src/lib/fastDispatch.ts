@@ -13,11 +13,18 @@ export type FastDispatchSla = {
   confidence: 'explicit' | 'inferred';
   /** เป้าหมายอิงจากอะไร — วันนัดส่งจริง (appointment) หรือ SLA รับเข้า + 1 วัน (received) */
   basis: 'appointment' | 'received';
+  /** เวลาที่ใช้ตัดสิน SLA — หยุดที่เวลาส่งหลักฐานเมื่อจบการวิ่งแล้ว */
+  evaluatedAt: string;
+  frozenAtProof: boolean;
 };
 
 // เป้าหมายเวลาส่ง = วันนัดส่งจริงที่ตั้งไว้ตอน import (ถ้ามี) — ถ้าไม่ระบุเวลา ใช้ปลายวันของวันนัด
 function resolveAppointmentDueAt(order: Order): Date | null {
-  const { date, time } = getRequestedDeliveryDraft(order);
+  // งานจาก dispatch route (ad-hoc/template/quick create) — plannedDate/plannedTime ของ
+  // deliveryPlan คือเวลาปล่อยรอบ ไม่ใช่นัดหมายลูกค้า จึงห้ามนับเป็นเวลานัด
+  const { date, time } = getRequestedDeliveryDraft(order, {
+    includePlanFallback: !order.metadataJson?.dispatch,
+  });
   if (!date) return null;
   const scheduledMs = getPlanningDateTimeMs(date, time || '23:59');
   if (scheduledMs == null) return null;
@@ -57,7 +64,12 @@ export function getFastDispatchSla(order: Order, now = new Date()): FastDispatch
   const appointmentDueAt = resolveAppointmentDueAt(order);
   const basis: FastDispatchSla['basis'] = appointmentDueAt ? 'appointment' : 'received';
   const dueAt = appointmentDueAt ?? new Date(baseTime.getTime() + 24 * 60 * 60 * 1000);
-  const remainingMs = dueAt.getTime() - now.getTime();
+  const deliveryCompletedAt =
+    order.proofOfDelivery?.handedOverAt ?? order.proofOfDelivery?.capturedAt;
+  const proofCapturedAt = deliveryCompletedAt ? new Date(deliveryCompletedAt) : null;
+  const frozenAtProof = Boolean(proofCapturedAt && !Number.isNaN(proofCapturedAt.getTime()));
+  const evaluatedAt = frozenAtProof ? proofCapturedAt! : now;
+  const remainingMs = dueAt.getTime() - evaluatedAt.getTime();
   const remainingMinutes = Math.max(1, Math.ceil(Math.abs(remainingMs) / 60_000));
   const remainingLabel = formatElapsedDuration(remainingMinutes);
   const urgent = isFastDispatchOrder(order);
@@ -74,11 +86,20 @@ export function getFastDispatchSla(order: Order, now = new Date()): FastDispatch
       state,
       confidence: 'inferred',
       basis,
+      evaluatedAt: evaluatedAt.toISOString(),
+      frozenAtProof,
     };
   }
 
-  const detail =
-    basis === 'appointment'
+  const detail = frozenAtProof
+    ? basis === 'appointment'
+      ? remainingMs < 0
+        ? `ส่งมอบช้ากว่าเวลานัด ${remainingLabel}`
+        : `ส่งมอบก่อนเวลานัด ${remainingLabel}`
+      : remainingMs < 0
+        ? `ส่งมอบเกิน SLA ${remainingLabel}`
+        : `ส่งมอบก่อนครบ SLA ${remainingLabel}`
+    : basis === 'appointment'
       ? remainingMs < 0
         ? `เกินเวลานัดแล้ว ${remainingLabel}`
         : `ต้องถึงก่อนเวลานัดอีก ${remainingLabel}`
@@ -99,6 +120,8 @@ export function getFastDispatchSla(order: Order, now = new Date()): FastDispatch
         ? 'explicit'
         : 'inferred',
     basis,
+    evaluatedAt: evaluatedAt.toISOString(),
+    frozenAtProof,
   };
 }
 

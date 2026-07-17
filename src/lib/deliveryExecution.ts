@@ -241,13 +241,19 @@ export function describeProof(pod: ProofOfDelivery): string[] {
   if (pod.signatureCaptured) parts.push('ลายเซ็นผู้รับ');
   if (pod.otpVerified) parts.push('ยืนยัน OTP');
   if (pod.idVerified) parts.push('ตรวจบัตร ปชช.');
-  if (pod.location) parts.push(`GPS ${pod.location.label ?? 'ระบุตำแหน่ง'}`);
+  if (pod.recipient?.name) parts.push(`ผู้รับ ${pod.recipient.name}`);
+  if (pod.location) parts.push(pod.location.label ?? 'GPS ระบุตำแหน่ง');
   if (pod.cod?.collected) {
     const method = pod.cod.method === 'transfer' ? 'โอน' : 'เงินสด';
     const amount = pod.cod.amount != null ? ` ${formatTHB(pod.cod.amount)}` : '';
     parts.push(`รับเงิน ${method}${amount}`);
   }
   return parts;
+}
+
+/** ตัดคำนำหน้าที่ UI เคยเติมซ้ำกับประเภทจุด เช่น "ส่งส่ง — ..." */
+export function getDispatchStopDisplayName(name: string) {
+  return name.replace(/^\s*(?:รับ|ส่ง)\s*[—–-]\s*/u, '').trim() || name;
 }
 
 // ── การจัดลำดับงานเข้าคิวคนขับ (criteria-based priority) ──────────────────────

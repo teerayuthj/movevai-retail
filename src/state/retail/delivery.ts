@@ -3,6 +3,7 @@ import { isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
 import { describeProof, planAutoAssignments } from '@/lib/deliveryExecution';
 import type {
   DeliveryProofEditorRole,
+  DeliveryProofReview,
   Driver,
   FailReason,
   Order,
@@ -308,6 +309,7 @@ export function submitDeliveryState(
         status: 'pending_confirmation',
         proofOfDelivery: proof,
         proofHistory: nextProofHistory,
+        proofReview: undefined,
       };
 
       return appendEvent(next, {
@@ -339,6 +341,43 @@ export function confirmDeliveryState(
 
   const at = nowIso();
   const recordedBy = input?.recordedBy ?? order.handledBy ?? DEFAULT_HANDLER;
+  const decision = input?.decision ?? 'approved';
+  const review: DeliveryProofReview = {
+    id: `local-review-${orderId}-${at}`,
+    decision,
+    reasonCode: input?.reasonCode,
+    note: input?.note,
+    gpsOverride: input?.gpsOverride ?? false,
+    gpsOverrideReason: input?.gpsOverrideReason,
+    proofCapturedAt: order.proofOfDelivery?.capturedAt ?? at,
+    reviewedBy: recordedBy,
+    reviewedAt: at,
+  };
+  if (decision !== 'approved') {
+    return {
+      ...current,
+      orders: current.orders.map((item) => {
+        if (item.id !== orderId) return item;
+        return appendEvent(
+          {
+            ...item,
+            proofReview: review,
+            proofReviewHistory: [review, ...(item.proofReviewHistory ?? [])],
+          },
+          {
+            type: 'delivery_reviewed',
+            at,
+            actor: operatorActor(recordedBy),
+            summary:
+              decision === 'needs_revision'
+                ? 'Admin ขอให้แก้ไขหลักฐาน'
+                : 'Admin ปฏิเสธหลักฐานส่งมอบ',
+            details: [input?.reasonCode, input?.note].filter(Boolean).join(' · ') || undefined,
+          },
+        );
+      }),
+    };
+  }
   const dropoffStopId = order.metadataJson?.dispatch?.stopId;
   const linkedPickupIds = new Set(
     current.orders
@@ -361,15 +400,30 @@ export function confirmDeliveryState(
       if (!closingOrderIds.has(item.id)) return item;
 
       return appendEvent(
-        { ...item, status: 'delivered' },
+        {
+          ...item,
+          status: 'delivered',
+          ...(item.id === orderId
+            ? {
+                proofReview: review,
+                proofReviewHistory: [review, ...(item.proofReviewHistory ?? [])],
+              }
+            : {}),
+        },
         {
           type: 'delivery_confirmed',
           at,
           actor: operatorActor(recordedBy),
           summary: linkedPickupIds.has(item.id)
             ? `ยืนยันจุดรับพร้อมปิดงาน ${order.orderNo}`
-            : 'CS ยืนยันหลักฐาน — ส่งสำเร็จ',
-          details: input?.note ? `หมายเหตุ: ${input.note}` : undefined,
+            : 'Admin ตรวจหลักฐานผ่าน — ส่งสำเร็จ',
+          details:
+            [
+              input?.gpsOverride ? `อนุมัติ GPS ต่างจุด: ${input.gpsOverrideReason}` : undefined,
+              input?.note ? `หมายเหตุ: ${input.note}` : undefined,
+            ]
+              .filter(Boolean)
+              .join(' · ') || undefined,
         },
       );
     }),
