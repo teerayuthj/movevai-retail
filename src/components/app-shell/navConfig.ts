@@ -49,20 +49,36 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    id: 'delivery',
-    label: 'จัดส่ง',
+    id: 'dispatch',
+    label: 'จัดส่ง & มอบหมาย',
     items: [
       { key: 'queue', label: 'ส่งทันที', icon: Truck, showBadge: true },
       { key: 'dispatch_board', label: 'Dispatch Board', icon: Columns3, showBadge: true },
       { key: 'route_builder', label: 'สร้างเที่ยววิ่ง', icon: Waypoints },
       { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
+    ],
+  },
+  {
+    id: 'tracking',
+    label: 'ติดตาม',
+    items: [
       { key: 'delivery_tracking', label: 'ติดตามการจัดส่ง', icon: Route, showBadge: true },
       { key: 'live_view', label: 'Live View', icon: Eye },
+      { key: 'notifications', label: 'แจ้งเตือนลูกค้า', icon: BellRing },
+    ],
+  },
+  {
+    id: 'reports',
+    label: 'รายงาน',
+    items: [
       { key: 'delivery_report', label: 'รายงานงานส่ง', icon: FileText },
       { key: 'tracking_history', label: 'ประวัติการติดตาม', icon: History },
-      { key: 'notifications', label: 'แจ้งเตือนลูกค้า', icon: BellRing },
-      { key: 'postal', label: 'ไปรษณีย์ไทย', icon: Mailbox, showBadge: true },
     ],
+  },
+  {
+    id: 'postal',
+    label: 'ช่องทางไปรษณีย์',
+    items: [{ key: 'postal', label: 'ไปรษณีย์ไทย', icon: Mailbox, showBadge: true }],
   },
   {
     id: 'team',
