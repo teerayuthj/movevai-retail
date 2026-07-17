@@ -15,6 +15,9 @@ import {
   Smartphone,
   BellRing,
   Waypoints,
+  UserCog,
+  ShieldCheck,
+  LockKeyhole,
 } from 'lucide-react';
 import type { PageKey } from '@/lib/routes';
 
@@ -93,6 +96,15 @@ export const NAV_SECTIONS: NavSection[] = [
       { key: 'drivers', label: 'คนขับ', icon: Users },
       { key: 'customers', label: 'ลูกค้า', icon: BookUser },
       { key: 'messenger', label: 'เปิดแอป Messenger', icon: Smartphone, showBadge: true },
+    ],
+  },
+  {
+    id: 'settings',
+    label: 'ตั้งค่าระบบ',
+    items: [
+      { key: 'users', label: 'ผู้ใช้งาน', icon: UserCog },
+      { key: 'roles', label: 'Role & Permission', icon: ShieldCheck },
+      { key: 'security', label: 'Security & Session', icon: LockKeyhole },
     ],
   },
 ];

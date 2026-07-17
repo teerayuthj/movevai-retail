@@ -1,7 +1,12 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { RetailProvider } from '@/state/retailStore';
 import { getCanonicalPath, getPageFromPath, getPathForPage, type PageKey } from '@/lib/routes';
+import { AdminAuthProvider, useAdminAuth } from '@/auth/AuthContext';
+import { canAccessPage } from '@/auth/permissions';
+import { LoginPage } from '@/pages/Login';
+import { AccessDeniedPage } from '@/pages/AccessDenied';
 
 // Lazy-load แต่ละหน้าเป็น chunk แยก เพื่อไม่ให้ surface ของ messenger ต้องโหลด
 // dashboard admin + recharts ทั้งก้อน (เดิม bundle เดียว ~1.4MB → จอขาวตอนเปิดครั้งแรก)
@@ -41,6 +46,12 @@ const DriversPage = lazy(() => import('@/pages/Drivers').then((m) => ({ default:
 const CustomersPage = lazy(() =>
   import('@/pages/Customers').then((m) => ({ default: m.CustomersPage })),
 );
+const UsersPage = lazy(() => import('@/pages/Users').then((m) => ({ default: m.UsersPage })));
+const RolesPage = lazy(() => import('@/pages/Roles').then((m) => ({ default: m.RolesPage })));
+const SecuritySessionPage = lazy(() =>
+  import('@/pages/SecuritySession').then((m) => ({ default: m.SecuritySessionPage })),
+);
+const ProfilePage = lazy(() => import('@/pages/Profile').then((m) => ({ default: m.ProfilePage })));
 const CustomerTrackingPage = lazy(() =>
   import('@/pages/CustomerTracking').then((m) => ({ default: m.CustomerTrackingPage })),
 );
@@ -65,6 +76,108 @@ function MessengerEntryRedirect() {
     window.location.replace('/messenger.html');
   }, []);
   return null;
+}
+
+type AdminSurfaceProps = {
+  page: PageKey;
+  locationSearch: string;
+  navigateToPage: (page: PageKey, options?: { search?: string }) => void;
+};
+
+function AdminSurface({ page, locationSearch, navigateToPage }: AdminSurfaceProps) {
+  const { status, user } = useAdminAuth();
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-dvh items-center justify-center bg-background">
+        <SplashGate />
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (status === 'unauthenticated' || !user) {
+    return (
+      <>
+        <SplashGate />
+        <LoginPage />
+      </>
+    );
+  }
+
+  return (
+    <RetailProvider>
+      <AppShell page={page} onChangePage={navigateToPage}>
+        <Suspense fallback={null}>
+          <SplashGate />
+          {!canAccessPage(user, page) ? (
+            <AccessDeniedPage />
+          ) : (
+            <>
+              {page === 'overview' && <OverviewPage />}
+              {page === 'script_transform' && <ScriptTransformPage />}
+              {page === 'inbox' && (
+                <InboxPage
+                  locationSearch={locationSearch}
+                  onOpenQueue={(search) => navigateToPage('queue', { search })}
+                  onOpenPlanning={(search) => navigateToPage('planning', { search })}
+                />
+              )}
+              {page === 'route_builder' && (
+                <RouteBuilderPage
+                  locationSearch={locationSearch}
+                  onOpenPlanning={(search) => navigateToPage('planning', { search })}
+                  onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
+                />
+              )}
+              {page === 'queue' && (
+                <QueuePage
+                  locationSearch={locationSearch}
+                  onOpenInbox={(search) => navigateToPage('inbox', { search })}
+                  onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
+                />
+              )}
+              {page === 'delivery_tracking' && (
+                <DeliveryTrackingPage
+                  locationSearch={locationSearch}
+                  onOpenQueue={(search) => navigateToPage('queue', { search })}
+                  onOpenTrackingHistory={() => navigateToPage('tracking_history')}
+                  onOpenDeliveryReport={() => navigateToPage('delivery_report')}
+                />
+              )}
+              {page === 'live_view' && <LiveViewPage />}
+              {page === 'delivery_report' && <DeliveryReportPage />}
+              {page === 'tracking_history' && (
+                <TrackingHistoryPage locationSearch={locationSearch} />
+              )}
+              {page === 'notifications' && <NotificationsPage />}
+              {page === 'planning' && (
+                <PlanningPage
+                  locationSearch={locationSearch}
+                  onOpenInbox={(search) => navigateToPage('inbox', { search })}
+                />
+              )}
+              {page === 'postal' && <PostalQueuePage locationSearch={locationSearch} />}
+              {page === 'drivers' && (
+                <DriversPage
+                  onOpenTrackingHistory={(driverCode) =>
+                    navigateToPage('tracking_history', {
+                      search: `?driverCode=${encodeURIComponent(driverCode)}&rangeDays=90`,
+                    })
+                  }
+                />
+              )}
+              {page === 'customers' && <CustomersPage locationSearch={locationSearch} />}
+              {page === 'users' && <UsersPage />}
+              {page === 'roles' && <RolesPage />}
+              {page === 'security' && <SecuritySessionPage />}
+              {page === 'profile' && <ProfilePage />}
+            </>
+          )}
+        </Suspense>
+      </AppShell>
+    </RetailProvider>
+  );
 }
 
 export default function App() {
@@ -136,64 +249,8 @@ export default function App() {
   }
 
   return (
-    <RetailProvider>
-      <AppShell page={page} onChangePage={navigateToPage}>
-        <Suspense fallback={null}>
-          <SplashGate />
-          {page === 'overview' && <OverviewPage />}
-          {page === 'script_transform' && <ScriptTransformPage />}
-          {page === 'inbox' && (
-            <InboxPage
-              locationSearch={locationSearch}
-              onOpenQueue={(search) => navigateToPage('queue', { search })}
-              onOpenPlanning={(search) => navigateToPage('planning', { search })}
-            />
-          )}
-          {page === 'route_builder' && (
-            <RouteBuilderPage
-              locationSearch={locationSearch}
-              onOpenPlanning={(search) => navigateToPage('planning', { search })}
-              onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
-            />
-          )}
-          {page === 'queue' && (
-            <QueuePage
-              locationSearch={locationSearch}
-              onOpenInbox={(search) => navigateToPage('inbox', { search })}
-              onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
-            />
-          )}
-          {page === 'delivery_tracking' && (
-            <DeliveryTrackingPage
-              locationSearch={locationSearch}
-              onOpenQueue={(search) => navigateToPage('queue', { search })}
-              onOpenTrackingHistory={() => navigateToPage('tracking_history')}
-              onOpenDeliveryReport={() => navigateToPage('delivery_report')}
-            />
-          )}
-          {page === 'live_view' && <LiveViewPage />}
-          {page === 'delivery_report' && <DeliveryReportPage />}
-          {page === 'tracking_history' && <TrackingHistoryPage locationSearch={locationSearch} />}
-          {page === 'notifications' && <NotificationsPage />}
-          {page === 'planning' && (
-            <PlanningPage
-              locationSearch={locationSearch}
-              onOpenInbox={(search) => navigateToPage('inbox', { search })}
-            />
-          )}
-          {page === 'postal' && <PostalQueuePage locationSearch={locationSearch} />}
-          {page === 'drivers' && (
-            <DriversPage
-              onOpenTrackingHistory={(driverCode) =>
-                navigateToPage('tracking_history', {
-                  search: `?driverCode=${encodeURIComponent(driverCode)}&rangeDays=90`,
-                })
-              }
-            />
-          )}
-          {page === 'customers' && <CustomersPage locationSearch={locationSearch} />}
-        </Suspense>
-      </AppShell>
-    </RetailProvider>
+    <AdminAuthProvider>
+      <AdminSurface page={page} locationSearch={locationSearch} navigateToPage={navigateToPage} />
+    </AdminAuthProvider>
   );
 }

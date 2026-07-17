@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { Toaster } from '@/components/ui/sonner';
 import 'leaflet/dist/leaflet.css';
+import '@fontsource-variable/geist';
 import './index.css';
 
 // admin เป็น web-only — service worker/native shell/push ย้ายไปผูกกับ entry messenger

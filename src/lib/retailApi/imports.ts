@@ -1,9 +1,11 @@
 import type { Order, ShippingMethod } from '@/data/orderTypes';
 import {
   APP_API_BASE,
+  APP_TOKEN_KEY,
   INTERNAL_API_KEY,
   IS_NATIVE_APP,
   assertNativeRequestUrl,
+  clearLocalAppSession,
   networkErrorMessage,
   request,
 } from './client';
@@ -238,6 +240,8 @@ export async function downloadImportBatchCsv(id: string) {
   assertNativeRequestUrl(url);
 
   const headers = new Headers();
+  const appToken = localStorage.getItem(APP_TOKEN_KEY);
+  if (appToken) headers.set('authorization', `Bearer ${appToken}`);
   if (IS_NATIVE_APP && INTERNAL_API_KEY) {
     headers.set('x-internal-key', INTERNAL_API_KEY);
   }
@@ -250,6 +254,7 @@ export async function downloadImportBatchCsv(id: string) {
   }
 
   if (!response.ok) {
+    if (response.status === 401 && appToken) clearLocalAppSession(true);
     throw new Error(`${response.status} ${response.statusText}`);
   }
 
