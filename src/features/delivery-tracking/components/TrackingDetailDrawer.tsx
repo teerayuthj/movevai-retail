@@ -23,6 +23,8 @@ import { Clock3, Loader2, MapPin, Route } from 'lucide-react';
 
 type TrackingDetailDrawerProps = {
   order: Order | null;
+  /** หลักฐานระดับงานของ Route — ปกติคือ dropoff ที่รอตรวจ แม้กำลังดู pickup อยู่ */
+  proofOrder?: Order | null;
   driver: Driver | null;
   /** ใช้ resolve ชื่อคนขับร่วมบนป้ายทีมจัดส่ง */
   drivers: Driver[];
@@ -39,6 +41,7 @@ type TrackingDetailDrawerProps = {
 /** รายละเอียดเชิงลึก — drawer ขวา (เดสก์ท็อป) / เต็มจอ (มือถือ) เปิดเมื่อเลือก order */
 export function TrackingDetailDrawer({
   order,
+  proofOrder,
   driver,
   drivers,
   routeOrders,
@@ -112,6 +115,12 @@ export function TrackingDetailDrawer({
                       {job.stops.map((stop) => {
                         const kind = stop.metadataJson?.dispatch?.routeLeg ?? 'dropoff';
                         const selected = stop.id === order.id;
+                        const pendingDeliveryReview =
+                          stop.status === 'pending_confirmation' && kind !== 'pickup';
+                        const stopStatusLabel =
+                          kind === 'pickup' && stop.status === 'pending_confirmation'
+                            ? 'รับของแล้ว'
+                            : statusLabel[stop.status];
                         return (
                           <li key={stop.id}>
                             <button
@@ -149,14 +158,16 @@ export function TrackingDetailDrawer({
                               </span>
                               <Badge
                                 variant={
-                                  stop.status === 'delivered' ||
-                                  stop.status === 'pending_confirmation'
-                                    ? 'success'
-                                    : 'muted'
+                                  pendingDeliveryReview
+                                    ? 'warning'
+                                    : stop.status === 'delivered' ||
+                                        stop.status === 'pending_confirmation'
+                                      ? 'success'
+                                      : 'muted'
                                 }
                                 className="h-5 shrink-0 px-1.5 text-[9px]"
                               >
-                                {statusLabel[stop.status]}
+                                {stopStatusLabel}
                               </Badge>
                             </button>
                           </li>
@@ -229,8 +240,8 @@ export function TrackingDetailDrawer({
 
           <CustomerTrackingQrCard order={order} />
 
-          {!isDetailLoading && order.proofOfDelivery && (
-            <ProofOfDeliveryInfo order={order} driverName={driver?.name} />
+          {!isDetailLoading && (proofOrder ?? order).proofOfDelivery && (
+            <ProofOfDeliveryInfo order={proofOrder ?? order} driverName={driver?.name} />
           )}
 
           {(order.status === 'returning' ||

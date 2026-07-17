@@ -161,6 +161,15 @@ export function TrackingRouteCard({
                 {job.stops.map((order) => {
                   const kind = order.metadataJson?.dispatch?.routeLeg ?? 'dropoff';
                   const done = ['pending_confirmation', 'delivered'].includes(order.status);
+                  const pendingDeliveryReview =
+                    order.status === 'pending_confirmation' && kind !== 'pickup';
+                  const stopStatusLabel = pendingDeliveryReview
+                    ? statusLabel.pending_confirmation
+                    : kind === 'pickup' && order.status === 'pending_confirmation'
+                      ? 'รับของแล้ว'
+                      : order.status === 'delivered'
+                        ? 'เสร็จแล้ว'
+                        : statusLabel[order.status];
                   return (
                     <li key={order.id} className="flex gap-2.5 py-1.5 first:pt-0 last:pb-0">
                       <span
@@ -192,10 +201,10 @@ export function TrackingRouteCard({
                         </div>
                       </button>
                       <Badge
-                        variant={done ? 'success' : 'muted'}
+                        variant={pendingDeliveryReview ? 'warning' : done ? 'success' : 'muted'}
                         className="h-5 shrink-0 text-[9px]"
                       >
-                        {done ? 'เสร็จแล้ว' : statusLabel[order.status]}
+                        {stopStatusLabel}
                       </Badge>
                     </li>
                   );

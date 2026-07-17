@@ -679,9 +679,13 @@ export function JobCard({
         )}
         {order.status === 'pending_confirmation' && (
           <div className="flex w-full items-center justify-between gap-2">
-            <Badge variant="warning" className="gap-1">
-              <ClipboardCheck className="h-3 w-3" />
-              รอตรวจสอบ
+            <Badge variant={isPickupStop ? 'success' : 'warning'} className="gap-1">
+              {isPickupStop ? (
+                <CheckCircle2 className="h-3 w-3" />
+              ) : (
+                <ClipboardCheck className="h-3 w-3" />
+              )}
+              {isPickupStop ? 'รับของแล้ว' : 'รอตรวจสอบ'}
             </Badge>
             <div className="flex items-center gap-1.5">
               {onViewMap && (
@@ -690,7 +694,7 @@ export function JobCard({
                   แผนที่
                 </Button>
               )}
-              {!isCoDriver && (
+              {!isCoDriver && !isPickupStop && (
                 <Button
                   size="sm"
                   variant="outline"
