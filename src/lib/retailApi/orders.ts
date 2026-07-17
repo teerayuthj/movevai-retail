@@ -28,6 +28,14 @@ export async function fetchAppOrder(orderId: string) {
   return normalizeOrder(result);
 }
 
+/** รายละเอียดงานแบบอ่านอย่างเดียวสำหรับหน้า Live View. */
+export async function fetchLiveViewOrder(orderId: string) {
+  const result = await request<ApiOrder>(
+    `${APP_API_BASE}/live-view/orders/${encodeURIComponent(orderId)}`,
+  );
+  return normalizeOrder(result);
+}
+
 /**
  * ดึง order สำหรับหน้าติดตามลูกค้า โดยรับได้ทั้ง canonical orderNo (MV-ORD-...),
  * legacy code และ internal id รวมถึง trackingCode สั้นจาก /t/:code
