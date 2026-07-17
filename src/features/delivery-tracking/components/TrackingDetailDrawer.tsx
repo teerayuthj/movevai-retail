@@ -13,13 +13,16 @@ import {
 import { type Driver, type Order, statusLabel } from '@/data/orderTypes';
 import {
   formatElapsedDuration,
+  getDispatchStopDisplayName,
   getInTransitElapsedMinutes,
   getInTransitElapsedTone,
 } from '@/lib/deliveryExecution';
+import { getProofReviewAgeMinutes } from '@/lib/deliveryProofReview';
+import { getFastDispatchSla } from '@/lib/fastDispatch';
 import { formatPlanningDateTime } from '@/lib/deliveryPlanning';
 import { groupRouteOrdersIntoJobs } from '@/lib/deliveryJobs';
 import { cn } from '@/lib/utils';
-import { Clock3, Loader2, MapPin, Route } from 'lucide-react';
+import { ChevronDown, Clock3, Link2, Loader2, MapPin, Route, UserRound } from 'lucide-react';
 
 type TrackingDetailDrawerProps = {
   order: Order | null;
@@ -58,6 +61,9 @@ export function TrackingDetailDrawer({
   );
   const routeJobs = groupRouteOrdersIntoJobs(routeStops);
   const route = order?.deliveryRoute;
+  const proofTarget = proofOrder ?? order;
+  const reviewAgeMinutes = proofTarget ? getProofReviewAgeMinutes(proofTarget, nowMs) : null;
+  const reviewSla = proofTarget ? getFastDispatchSla(proofTarget) : null;
   return (
     <DetailDrawer
       open={!!order}
@@ -67,7 +73,7 @@ export function TrackingDetailDrawer({
       subtitle={
         order
           ? isRoute
-            ? `เที่ยววิ่ง ${routeJobs.length} งาน · กำลังดู ${order.orderNo}`
+            ? `${routeJobs.length} งาน · ${routeStops.length} จุด · กำลังดู ${order.orderNo}`
             : statusLabel[order.status]
           : undefined
       }
@@ -78,39 +84,89 @@ export function TrackingDetailDrawer({
     >
       {order && (
         <>
+          <div className="flex flex-wrap gap-1">
+            <Badge
+              variant={
+                order.status === 'in_transit'
+                  ? 'info'
+                  : order.status === 'pending_confirmation' || order.status === 'returning'
+                    ? 'warning'
+                    : 'muted'
+              }
+            >
+              {statusLabel[order.status]}
+            </Badge>
+            {inTransitMinutes != null && (
+              <Badge
+                variant={
+                  getInTransitElapsedTone(inTransitMinutes) === 'critical'
+                    ? 'destructive'
+                    : getInTransitElapsedTone(inTransitMinutes) === 'slow'
+                      ? 'warning'
+                      : 'info'
+                }
+                className="gap-1"
+              >
+                <Clock3 className="h-3 w-3" />
+                ส่งมาแล้ว {formatElapsedDuration(inTransitMinutes)}
+              </Badge>
+            )}
+            {reviewAgeMinutes != null && (
+              <Badge variant="warning" className="gap-1">
+                <Clock3 className="h-3 w-3" /> รอตรวจมา {formatElapsedDuration(reviewAgeMinutes)}
+              </Badge>
+            )}
+            {reviewSla?.urgent && reviewSla.frozenAtProof && (
+              <Badge variant={reviewSla.state === 'overdue' ? 'destructive' : 'success'}>
+                {reviewSla.detail}
+              </Badge>
+            )}
+            {order.coDriverIds && order.coDriverIds.length > 0 ? (
+              <DriverTeamBadges order={order} drivers={drivers} />
+            ) : null}
+            {isDetailLoading && (
+              <Badge variant="muted" className="gap-1">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                กำลังโหลด
+              </Badge>
+            )}
+          </div>
+
+          {!isDetailLoading && proofTarget?.proofOfDelivery && (
+            <ProofOfDeliveryInfo order={proofTarget} driverName={driver?.name} />
+          )}
+
           {isRoute && route && (
             <section className="rounded-lg border bg-muted/20 p-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-                    <Route className="h-3.5 w-3.5" /> การจัดส่งนี้
+                    <Route className="h-3.5 w-3.5" /> เส้นทางและจุดส่ง
                   </div>
-                  <div className="mt-1 text-sm font-semibold">{route.code}</div>
-                  <div className="mt-0.5 text-[11px] text-muted-foreground">
-                    {routeJobs.length} งาน · {routeStops.length} จุด
-                    {order.deliveryPlan && (
-                      <>
-                        {' · นัด '}
-                        {formatPlanningDateTime(
-                          order.deliveryPlan.plannedDate,
-                          order.deliveryPlan.plannedTime,
-                        )}
-                      </>
-                    )}
-                  </div>
+                  {order.deliveryPlan && (
+                    <div className="mt-1 text-[11px] text-muted-foreground">
+                      นัด{' '}
+                      {formatPlanningDateTime(
+                        order.deliveryPlan.plannedDate,
+                        order.deliveryPlan.plannedTime,
+                      )}
+                    </div>
+                  )}
                 </div>
-                {driver && <Badge variant="muted">{driver.name}</Badge>}
+                <Badge variant="muted">{routeStops.length} จุด</Badge>
               </div>
 
               <div className="mt-3 space-y-2 border-t pt-3" aria-label="งานในเที่ยวนี้">
                 {routeJobs.map((job, jobIndex) => (
                   <section key={job.id} className="rounded-md border bg-background/70 p-2">
-                    <div className="mb-1 text-[11px] font-semibold">
-                      งานที่ {jobIndex + 1}
-                      <span className="ml-1 font-normal text-muted-foreground">
-                        · {job.stops.length} จุด
-                      </span>
-                    </div>
+                    {routeJobs.length > 1 && (
+                      <div className="mb-1 text-[11px] font-semibold">
+                        งานที่ {jobIndex + 1}
+                        <span className="ml-1 font-normal text-muted-foreground">
+                          · {job.stops.length} จุด
+                        </span>
+                      </div>
+                    )}
                     <ol>
                       {job.stops.map((stop) => {
                         const kind = stop.metadataJson?.dispatch?.routeLeg ?? 'dropoff';
@@ -149,7 +205,9 @@ export function TrackingDetailDrawer({
                                   >
                                     {kind === 'pickup' ? 'รับ' : 'ส่ง'}
                                   </span>
-                                  <span className="truncate">{stop.customer.name}</span>
+                                  <span className="truncate">
+                                    {getDispatchStopDisplayName(stop.customer.name)}
+                                  </span>
                                 </span>
                                 <span className="mt-0.5 flex items-start gap-1 text-[10px] text-muted-foreground">
                                   <MapPin className="mt-0.5 h-2.5 w-2.5 shrink-0" />
@@ -185,64 +243,9 @@ export function TrackingDetailDrawer({
               {isRoute ? 'รายละเอียดจุดที่เลือก' : 'Order'}
             </div>
             <div className="mt-1">
-              <OrderSummary order={order} />
+              <OrderSummary order={order} slaOrder={proofTarget ?? order} showSla={false} />
             </div>
           </div>
-
-          <div className="flex flex-wrap gap-1">
-            <Badge
-              variant={
-                order.status === 'in_transit'
-                  ? 'info'
-                  : order.status === 'pending_confirmation' || order.status === 'returning'
-                    ? 'warning'
-                    : 'muted'
-              }
-            >
-              {statusLabel[order.status]}
-            </Badge>
-            {inTransitMinutes != null && (
-              <Badge
-                variant={
-                  getInTransitElapsedTone(inTransitMinutes) === 'critical'
-                    ? 'destructive'
-                    : getInTransitElapsedTone(inTransitMinutes) === 'slow'
-                      ? 'warning'
-                      : 'info'
-                }
-                className="gap-1"
-              >
-                <Clock3 className="h-3 w-3" />
-                ส่งมาแล้ว {formatElapsedDuration(inTransitMinutes)}
-              </Badge>
-            )}
-            {order.deliveryPlan?.releaseState === 'released' &&
-              order.deliveryRoute?.dispatchMode !== 'urgent' && (
-                <Badge variant="info">จาก Planning</Badge>
-              )}
-            {order.deliveryPlan?.releaseState === 'planned' &&
-              order.deliveryPlan.plannedDriverId && <Badge variant="info">แผนล่วงหน้า</Badge>}
-            {order.deliveryRoute?.dispatchMode === 'urgent' && (
-              <Badge variant="info">ส่งทันที</Badge>
-            )}
-            {order.coDriverIds && order.coDriverIds.length > 0 ? (
-              <DriverTeamBadges order={order} drivers={drivers} />
-            ) : (
-              driver && <Badge variant="muted">คนขับ: {driver.name}</Badge>
-            )}
-            {isDetailLoading && (
-              <Badge variant="muted" className="gap-1">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                กำลังโหลด
-              </Badge>
-            )}
-          </div>
-
-          <CustomerTrackingQrCard order={order} />
-
-          {!isDetailLoading && (proofOrder ?? order).proofOfDelivery && (
-            <ProofOfDeliveryInfo order={proofOrder ?? order} driverName={driver?.name} />
-          )}
 
           {(order.status === 'returning' ||
             order.status === 'failed' ||
@@ -250,12 +253,35 @@ export function TrackingDetailDrawer({
             order.status === 'returned') &&
             order.resolution && <ResolutionInfo order={order} />}
 
-          <div>
-            <div className="mb-1 text-[11px] font-medium text-muted-foreground">ข้อมูลคนขับ</div>
-            <DriverSummary driver={driver} order={order} />
-          </div>
+          <details className="group rounded-lg border bg-muted/10">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
+              <span className="flex min-w-0 items-center gap-2">
+                <Link2 className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">QR และลิงก์ติดตามลูกค้า</span>
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t p-3">
+              <CustomerTrackingQrCard order={order} compact />
+            </div>
+          </details>
 
-          <OrderTimeline order={order} description="กิจกรรมที่เกิดขึ้นกับออเดอร์นี้" compact />
+          <details className="group rounded-lg border bg-muted/10">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium">
+              <span className="flex min-w-0 items-center gap-2">
+                <UserRound className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <span className="truncate">
+                  {driver ? `ผู้จัดส่ง · ${driver.name}` : 'ผู้จัดส่ง'}
+                </span>
+              </span>
+              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+            </summary>
+            <div className="border-t p-3">
+              <DriverSummary driver={driver} order={order} compact />
+            </div>
+          </details>
+
+          <OrderTimeline order={order} title="ประวัติกิจกรรม" compact defaultExpanded={false} />
         </>
       )}
     </DetailDrawer>

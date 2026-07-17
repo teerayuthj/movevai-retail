@@ -15,16 +15,17 @@ import type { Order } from '@/data/orderTypes';
 
 type CustomerTrackingQrCardProps = {
   order: Order;
+  compact?: boolean;
 };
 
-export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
+export function CustomerTrackingQrCard({ order, compact = false }: CustomerTrackingQrCardProps) {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [copied, setCopied] = useState(false);
   // ลิงก์สั้น /t/:trackingCode เมื่อ backend สุ่มโค้ดให้แล้ว; ออเดอร์เก่าที่ยังไม่มีโค้ด
   // fallback เป็น /track/{orderNo} (MV-ORD-...) ที่ลูกค้ารู้จัก — backend resolve ได้ทั้งคู่
   const trackingRef = useMemo(
     () => ({ id: order.orderNo ?? order.id, trackingCode: order.trackingCode }),
-    [order.orderNo, order.trackingCode],
+    [order.id, order.orderNo, order.trackingCode],
   );
   const trackingUrl = useMemo(() => buildCustomerTrackingUrl(trackingRef), [trackingRef]);
   const trackingPath = useMemo(() => getCustomerTrackingPath(trackingRef), [trackingRef]);
@@ -132,9 +133,11 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
               กำหนดส่ง: {formatPlanningDateTime(plannedDelivery.date, plannedDelivery.time)}
             </div>
           )}
-          <div className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
-            {trackingUrl}
-          </div>
+          {!compact && (
+            <div className="mt-1 break-all font-mono text-[11px] text-muted-foreground">
+              {trackingUrl}
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button type="button" size="sm" variant="outline" onClick={downloadQr}>
               <Download className="h-3.5 w-3.5" />
@@ -163,10 +166,6 @@ export function CustomerTrackingQrCard({ order }: CustomerTrackingQrCardProps) {
           จนกว่าจะวางแผนจัดส่งใน Planning
         </div>
       )}
-      <div className="mt-2 text-[11px] text-muted-foreground">
-        ลิงก์ใช้โค้ดสุ่มสั้น (เดาไม่ได้จากเลขออเดอร์); production ควรเพิ่ม OTP ก่อนแสดงข้อมูล
-        sensitive
-      </div>
     </div>
   );
 }

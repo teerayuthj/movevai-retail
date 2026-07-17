@@ -19,6 +19,8 @@ import { fetchAppOrders } from '@/lib/retailApi';
 import { matchesOrderReference, normalizeOrderNumberInput } from '@/lib/orderNumber';
 import type { Order } from '@/data/orderTypes';
 import { getTrackingAlert } from '@/features/delivery-tracking/utils/trackingAlerts';
+import { useAdminAuth } from '@/auth/AuthContext';
+import { canAccessPage } from '@/auth/permissions';
 
 type Props = {
   page: PageKey;
@@ -27,6 +29,7 @@ type Props = {
 };
 
 export function AppShell({ page, onChangePage, children }: Props) {
+  const { user } = useAdminAuth();
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -236,62 +239,71 @@ export function AppShell({ page, onChangePage, children }: Props) {
             </div>
           </div>
           <nav className={cn('flex-1 overflow-y-auto', collapsed ? 'p-1.5' : 'p-3')}>
-            {NAV_SECTIONS.map((section, sectionIndex) => (
-              <div
-                key={section.id}
-                className={cn(
-                  sectionIndex > 0 && (collapsed ? 'mt-2 border-t pt-2' : 'mt-4'),
-                  'space-y-1',
-                )}
-              >
-                {!collapsed && section.label && (
-                  <div className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                    {section.label}
-                  </div>
-                )}
-                {section.items.map((item) => {
-                  const Icon = item.icon;
-                  const active = page === item.key;
-                  const badgeCount = item.showBadge ? badgeCounts[item.key] : undefined;
-                  const alertCount = item.showAlertBadge ? (alertCounts[item.key] ?? 0) : 0;
-                  return (
-                    <CollapsedSidebarTooltip key={item.key} label={item.label} enabled={collapsed}>
-                      <a
-                        href={getPathForPage(item.key)}
-                        onClick={(event) => handleNavigate(event, item.key)}
-                        aria-label={item.label}
-                        className={cn(
-                          'relative flex items-center rounded-lg text-sm transition-colors',
-                          collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-3 px-3 py-2',
-                          active
-                            ? 'bg-primary/10 text-primary font-medium'
-                            : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                        )}
+            {NAV_SECTIONS.map((section) => ({
+              ...section,
+              items: section.items.filter((item) => user && canAccessPage(user, item.key)),
+            }))
+              .filter((section) => section.items.length > 0)
+              .map((section, sectionIndex) => (
+                <div
+                  key={section.id}
+                  className={cn(
+                    sectionIndex > 0 && (collapsed ? 'mt-2 border-t pt-2' : 'mt-4'),
+                    'space-y-1',
+                  )}
+                >
+                  {!collapsed && section.label && (
+                    <div className="px-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                      {section.label}
+                    </div>
+                  )}
+                  {section.items.map((item) => {
+                    const Icon = item.icon;
+                    const active = page === item.key;
+                    const badgeCount = item.showBadge ? badgeCounts[item.key] : undefined;
+                    const alertCount = item.showAlertBadge ? (alertCounts[item.key] ?? 0) : 0;
+                    return (
+                      <CollapsedSidebarTooltip
+                        key={item.key}
+                        label={item.label}
+                        enabled={collapsed}
                       >
-                        <Icon className="h-[18px] w-[18px]" strokeWidth={2.15} />
-                        {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
-                        {!collapsed && alertCount > 0 && (
-                          <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
-                            {alertCount}
-                          </Badge>
-                        )}
-                        {!collapsed && badgeCount !== undefined && (
-                          <Badge
-                            variant={active ? 'default' : 'secondary'}
-                            className="h-5 px-1.5 text-[10px]"
-                          >
-                            {badgeCount}
-                          </Badge>
-                        )}
-                      </a>
-                    </CollapsedSidebarTooltip>
-                  );
-                })}
-              </div>
-            ))}
+                        <a
+                          href={getPathForPage(item.key)}
+                          onClick={(event) => handleNavigate(event, item.key)}
+                          aria-label={item.label}
+                          className={cn(
+                            'relative flex items-center rounded-lg text-sm transition-colors',
+                            collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-3 px-3 py-2',
+                            active
+                              ? 'bg-primary/10 text-primary font-medium'
+                              : 'text-muted-foreground hover:bg-accent hover:text-foreground',
+                          )}
+                        >
+                          <Icon className="h-[18px] w-[18px]" strokeWidth={2.15} />
+                          {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
+                          {!collapsed && alertCount > 0 && (
+                            <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                              {alertCount}
+                            </Badge>
+                          )}
+                          {!collapsed && badgeCount !== undefined && (
+                            <Badge
+                              variant={active ? 'default' : 'secondary'}
+                              className="h-5 px-1.5 text-[10px]"
+                            >
+                              {badgeCount}
+                            </Badge>
+                          )}
+                        </a>
+                      </CollapsedSidebarTooltip>
+                    );
+                  })}
+                </div>
+              ))}
           </nav>
           <div className={cn('border-t', collapsed ? 'p-1.5' : 'p-3')}>
-            <SidebarUserMenu collapsed={collapsed} />
+            <SidebarUserMenu collapsed={collapsed} onChangePage={onChangePage} />
           </div>
         </aside>
 

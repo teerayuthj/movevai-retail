@@ -91,8 +91,31 @@ export async function fetchDeliveryTrackingOrders(params: {
   return { ...result, orders: result.items.map(normalizeOrder) };
 }
 
+/** Read-only order feed for users who have Live View but not delivery management. */
+export async function fetchLiveViewOrders(params: {
+  tab: DeliveryTrackingTab;
+  query?: string;
+  take: number;
+  skip: number;
+}) {
+  const search = new URLSearchParams({
+    tab: params.tab,
+    take: String(params.take),
+    skip: String(params.skip),
+  });
+  if (params.query?.trim()) search.set('q', params.query.trim());
+  const result = await request<{ items: ApiOrder[]; total: number; take: number; skip: number }>(
+    `${APP_API_BASE}/live-view/orders?${search.toString()}`,
+  );
+  return { ...result, orders: result.items.map(normalizeOrder) };
+}
+
 export function fetchDeliveryTrackingCounts() {
   return request<DeliveryTrackingCounts>(`${APP_API_BASE}/tracking/counts`);
+}
+
+export function fetchLiveViewCounts() {
+  return request<DeliveryTrackingCounts>(`${APP_API_BASE}/live-view/counts`);
 }
 
 // ปลายทางของ route ที่กำลังส่ง — มาจาก backend (geocode ฝั่ง server) เพื่อให้ทั้ง messenger
@@ -179,6 +202,10 @@ export function fetchLiveMessengers() {
   return request<LiveMessengerTracking[]>(`${APP_API_BASE}/tracking/riders/latest`);
 }
 
+export function fetchLiveViewMessengers() {
+  return request<LiveMessengerTracking[]>(`${APP_API_BASE}/live-view/riders/latest`);
+}
+
 export type MessengerPresence = {
   driver: {
     code: string;
@@ -227,9 +254,19 @@ export function fetchMessengerPresences() {
   return request<MessengerPresence[]>(`${APP_API_BASE}/tracking/riders/presence`);
 }
 
+export function fetchLiveViewMessengerPresences() {
+  return request<MessengerPresence[]>(`${APP_API_BASE}/live-view/riders/presence`);
+}
+
 export function fetchMessengerTrackingHistory(sessionId: string) {
   return request<MessengerTrackingHistory>(
     `${APP_API_BASE}/tracking/sessions/${encodeURIComponent(sessionId)}`,
+  );
+}
+
+export function fetchLiveViewTrackingHistory(sessionId: string) {
+  return request<MessengerTrackingHistory>(
+    `${APP_API_BASE}/live-view/tracking-sessions/${encodeURIComponent(sessionId)}`,
   );
 }
 

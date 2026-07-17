@@ -38,8 +38,10 @@ if (IS_NATIVE_APP && (MESSENGER_API_BASE.startsWith('/') || APP_API_BASE.startsW
 }
 
 export const MESSENGER_TOKEN_KEY = 'movevai:messenger-token';
+export const APP_TOKEN_KEY = 'movevai:app-token';
 export const ROAD_ROUTE_TIMEOUT_MS = 7_000;
 export const MESSENGER_AUTH_EXPIRED_EVENT = 'movevai:messenger-auth-expired';
+export const APP_AUTH_EXPIRED_EVENT = 'movevai:app-auth-expired';
 
 export function proofPayload(input: SubmitDeliveryInput) {
   const { editorRole: _editorRole, recordedBy: _recordedBy, ...proof } = input;
@@ -62,6 +64,13 @@ export function clearLocalMessengerSession(notify = false) {
   localStorage.removeItem('movevai:messenger-code');
   if (notify && typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(MESSENGER_AUTH_EXPIRED_EVENT));
+  }
+}
+
+export function clearLocalAppSession(notify = false) {
+  localStorage.removeItem(APP_TOKEN_KEY);
+  if (notify && typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent(APP_AUTH_EXPIRED_EVENT));
   }
 }
 
@@ -115,10 +124,15 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
     headers.set('ngrok-skip-browser-warning', 'true');
   }
   const isMessengerRequest = url.startsWith(MESSENGER_API_BASE);
+  const isAppRequest = url.startsWith(APP_API_BASE);
   let messengerToken: string | null = null;
   if (isMessengerRequest) {
     messengerToken = localStorage.getItem(MESSENGER_TOKEN_KEY);
     if (messengerToken) headers.set('authorization', `Bearer ${messengerToken}`);
+  }
+  const appToken = isAppRequest ? localStorage.getItem(APP_TOKEN_KEY) : null;
+  if (appToken && !headers.has('authorization')) {
+    headers.set('authorization', `Bearer ${appToken}`);
   }
   let response: Response;
   try {
@@ -146,6 +160,9 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
     if (messengerTokenExpired) {
       clearLocalMessengerSession(true);
       throw new MessengerAuthError(message);
+    }
+    if (isAppRequest && appToken && response.status === 401) {
+      clearLocalAppSession(true);
     }
     throw new Error(message);
   }

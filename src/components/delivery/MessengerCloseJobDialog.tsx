@@ -1,8 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { type DeliveryProofEditorRole, type Order } from '@/data/orderTypes';
+import {
+  deliveryRecipientRelationshipLabel,
+  type DeliveryProofEditorRole,
+  type DeliveryRecipientRelationship,
+  type Order,
+} from '@/data/orderTypes';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
 import {
   canReviseDeliveryProof,
@@ -510,6 +517,9 @@ type CloseJobDraft = {
   editorRole: DeliveryProofEditorRole;
   photos: string[];
   signatureDataUrl: string | null;
+  recipientName: string;
+  recipientPhone: string;
+  recipientRelationship: DeliveryRecipientRelationship | '';
   step: CloseStep;
   savedAt: string;
 };
@@ -537,6 +547,16 @@ function readCloseJobDraft(
             .slice(0, MAX_PHOTOS)
         : [],
       signatureDataUrl: typeof draft.signatureDataUrl === 'string' ? draft.signatureDataUrl : null,
+      recipientName: typeof draft.recipientName === 'string' ? draft.recipientName : '',
+      recipientPhone: typeof draft.recipientPhone === 'string' ? draft.recipientPhone : '',
+      recipientRelationship:
+        draft.recipientRelationship === 'customer' ||
+        draft.recipientRelationship === 'family' ||
+        draft.recipientRelationship === 'employee' ||
+        draft.recipientRelationship === 'security' ||
+        draft.recipientRelationship === 'other'
+          ? draft.recipientRelationship
+          : '',
       step:
         draft.step === 'photo' || draft.step === 'signature' || draft.step === 'review'
           ? draft.step
@@ -581,6 +601,11 @@ export function MessengerCloseJobDialog({
 }: Props) {
   const [photos, setPhotos] = useState<string[]>([]);
   const [signatureDataUrl, setSignatureDataUrl] = useState<string | null>(null);
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
+  const [recipientRelationship, setRecipientRelationship] = useState<
+    DeliveryRecipientRelationship | ''
+  >('');
   const [cameraOpen, setCameraOpen] = useState(false);
   const [step, setStep] = useState<CloseStep>('photo');
   const [submitting, setSubmitting] = useState(false);
@@ -613,6 +638,10 @@ export function MessengerCloseJobDialog({
       MAX_PHOTOS,
     );
     const nextSignatureDataUrl = draft?.signatureDataUrl ?? existingProof?.signatureDataUrl ?? null;
+    const nextRecipientName = draft?.recipientName || existingProof?.recipient?.name || '';
+    const nextRecipientPhone = draft?.recipientPhone || existingProof?.recipient?.phone || '';
+    const nextRecipientRelationship =
+      draft?.recipientRelationship || existingProof?.recipient?.relationship || 'customer';
     const nextStep = draft
       ? restoreStep(draft.step, nextPhotos.length > 0, !!nextSignatureDataUrl)
       : existingProof
@@ -621,6 +650,9 @@ export function MessengerCloseJobDialog({
 
     setPhotos(nextPhotos);
     setSignatureDataUrl(nextSignatureDataUrl);
+    setRecipientName(nextRecipientName);
+    setRecipientPhone(nextRecipientPhone);
+    setRecipientRelationship(nextRecipientRelationship);
     setStep(nextStep);
     // อย่าเด้งเข้าหน้ากล้องเอง — บน iOS/Capacitor (WKWebView) getUserMedia
     // ใช้ไม่ได้แล้วจะเจอจอดำ ให้ผู้ใช้เลือกเองว่าจะเปิดกล้องหรือเลือกจากคลังภาพ
@@ -645,10 +677,24 @@ export function MessengerCloseJobDialog({
       editorRole,
       photos,
       signatureDataUrl,
+      recipientName,
+      recipientPhone,
+      recipientRelationship,
       step,
       savedAt: new Date().toISOString(),
     });
-  }, [editorRole, hydratedOrderId, open, order, photos, signatureDataUrl, step]);
+  }, [
+    editorRole,
+    hydratedOrderId,
+    open,
+    order,
+    photos,
+    recipientName,
+    recipientPhone,
+    recipientRelationship,
+    signatureDataUrl,
+    step,
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -678,8 +724,9 @@ export function MessengerCloseJobDialog({
     const items: string[] = [];
     if (photos.length < 1) items.push(isPickupCheckpoint ? 'ถ่ายรูปรับของ' : 'ถ่ายรูปส่งมอบ');
     if (!signatureCaptured) items.push('ลายเซ็นผู้รับ');
+    if (!isPickupCheckpoint && !recipientName.trim()) items.push('ชื่อผู้รับจริง');
     return items;
-  }, [isPickupCheckpoint, photos.length, signatureCaptured]);
+  }, [isPickupCheckpoint, photos.length, recipientName, signatureCaptured]);
 
   if (!open || !order) return null;
 
@@ -699,6 +746,14 @@ export function MessengerCloseJobDialog({
         signatureDataUrl: signatureDataUrl ?? undefined,
         otpVerified: false,
         editorRole,
+        recipient: isPickupCheckpoint
+          ? undefined
+          : {
+              name: recipientName.trim(),
+              phone: recipientPhone.trim() || undefined,
+              relationship: recipientRelationship || undefined,
+            },
+        handedOverAt: new Date().toISOString(),
         location: location
           ? {
               lat: location.lat,
@@ -707,6 +762,7 @@ export function MessengerCloseJobDialog({
                 location.accuracy != null
                   ? `พิกัด GPS ขณะส่งมอบ (±${Math.round(location.accuracy)} ม.)`
                   : 'พิกัด GPS ขณะส่งมอบ',
+              accuracyMeters: location.accuracy,
             }
           : undefined,
       });
@@ -1014,6 +1070,58 @@ export function MessengerCloseJobDialog({
                     : 'ตรวจว่ารูปส่งมอบและลายเซ็นครบ ก่อนส่งให้ CS/admin ตรวจสอบและยืนยันส่งมอบ'}
                 </p>
               </div>
+
+              {!isPickupCheckpoint && (
+                <div className="space-y-3 rounded-lg border bg-card p-3">
+                  <div>
+                    <div className="text-xs font-semibold">ผู้รับของจริง</div>
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">
+                      ใช้ยืนยันว่าใครเป็นผู้รับมอบ ณ จุดส่ง
+                    </div>
+                  </div>
+                  <label className="block space-y-1">
+                    <span className="text-[11px] font-medium">ชื่อผู้รับ *</span>
+                    <Input
+                      value={recipientName}
+                      onChange={(event) => setRecipientName(event.target.value)}
+                      placeholder="ชื่อ-นามสกุล หรือชื่อผู้รับที่ระบุได้"
+                      maxLength={200}
+                    />
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block space-y-1">
+                      <span className="text-[11px] font-medium">ความสัมพันธ์</span>
+                      <Select
+                        value={recipientRelationship}
+                        onChange={(event) =>
+                          setRecipientRelationship(
+                            event.target.value as DeliveryRecipientRelationship,
+                          )
+                        }
+                      >
+                        {Object.entries(deliveryRecipientRelationshipLabel).map(
+                          ([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ),
+                        )}
+                      </Select>
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-[11px] font-medium">เบอร์ผู้รับ</span>
+                      <Input
+                        type="tel"
+                        inputMode="tel"
+                        value={recipientPhone}
+                        onChange={(event) => setRecipientPhone(event.target.value)}
+                        placeholder="ถ้ามี"
+                        maxLength={30}
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 {photos.length > 0 ? (

@@ -317,7 +317,10 @@ export function RetailProvider({
   // โหลดข้อมูลจาก backend ครั้งแรกเมื่อเปิด dashboard ฝั่ง web
   useEffect(() => {
     if (mode !== 'web') return;
-    void syncFromBackend();
+    // User role อาจถูกจำกัดไม่ให้ดู orders/drivers ทั้งระบบ แต่ยังเข้า page เฉพาะ
+    // (เช่น Customers) ได้ จึงไม่ควรให้ background hydration ที่ถูก 403 ทำให้เกิด
+    // unhandled rejection หรือทำให้ shell ใช้งานไม่ได้
+    void syncFromBackend().catch(() => undefined);
   }, [mode, syncFromBackend]);
 
   const updateOrderCustomer = useCallback(

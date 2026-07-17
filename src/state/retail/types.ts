@@ -4,6 +4,8 @@ import type {
   PlanningCancelReason,
   Driver,
   DeliveryProofEditorRole,
+  DeliveryProofReviewDecision,
+  DeliveryProofReviewReason,
   FailNextAction,
   FailReason,
   Handler,
@@ -59,7 +61,11 @@ export type SubmitDeliveryInput = Omit<ProofOfDelivery, 'capturedAt' | 'captured
 };
 
 export type ConfirmDeliveryInput = {
+  decision?: DeliveryProofReviewDecision;
+  reasonCode?: DeliveryProofReviewReason;
   note?: string;
+  gpsOverride?: boolean;
+  gpsOverrideReason?: string;
   recordedBy?: Handler;
 };
 

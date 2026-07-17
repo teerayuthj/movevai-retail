@@ -17,11 +17,7 @@ import {
 } from '@/data/orderTypes';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import { getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
-import {
-  canReviseDeliveryProof,
-  deliveryProofRevisionLimits,
-  getDeliveryProofRevisionCount,
-} from '@/state/retail/delivery';
+import { canReviseDeliveryProof, deliveryProofRevisionLimits } from '@/state/retail/delivery';
 import {
   fetchAppOrder,
   fetchDeliveryTrackingCounts,
@@ -54,6 +50,7 @@ import {
 import { TrackingCard } from './components/TrackingCard';
 import { TrackingRouteCard } from './components/TrackingRouteCard';
 import { TrackingDetailDrawer } from './components/TrackingDetailDrawer';
+import { DeliveryProofReviewDialog } from './components/DeliveryProofReviewDialog';
 import { type TrackingView, buildQueueSearch, parseTrackingSearch } from './utils/trackingSearch';
 import { FleetMap } from './components/FleetMap';
 import { MessengerOrderMapPage } from '@/features/messenger/components/MessengerOrderMapPage';
@@ -116,6 +113,7 @@ export function DeliveryTrackingPage({
   } = useRetailStore();
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
   const [messengerCloseTargetId, setMessengerCloseTargetId] = useState<string | null>(null);
+  const [proofReviewTarget, setProofReviewTarget] = useState<Order | null>(null);
   const [routeHistoryOrderId, setRouteHistoryOrderId] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
@@ -392,22 +390,9 @@ export function DeliveryTrackingPage({
 
   function renderConfirmDeliveryAction(order: Order) {
     return (
-      <Button
-        className="w-full"
-        onClick={async () => {
-          try {
-            await confirmDelivery(order.id);
-            toast.success(`ปิดงาน ${order.orderNo} เรียบร้อย`);
-            settleAndRefresh(order.id, 'ปิดงานแล้ว');
-          } catch (error) {
-            toast.error(
-              `ปิดงานไม่สำเร็จ — ${error instanceof Error ? error.message : String(error)}`,
-            );
-          }
-        }}
-      >
+      <Button className="w-full" onClick={() => setProofReviewTarget(order)}>
         <CheckCircle2 className="h-4 w-4" />
-        ยืนยันปิดงาน
+        ตรวจและยืนยัน
       </Button>
     );
   }
@@ -537,22 +522,15 @@ export function DeliveryTrackingPage({
         );
       }
       const canAdminEditProof = canReviseDeliveryProof(order, 'admin');
-      const messengerRevisionCount = getDeliveryProofRevisionCount(order, 'messenger');
-      const messengerRevisionLimit = deliveryProofRevisionLimits.messenger;
-      const adminRevisionCount = getDeliveryProofRevisionCount(order, 'admin');
       const adminRevisionLimit = deliveryProofRevisionLimits.admin;
       return (
         <div className="space-y-2">
-          <div
-            className={`rounded-lg border px-3 py-2 text-xs font-medium ${
-              canAdminEditProof
-                ? 'border-info/30 bg-info/10 text-info'
-                : 'border-destructive/30 bg-destructive/10 text-destructive'
-            }`}
-          >
-            แก้ไข: M {messengerRevisionCount}/{messengerRevisionLimit} · A {adminRevisionCount}/
-            {adminRevisionLimit}
-          </div>
+          {!canAdminEditProof && (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
+              Admin แก้ไขหลักฐานครบ {adminRevisionLimit} ครั้งแล้ว
+            </div>
+          )}
+          {includeConfirm && renderConfirmDeliveryAction(order)}
           <div className="grid grid-cols-2 gap-2">
             <Button
               variant="outline"
@@ -562,7 +540,6 @@ export function DeliveryTrackingPage({
               <MapIcon className="h-4 w-4" />
               เส้นทาง
             </Button>
-            {includeConfirm && renderConfirmDeliveryAction(order)}
             <Button
               variant="outline"
               className="w-full"
@@ -799,6 +776,28 @@ export function DeliveryTrackingPage({
           const settlingId = messengerCloseTargetId;
           setMessengerCloseTargetId(null);
           settleAndRefresh(settlingId, 'บันทึกหลักฐานแล้ว');
+        }}
+      />
+
+      <DeliveryProofReviewDialog
+        order={proofReviewTarget}
+        onClose={() => setProofReviewTarget(null)}
+        onSubmit={async (input) => {
+          const target = proofReviewTarget;
+          if (!target) return;
+          await confirmDelivery(target.id, input);
+          setProofReviewTarget(null);
+          if ((input.decision ?? 'approved') === 'approved') {
+            toast.success(`ตรวจหลักฐานและปิดงาน ${target.orderNo} เรียบร้อย`);
+            settleAndRefresh(target.id, 'ตรวจหลักฐานผ่าน — ปิดงานแล้ว');
+            return;
+          }
+          toast.success(
+            input.decision === 'needs_revision'
+              ? `ส่งคำขอแก้หลักฐาน ${target.orderNo} ให้ Messenger แล้ว`
+              : `ปฏิเสธหลักฐาน ${target.orderNo} แล้ว`,
+          );
+          refreshTracking();
         }}
       />
 
@@ -1082,17 +1081,7 @@ export function DeliveryTrackingPage({
         isDetailLoading={isDetailLoading}
         onClose={() => setSelectedOrderId(null)}
         onSelectStop={(order) => setSelectedOrderId(order.id)}
-        actions={
-          selectedRouteActionOrder
-            ? renderActions(selectedRouteActionOrder, {
-                // การ์ด Route เป็นจุดเดียวที่ยืนยันปิดงาน จึงไม่แสดงปุ่มซ้ำใน drawer
-                includeConfirm: !(
-                  selectedRouteActionOrder.status === 'pending_confirmation' &&
-                  selectedRouteActionOrder.deliveryRoute
-                ),
-              })
-            : undefined
-        }
+        actions={selectedRouteActionOrder ? renderActions(selectedRouteActionOrder) : undefined}
         nowMs={nowMs}
       />
 

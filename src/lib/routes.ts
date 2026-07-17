@@ -13,6 +13,10 @@ export type PageKey =
   | 'postal'
   | 'drivers'
   | 'customers'
+  | 'users'
+  | 'roles'
+  | 'security'
+  | 'profile'
   | 'messenger'
   | 'customer_tracking'
   | 'not_found';
@@ -43,6 +47,10 @@ const routeDefinitions: RouteDefinition[] = [
   { page: 'postal', path: '/thai-post' },
   { page: 'drivers', path: '/drivers' },
   { page: 'customers', path: '/customers' },
+  { page: 'users', path: '/settings/users' },
+  { page: 'roles', path: '/settings/roles' },
+  { page: 'security', path: '/settings/security' },
+  { page: 'profile', path: '/profile' },
   { page: 'messenger', path: '/messenger' },
   { page: 'customer_tracking', path: '/track', aliases: ['/customer-track'] },
   // หน้า fallback เมื่อ path ไม่ตรงกับ route ใดเลย — ไม่อยู่ใน sidebar nav

@@ -10,3 +10,4 @@ export * from './retailApi/deliveryTracking';
 export * from './retailApi/routes';
 export * from './retailApi/messenger';
 export * from './retailApi/imports';
+export * from './retailApi/access';

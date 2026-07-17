@@ -5,7 +5,7 @@ import {
   deliveryProofRevisionLimits,
   getDeliveryProofRevisionCount,
 } from '@/state/retail/delivery';
-import { paymentLabel, type Order } from '@/data/orderTypes';
+import { deliveryProofReviewReasonLabel, paymentLabel, type Order } from '@/data/orderTypes';
 import {
   ArrowDown,
   Banknote,
@@ -530,6 +530,32 @@ export function JobCard({
 
       {order.status === 'pending_confirmation' && order.proofOfDelivery && (
         <div className="mt-3 rounded-xl border border-border/60 bg-muted/30 p-3">
+          {order.proofReview && order.proofReview.decision !== 'approved' && (
+            <div
+              className={cn(
+                'mb-3 rounded-lg border px-3 py-2 text-xs',
+                order.proofReview.decision === 'rejected'
+                  ? 'border-destructive/40 bg-destructive/10 text-destructive'
+                  : 'border-warning/40 bg-warning/10 text-warning',
+              )}
+            >
+              <div className="font-semibold">
+                {order.proofReview.decision === 'rejected'
+                  ? 'Admin ปฏิเสธหลักฐาน'
+                  : 'Admin ขอให้แก้ไขหลักฐาน'}
+              </div>
+              <div className="mt-1 text-[11px]">
+                {[
+                  order.proofReview.reasonCode
+                    ? deliveryProofReviewReasonLabel[order.proofReview.reasonCode]
+                    : undefined,
+                  order.proofReview.note,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </div>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-semibold">หลักฐานที่ส่งล่าสุด</div>
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
@@ -706,7 +732,10 @@ export function JobCard({
                   onClick={onClose}
                 >
                   <PenLine className="h-3.5 w-3.5" />
-                  แก้ไขหลักฐาน
+                  {order.proofReview?.decision === 'needs_revision' ||
+                  order.proofReview?.decision === 'rejected'
+                    ? 'แก้ตามคำขอ'
+                    : 'แก้ไขหลักฐาน'}
                 </Button>
               )}
             </div>

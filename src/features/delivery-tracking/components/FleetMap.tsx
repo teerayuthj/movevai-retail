@@ -6,6 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   fetchDeliveryTrackingOrders,
+  fetchLiveViewMessengerPresences,
+  fetchLiveViewMessengers,
+  fetchLiveViewOrders,
+  fetchLiveViewTrackingHistory,
   fetchLiveMessengers,
   fetchMessengerPresences,
   fetchMessengerTrackingHistory,
@@ -157,6 +161,8 @@ type FleetMapProps = {
   onFocusOrder?: (orderId: string) => void;
   /** เพิ่มค่าเมื่อผู้ใช้กด “ดู Live เที่ยวนี้” เพื่อให้ refocus แม้เลือก Route เดิมอยู่แล้ว */
   focusVersion?: number;
+  /** Live View uses a separate read-only API contract. */
+  accessScope?: 'tracking' | 'live_view';
 };
 
 /**
@@ -164,7 +170,12 @@ type FleetMapProps = {
  * คลิกหมุดคนขับเพื่อโหลดเส้นทางย้อนหลัง + playback; render เป็น absolute overlay
  * ภายใน container relative ของหน้าแม่
  */
-export function FleetMap({ focusOrder, onFocusOrder, focusVersion = 0 }: FleetMapProps) {
+export function FleetMap({
+  focusOrder,
+  onFocusOrder,
+  focusVersion = 0,
+  accessScope = 'tracking',
+}: FleetMapProps) {
   const [messengers, setMessengers] = useState<LiveMessengerTracking[]>([]);
   const [presences, setPresences] = useState<MessengerPresence[]>([]);
   const [activeOrders, setActiveOrders] = useState<Order[]>([]);
@@ -183,7 +194,7 @@ export function FleetMap({ focusOrder, onFocusOrder, focusVersion = 0 }: FleetMa
     let active = true;
     const load = () => {
       // แยก request เพื่อให้ GPS realtime ยังอัปเดตได้ แม้ endpoint รายการงานล้มเหลวชั่วคราว
-      void fetchLiveMessengers()
+      void (accessScope === 'live_view' ? fetchLiveViewMessengers() : fetchLiveMessengers())
         .then((rows) => {
           if (!active) return;
           setMessengers(rows);
@@ -195,7 +206,9 @@ export function FleetMap({ focusOrder, onFocusOrder, focusVersion = 0 }: FleetMa
             error instanceof Error ? error.message : 'โหลด Live Messenger ไม่สำเร็จ',
           );
         });
-      void fetchMessengerPresences()
+      void (
+        accessScope === 'live_view' ? fetchLiveViewMessengerPresences() : fetchMessengerPresences()
+      )
         .then((rows) => {
           if (!active) return;
           setPresences(rows);
@@ -208,7 +221,11 @@ export function FleetMap({ focusOrder, onFocusOrder, focusVersion = 0 }: FleetMa
           );
         });
       // ดึงงานที่ยังไม่ปิดทั้งหมด (ไม่ใช่แค่ in_transit) เพื่อวาดหมุดปลายทางแยกราย order
-      void fetchDeliveryTrackingOrders({ tab: 'all_open', take: 100, skip: 0 })
+      void (accessScope === 'live_view' ? fetchLiveViewOrders : fetchDeliveryTrackingOrders)({
+        tab: 'all_open',
+        take: 100,
+        skip: 0,
+      })
         .then((result) => {
           if (active) setActiveOrders(result.orders);
         })
@@ -220,7 +237,7 @@ export function FleetMap({ focusOrder, onFocusOrder, focusVersion = 0 }: FleetMa
       active = false;
       clearInterval(id);
     };
-  }, []);
+  }, [accessScope]);
 
   useEffect(() => {
     if (selectedId && !messengers.some((messenger) => messenger.id === selectedId)) {
@@ -259,7 +276,9 @@ export function FleetMap({ focusOrder, onFocusOrder, focusVersion = 0 }: FleetMa
     setHistoryError('');
     setLoadingHistoryId(messengerId);
     try {
-      const history = await fetchMessengerTrackingHistory(messengerId);
+      const history = await (accessScope === 'live_view'
+        ? fetchLiveViewTrackingHistory(messengerId)
+        : fetchMessengerTrackingHistory(messengerId));
       setSelectedHistory(history);
     } catch (error) {
       setSelectedHistory(null);

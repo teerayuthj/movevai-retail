@@ -50,6 +50,7 @@ import {
   RefreshCw,
   Search,
   ShieldCheck,
+  Timer,
 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
@@ -201,6 +202,14 @@ function deliveryDuration(order: Order, closedAt: string | null) {
   return minutes != null ? formatElapsedDuration(minutes) : '—';
 }
 
+// ระยะเวลารวมตั้งแต่ messenger กดรับเที่ยวจนปิดงาน — ต่างจาก "ใช้เวลา" ที่นับจากเริ่มจัดส่ง
+// คืน null เมื่อไม่มีเวลารับเที่ยว (งานเก่า/งานที่ไม่ต้องกดรับ) เพื่อให้ UI ซ่อนบรรทัดนี้ได้
+function acceptToCloseDuration(order: Order, closedAt: string | null) {
+  if (!closedAt) return null;
+  const minutes = getDeliveryDurationMinutes(order.deliveryRoute?.acceptedAt, closedAt);
+  return minutes != null ? formatElapsedDuration(minutes) : null;
+}
+
 function statusBadgeVariant(status: OrderStatus) {
   if (status === 'delivered') return 'success' as const;
   if (status === 'failed') return 'warning' as const;
@@ -299,6 +308,7 @@ function buildReportCsv(rows: ReportRow[]) {
     'วันนัด',
     'เวลาปิดงาน',
     'ใช้เวลา',
+    'ใช้เวลาจากรับเที่ยว',
     'COD',
     'Proof',
   ];
@@ -322,6 +332,7 @@ function buildReportCsv(rows: ReportRow[]) {
         plannedAt ? formatDateTime(plannedAt) : '',
         closedAt ? formatDateTime(closedAt) : '',
         deliveryDuration(order, closedAt),
+        acceptToCloseDuration(order, closedAt) ?? '',
         codSummary(order),
         proofSummary(order),
       ]
@@ -666,6 +677,7 @@ export function DeliveryReportPage() {
           <div className="divide-y">
             {rows.map(({ order, driver, closedAt, plannedAt }) => {
               const orderAcceptance = getOrderAcceptance(order);
+              const acceptToClose = acceptToCloseDuration(order, closedAt);
               return (
                 <div
                   key={order.id}
@@ -721,6 +733,12 @@ export function DeliveryReportPage() {
                       <Clock3 className="h-3.5 w-3.5" />
                       {deliveryDuration(order, closedAt)}
                     </div>
+                    {acceptToClose && (
+                      <div className="flex items-center gap-1.5 text-muted-foreground">
+                        <Timer className="h-3.5 w-3.5" />
+                        รับเที่ยว→ปิด {acceptToClose}
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-1 text-xs">
@@ -824,6 +842,11 @@ export function DeliveryReportPage() {
               <Badge variant="muted">
                 ใช้เวลา {deliveryDuration(selectedRow.order, selectedRow.closedAt)}
               </Badge>
+              {acceptToCloseDuration(selectedRow.order, selectedRow.closedAt) && (
+                <Badge variant="muted">
+                  รับเที่ยว→ปิดงาน {acceptToCloseDuration(selectedRow.order, selectedRow.closedAt)}
+                </Badge>
+              )}
             </div>
 
             <div>

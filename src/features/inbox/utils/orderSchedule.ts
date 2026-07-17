@@ -80,7 +80,10 @@ export function getRawRequestedDelivery(order: Order): RequestedDeliveryDraft {
   return parseDeliveryFromText(rawField(raw, 'note', 'หมายเหตุ') || order.rawText);
 }
 
-export function getRequestedDeliveryDraft(order: Order): RequestedDeliveryDraft {
+export function getRequestedDeliveryDraft(
+  order: Order,
+  options?: { includePlanFallback?: boolean },
+): RequestedDeliveryDraft {
   const metadata = order.metadataJson?.requestedDelivery as
     | { date?: unknown; time?: unknown; plannedDate?: unknown; plannedTime?: unknown }
     | undefined;
@@ -109,7 +112,9 @@ export function getRequestedDeliveryDraft(order: Order): RequestedDeliveryDraft 
   const rawRequestedDelivery = getRawRequestedDelivery(order);
   if (rawRequestedDelivery.date || rawRequestedDelivery.time) return rawRequestedDelivery;
 
-  if (order.deliveryPlan?.plannedDate) {
+  // deliveryPlan เป็นรอบที่ทีมวาง ไม่ใช่คำขอลูกค้า — ผู้เรียกที่ต้องการเฉพาะนัดหมายจริง
+  // (เช่น SLA "เวลานัด") ปิด fallback นี้ได้
+  if (options?.includePlanFallback !== false && order.deliveryPlan?.plannedDate) {
     return { date: order.deliveryPlan.plannedDate, time: order.deliveryPlan.plannedTime ?? '' };
   }
 

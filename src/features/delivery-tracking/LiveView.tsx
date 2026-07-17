@@ -6,9 +6,9 @@ import type { Order } from '@/data/orderTypes';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import { getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
 import {
-  fetchAppOrder,
-  fetchDeliveryTrackingCounts,
-  fetchDeliveryTrackingOrders,
+  fetchLiveViewCounts,
+  fetchLiveViewOrder,
+  fetchLiveViewOrders,
   type DeliveryTrackingCounts,
 } from '@/lib/retailApi';
 import { useRetailStore } from '@/state/retailStore';
@@ -70,6 +70,7 @@ export function LiveViewPage() {
   const [trackingTotal, setTrackingTotal] = useState(0);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
+  const [selectedRouteProofDetail, setSelectedRouteProofDetail] = useState<Order | null>(null);
   const [isListLoading, setIsListLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -79,6 +80,7 @@ export function LiveViewPage() {
   const [mapFocusVersion, setMapFocusVersion] = useState(0);
   const listRequestId = useRef(0);
   const detailRequestId = useRef(0);
+  const routeProofRequestId = useRef(0);
   // order id ที่โหลดรายละเอียดสำเร็จแล้ว — ใช้แยก "เปิดใหม่" (โชว์ loading) ออกจาก "รีเฟรชเบื้องหลัง" (อัปเดตเงียบ)
   const loadedDetailIdRef = useRef<string | null>(null);
 
@@ -114,9 +116,43 @@ export function LiveViewPage() {
     if (!group) return [selectedOrder];
     return group.map((order) => (order.id === selectedOrder.id ? selectedOrder : order));
   }, [selectedOrder, trackingListGroups]);
+  // หลักฐานปิดงานอยู่ที่จุดส่งของ Route ไม่ใช่จุดรับของเสมอไป
+  const selectedRouteProofCandidate = useMemo(
+    () =>
+      selectedRouteOrders.find(
+        (order) =>
+          order.metadataJson?.dispatch?.routeLeg !== 'pickup' && Boolean(order.proofOfDelivery),
+      ) ??
+      selectedRouteOrders.find(
+        (order) =>
+          order.metadataJson?.dispatch?.routeLeg !== 'pickup' &&
+          order.status === 'pending_confirmation',
+      ) ??
+      null,
+    [selectedRouteOrders],
+  );
+  const selectedRouteProofOrder =
+    selectedRouteProofCandidate?.id === selectedOrder?.id
+      ? selectedOrder
+      : selectedRouteProofDetail?.id === selectedRouteProofCandidate?.id
+        ? selectedRouteProofDetail
+        : selectedRouteProofCandidate;
 
   function openLiveRoute(order: Order) {
-    setSelectedOrderId(order.id);
+    const routeOrders = trackingListGroups.find((group) =>
+      group.some((item) => item.id === order.id),
+    ) ?? [order];
+    const dropoffs = routeOrders.filter(
+      (item) => item.metadataJson?.dispatch?.routeLeg !== 'pickup',
+    );
+    // Route มักเริ่มด้วยจุดรับ แต่หลักฐานจะอยู่ที่จุดส่ง: เปิด Drawer ที่จุดส่งที่มี
+    // หลักฐาน/รอตรวจสอบก่อน เพื่อให้ไม่ต้องกดจุดที่ 2 เองทุกครั้ง
+    const detailOrder =
+      dropoffs.find((item) => item.proofOfDelivery) ??
+      dropoffs.find((item) => item.status === 'pending_confirmation') ??
+      dropoffs[0] ??
+      order;
+    setSelectedOrderId(detailOrder.id);
     setMapFocusVersion((current) => current + 1);
   }
 
@@ -142,7 +178,7 @@ export function LiveViewPage() {
     setIsListLoading(true);
     setLoadError(null);
 
-    void fetchDeliveryTrackingOrders({
+    void fetchLiveViewOrders({
       tab: view,
       query: debouncedQuery,
       take: PAGE_SIZE,
@@ -163,7 +199,7 @@ export function LiveViewPage() {
   }, [view, debouncedQuery, page, refreshKey]);
 
   useEffect(() => {
-    void fetchDeliveryTrackingCounts()
+    void fetchLiveViewCounts()
       // รองรับ server เวอร์ชันเก่าระหว่าง rollout ที่ยังไม่มี key `planned`
       .then((counts) => setTrackingCounts({ ...EMPTY_COUNTS, ...counts }))
       .catch(() => undefined);
@@ -179,7 +215,7 @@ export function LiveViewPage() {
     const requestId = ++detailRequestId.current;
     const isInitialLoad = loadedDetailIdRef.current !== selectedOrderId;
     if (isInitialLoad) setIsDetailLoading(true);
-    void fetchAppOrder(selectedOrderId)
+    void fetchLiveViewOrder(selectedOrderId)
       .then((order) => {
         if (requestId !== detailRequestId.current) return;
         setSelectedOrderDetail(order);
@@ -193,6 +229,25 @@ export function LiveViewPage() {
         if (requestId === detailRequestId.current && isInitialLoad) setIsDetailLoading(false);
       });
   }, [selectedOrderId, refreshKey]);
+
+  // รายการ Route อาจมีแค่สถานะของจุดส่ง แต่ไม่ได้แนบรูป/ลายเซ็นเต็มมาให้
+  // เมื่อผู้ใช้กดจุดรับ จึงโหลดรายละเอียดของจุดส่งคู่กัน เพื่อให้หลักฐานปรากฏทันที
+  useEffect(() => {
+    const proofOrderId = selectedRouteProofCandidate?.id;
+    if (!proofOrderId || proofOrderId === selectedOrderId) {
+      setSelectedRouteProofDetail(null);
+      return;
+    }
+    const requestId = ++routeProofRequestId.current;
+    setSelectedRouteProofDetail(null);
+    void fetchLiveViewOrder(proofOrderId)
+      .then((order) => {
+        if (requestId === routeProofRequestId.current) setSelectedRouteProofDetail(order);
+      })
+      .catch(() => {
+        if (requestId === routeProofRequestId.current) setSelectedRouteProofDetail(null);
+      });
+  }, [refreshKey, selectedOrderId, selectedRouteProofCandidate?.id]);
 
   function changeView(next: TrackingView) {
     setView(next);
@@ -229,6 +284,7 @@ export function LiveViewPage() {
         focusOrder={selectedOrder}
         onFocusOrder={setSelectedOrderId}
         focusVersion={mapFocusVersion}
+        accessScope="live_view"
       />
 
       {/* แถบบนลอยเหนือแผนที่ — chip สถานะ + ป้ายบอกว่าเป็นโหมดดูอย่างเดียว */}
@@ -425,6 +481,7 @@ export function LiveViewPage() {
 
       <TrackingDetailDrawer
         order={selectedOrder}
+        proofOrder={selectedRouteProofOrder}
         driver={selectedDriver}
         drivers={drivers}
         routeOrders={selectedRouteOrders}
