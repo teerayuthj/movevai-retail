@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Settings, ChevronsUpDown } from 'lucide-react';
+import { ChevronsUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { useRetailStore } from '@/state/retailStore';
 import { CollapsedSidebarTooltip } from './CollapsedSidebarTooltip';
 
 type Props = {
@@ -12,7 +11,6 @@ type Props = {
 
 export function SidebarUserMenu({ collapsed }: Props) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
-  const { resetDemoData } = useRetailStore();
 
   return (
     <Popover open={isUserMenuOpen} onOpenChange={setIsUserMenuOpen}>
@@ -55,18 +53,6 @@ export function SidebarUserMenu({ collapsed }: Props) {
             teerayuth.james@gmail.com
           </div>
         </div>
-        <div className="my-1 h-px bg-border" />
-        <button
-          type="button"
-          onClick={() => {
-            resetDemoData();
-            setIsUserMenuOpen(false);
-          }}
-          className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        >
-          <Settings className="h-4 w-4 shrink-0" strokeWidth={2.15} />
-          รีเซ็ตข้อมูลทดสอบ
-        </button>
       </PopoverContent>
     </Popover>
   );
