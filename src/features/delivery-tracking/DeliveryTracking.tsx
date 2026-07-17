@@ -124,6 +124,7 @@ export function DeliveryTrackingPage({
   const [trackingCounts, setTrackingCounts] = useState<DeliveryTrackingCounts>(EMPTY_COUNTS);
   const [trackingTotal, setTrackingTotal] = useState(0);
   const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
+  const [selectedRouteActionDetail, setSelectedRouteActionDetail] = useState<Order | null>(null);
   const [isListLoading, setIsListLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -160,6 +161,8 @@ export function DeliveryTrackingPage({
   const selectedDriver =
     drivers.find((driver) => driver.id === selectedOrder?.assignedDriverId) ?? null;
   const routeHistoryOrder =
+    (selectedRouteActionDetail?.id === routeHistoryOrderId ? selectedRouteActionDetail : null) ??
+    (selectedOrderDetail?.id === routeHistoryOrderId ? selectedOrderDetail : null) ??
     trackingOrders.find((order) => order.id === routeHistoryOrderId) ??
     orders.find((order) => order.id === routeHistoryOrderId) ??
     null;
@@ -191,6 +194,24 @@ export function DeliveryTrackingPage({
     if (!group) return [selectedOrder];
     return group.map((order) => (order.id === selectedOrder.id ? selectedOrder : order));
   }, [selectedOrder, trackingListGroups]);
+  // เปิด drawer ของ Route แล้วให้ชุด action ทำงานกับจุดส่งที่รอตรวจสอบทันที
+  // แม้รายละเอียดที่กำลังดูอยู่จะเป็นจุดรับ จึงไม่ต้องกดเลือก stop ที่ 2 ก่อน
+  const selectedRouteActionCandidate = useMemo(() => {
+    if (!selectedOrder?.deliveryRoute) return selectedOrder;
+    return (
+      selectedRouteOrders.find(
+        (order) =>
+          order.status === 'pending_confirmation' &&
+          order.metadataJson?.dispatch?.routeLeg !== 'pickup',
+      ) ?? selectedOrder
+    );
+  }, [selectedOrder, selectedRouteOrders]);
+  const selectedRouteActionOrder =
+    selectedRouteActionCandidate?.id === selectedOrderId
+      ? selectedOrder
+      : selectedRouteActionDetail?.id === selectedRouteActionCandidate?.id
+        ? selectedRouteActionDetail
+        : selectedRouteActionCandidate;
 
   function openLiveRoute(order: Order) {
     setSelectedOrderId(order.id);
@@ -204,6 +225,27 @@ export function DeliveryTrackingPage({
   useEffect(() => {
     if (parsedSearch.orderId) setSelectedOrderId(parsedSearch.orderId);
   }, [parsedSearch.orderId]);
+
+  // รายการ tracking แบบย่อไม่มี payload หลักฐาน จึงโหลดรายละเอียดของ dropoff ควบคู่กัน
+  // เพื่อให้ drawer แสดงหลักฐานและเปิดแก้ไขได้ทันทีแม้ผู้ใช้เปิดมาจากจุดรับ
+  useEffect(() => {
+    const actionOrderId = selectedRouteActionCandidate?.id;
+    if (!actionOrderId || actionOrderId === selectedOrderId) {
+      setSelectedRouteActionDetail(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchAppOrder(actionOrderId)
+      .then((order) => {
+        if (!cancelled) setSelectedRouteActionDetail(order);
+      })
+      .catch(() => {
+        if (!cancelled) setSelectedRouteActionDetail(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey, selectedOrderId, selectedRouteActionCandidate?.id]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -476,6 +518,24 @@ export function DeliveryTrackingPage({
     }
 
     if (order.status === 'pending_confirmation') {
+      const isPickupCheckpoint = order.metadataJson?.dispatch?.routeLeg === 'pickup';
+      if (isPickupCheckpoint) {
+        return (
+          <div className="space-y-2">
+            <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-xs font-medium text-success">
+              รับของแล้ว — จุดนี้จะปิดพร้อมจุดส่งปลายทาง
+            </div>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setRouteHistoryOrderId(order.id)}
+            >
+              <MapIcon className="h-4 w-4" />
+              เส้นทาง
+            </Button>
+          </div>
+        );
+      }
       const canAdminEditProof = canReviseDeliveryProof(order, 'admin');
       const messengerRevisionCount = getDeliveryProofRevisionCount(order, 'messenger');
       const messengerRevisionLimit = deliveryProofRevisionLimits.messenger;
@@ -718,6 +778,10 @@ export function DeliveryTrackingPage({
       <MessengerCloseJobDialog
         open={!!messengerCloseTargetId}
         order={
+          (selectedRouteActionDetail?.id === messengerCloseTargetId
+            ? selectedRouteActionDetail
+            : null) ??
+          (selectedOrderDetail?.id === messengerCloseTargetId ? selectedOrderDetail : null) ??
           trackingOrders.find((o) => o.id === messengerCloseTargetId) ??
           orders.find((o) => o.id === messengerCloseTargetId) ??
           null
@@ -904,8 +968,11 @@ export function DeliveryTrackingPage({
                 // ไม่เช่นนั้นงานสถานะ pending_confirmation จะมีปุ่มยืนยันเฉพาะใน drawer
                 // ซึ่งผู้ใช้หาไม่เจอจากรายการเที่ยวหลัก
                 const actionableOrder =
-                  group.find((order) => order.status === 'pending_confirmation') ??
-                  group.find((order) => order.status === 'assigned');
+                  group.find(
+                    (order) =>
+                      order.status === 'pending_confirmation' &&
+                      order.metadataJson?.dispatch?.routeLeg !== 'pickup',
+                  ) ?? group.find((order) => order.status === 'assigned');
                 return (
                   <TrackingRouteCard
                     key={first.deliveryRoute!.id}
@@ -1008,6 +1075,7 @@ export function DeliveryTrackingPage({
 
       <TrackingDetailDrawer
         order={selectedOrder}
+        proofOrder={selectedRouteActionOrder}
         driver={selectedDriver}
         drivers={drivers}
         routeOrders={selectedRouteOrders}
@@ -1015,11 +1083,12 @@ export function DeliveryTrackingPage({
         onClose={() => setSelectedOrderId(null)}
         onSelectStop={(order) => setSelectedOrderId(order.id)}
         actions={
-          selectedOrder
-            ? renderActions(selectedOrder, {
+          selectedRouteActionOrder
+            ? renderActions(selectedRouteActionOrder, {
                 // การ์ด Route เป็นจุดเดียวที่ยืนยันปิดงาน จึงไม่แสดงปุ่มซ้ำใน drawer
                 includeConfirm: !(
-                  selectedOrder.status === 'pending_confirmation' && selectedOrder.deliveryRoute
+                  selectedRouteActionOrder.status === 'pending_confirmation' &&
+                  selectedRouteActionOrder.deliveryRoute
                 ),
               })
             : undefined

@@ -18,7 +18,7 @@ import { Topbar } from '@/components/app-shell/Topbar';
 import { fetchAppOrders } from '@/lib/retailApi';
 import { matchesOrderReference, normalizeOrderNumberInput } from '@/lib/orderNumber';
 import type { Order } from '@/data/orderTypes';
-import { getBoardAction } from '@/features/dispatch/boardActions';
+import { getTrackingAlert } from '@/features/delivery-tracking/utils/trackingAlerts';
 
 type Props = {
   page: PageKey;
@@ -55,11 +55,6 @@ export function AppShell({ page, onChangePage, children }: Props) {
         (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
         isVisibleInExecutionQueue(o),
     ).length,
-    dispatch_board: orders.filter(
-      (o) =>
-        (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-        getBoardAction(o, badgeNowMs) != null,
-    ).length,
     delivery_tracking: orders.filter(
       (o) =>
         getDeliveryTrackingTab(o) &&
@@ -70,6 +65,15 @@ export function AppShell({ page, onChangePage, children }: Props) {
     postal: orders.filter((o) => o.shippingMethod === 'thai_post' && o.status === 'ready').length,
     messenger: orders.filter((o) =>
       ['assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
+    ).length,
+  };
+
+  // จำนวนงานผิดปกติ (คนขับไม่รับ/ไม่เริ่มเกินเวลา, push ไม่ถึง) — โชว์เป็น badge สีแดงบนเมนูติดตาม
+  const alertCounts: Partial<Record<PageKey, number>> = {
+    delivery_tracking: orders.filter(
+      (o) =>
+        (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
+        getTrackingAlert(o, badgeNowMs) != null,
     ).length,
   };
 
@@ -149,7 +153,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
       return;
     }
 
-    onChangePage('dispatch_board', { search: `?${orderSearch}` });
+    onChangePage('queue', { search: `?${orderSearch}` });
   };
 
   const handleGlobalSearch = async (query: string) => {
@@ -249,6 +253,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
                   const Icon = item.icon;
                   const active = page === item.key;
                   const badgeCount = item.showBadge ? badgeCounts[item.key] : undefined;
+                  const alertCount = item.showAlertBadge ? (alertCounts[item.key] ?? 0) : 0;
                   return (
                     <CollapsedSidebarTooltip key={item.key} label={item.label} enabled={collapsed}>
                       <a
@@ -265,6 +270,11 @@ export function AppShell({ page, onChangePage, children }: Props) {
                       >
                         <Icon className="h-[18px] w-[18px]" strokeWidth={2.15} />
                         {!collapsed && <span className="flex-1 text-left">{item.label}</span>}
+                        {!collapsed && alertCount > 0 && (
+                          <Badge variant="destructive" className="h-5 px-1.5 text-[10px]">
+                            {alertCount}
+                          </Badge>
+                        )}
                         {!collapsed && badgeCount !== undefined && (
                           <Badge
                             variant={active ? 'default' : 'secondary'}

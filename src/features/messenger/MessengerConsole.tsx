@@ -476,9 +476,10 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const pendingConfirmationCount = customerJobs.filter(
     (o) => o.status === 'pending_confirmation',
   ).length;
-  // Badge ของแท็บต้องนับตามรายการที่แสดงจริงในแท็บนั้น ซึ่งรวมจุดรับของด้วย
-  // (ต่างจาก header ที่นับเฉพาะงานส่งลูกค้า)
-  const pendingReviewItemCount = myJobs.filter((o) => o.status === 'pending_confirmation').length;
+  // จุดรับที่ยืนยันแล้วเป็น checkpoint ภายในเที่ยว ไม่ใช่งานรอ CS ปิดแยกใบ
+  const pendingReviewItemCount = customerJobs.filter(
+    (o) => o.status === 'pending_confirmation',
+  ).length;
   const deliveredOrderCount = customerJobs.filter((o) => o.status === 'delivered').length;
   const myTrips = useMemo(() => groupMessengerTrips(myJobs), [myJobs]);
   const assignedTripCount = myTrips.filter((trip) =>
@@ -806,7 +807,8 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
         ? myJobs
             .filter(
               (order) =>
-                order.status === activeTab ||
+                (order.status === activeTab &&
+                  !(activeTab === 'pending_confirmation' && !isMessengerCustomerJob(order))) ||
                 (activeTab === 'assigned' && isMessengerPlannedPreview(order, messengerCode)),
             )
             .sort((a, b) => {
@@ -824,7 +826,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
               );
             })
         : [],
-    [activeTab, myJobs, nowMs],
+    [activeTab, messengerCode, myJobs, nowMs],
   );
   const tabTrips = useMemo(() => groupMessengerTrips(tabJobs), [tabJobs]);
 

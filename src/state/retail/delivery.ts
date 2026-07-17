@@ -256,6 +256,9 @@ export function submitDeliveryState(
 
   const isRevision = order.status === 'pending_confirmation';
   const { editorRole = 'messenger', recordedBy, ...proofInput } = input;
+  if (isRevision && order.metadataJson?.dispatch?.routeLeg === 'pickup') {
+    throw new Error('หลักฐานจุดรับถูกล็อกแล้วหลังไปยังจุดส่ง');
+  }
   if (isRevision && !canReviseDeliveryProof(order, editorRole)) {
     const label = editorRole === 'admin' ? 'admin' : 'messenger';
     throw new Error(
@@ -336,11 +339,26 @@ export function confirmDeliveryState(
 
   const at = nowIso();
   const recordedBy = input?.recordedBy ?? order.handledBy ?? DEFAULT_HANDLER;
+  const dropoffStopId = order.metadataJson?.dispatch?.stopId;
+  const linkedPickupIds = new Set(
+    current.orders
+      .filter(
+        (item) =>
+          Boolean(dropoffStopId) &&
+          item.status === 'pending_confirmation' &&
+          item.deliveryRoute?.id === order.deliveryRoute?.id &&
+          item.metadataJson?.dispatch?.routeLeg === 'pickup' &&
+          item.metadataJson?.dispatch?.deliverTo?.stopId === dropoffStopId,
+      )
+      .map((item) => item.id),
+  );
+  const closingOrderIds = new Set([orderId, ...linkedPickupIds]);
+  const closingOrders = current.orders.filter((item) => closingOrderIds.has(item.id));
 
   return {
     ...current,
     orders: current.orders.map((item) => {
-      if (item.id !== orderId) return item;
+      if (!closingOrderIds.has(item.id)) return item;
 
       return appendEvent(
         { ...item, status: 'delivered' },
@@ -348,14 +366,35 @@ export function confirmDeliveryState(
           type: 'delivery_confirmed',
           at,
           actor: operatorActor(recordedBy),
-          summary: 'CS ยืนยันหลักฐาน — ส่งสำเร็จ',
+          summary: linkedPickupIds.has(item.id)
+            ? `ยืนยันจุดรับพร้อมปิดงาน ${order.orderNo}`
+            : 'CS ยืนยันหลักฐาน — ส่งสำเร็จ',
           details: input?.note ? `หมายเหตุ: ${input.note}` : undefined,
         },
       );
     }),
-    drivers: current.drivers.map((item) =>
-      item.id === order.assignedDriverId ? reduceDriverLoad(item, current.orders, orderId) : item,
-    ),
+    drivers: current.drivers.map((driver) => {
+      const completedCount = closingOrders.filter(
+        (closingOrder) => closingOrder.assignedDriverId === driver.id,
+      ).length;
+      if (completedCount === 0) return driver;
+      const activeOrders = Math.max(0, driver.activeOrders - completedCount);
+      const shouldStayBusy = current.orders.some(
+        (candidate) =>
+          !closingOrderIds.has(candidate.id) &&
+          candidate.assignedDriverId === driver.id &&
+          DRIVER_BUSY_STATUSES.includes(candidate.status),
+      );
+      return {
+        ...driver,
+        activeOrders,
+        status: shouldStayBusy
+          ? 'on_delivery'
+          : driver.status === 'off_duty'
+            ? 'off_duty'
+            : 'available',
+      };
+    }),
   };
 }
 

@@ -65,12 +65,49 @@ export type RouteAddress = Omit<RouteStop, 'deliverToStopId'> & {
   updatedAt: string;
 };
 
+// คู่รับ → ส่งที่บันทึกสำหรับงานด่วนเท่านั้น; แยกจาก Route Template ที่รองรับหลายจุดแวะ
+export type QuickRoutePreset = {
+  id: string;
+  label?: string;
+  pickup: RouteAddress;
+  dropoff: RouteAddress;
+  pinned: boolean;
+  useCount: number;
+  lastUsedAt?: string;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export async function fetchRouteTemplates() {
   return request<RouteTemplate[]>(`${APP_API_BASE}/route-templates`);
 }
 
 export async function fetchRouteAddresses() {
   return request<RouteAddress[]>(`${APP_API_BASE}/route-addresses`);
+}
+
+export async function fetchQuickRoutePresets() {
+  return request<QuickRoutePreset[]>(`${APP_API_BASE}/quick-route-presets`);
+}
+
+export async function createQuickRoutePreset(input: {
+  label?: string;
+  pickupAddressId: string;
+  dropoffAddressId: string;
+  pinned?: boolean;
+}) {
+  return request<QuickRoutePreset>(`${APP_API_BASE}/quick-route-presets`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export async function markQuickRoutePresetUsed(presetId: string) {
+  return request<QuickRoutePreset>(
+    `${APP_API_BASE}/quick-route-presets/${encodeURIComponent(presetId)}/use`,
+    { method: 'POST' },
+  );
 }
 
 export async function createRouteAddress(
