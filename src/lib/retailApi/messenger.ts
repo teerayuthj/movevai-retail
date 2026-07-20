@@ -14,6 +14,8 @@ import type { DriverApprovalStatus } from './shared';
 import type { MessengerProfileUpdateInput } from './drivers';
 import type { MessengerTrackingHistory } from './deliveryTracking';
 
+export const MESSENGER_APPROVAL_PENDING_ERROR = 'RIDER_APPROVAL_PENDING';
+
 export async function fetchMessengerProfile() {
   const result = await request<ApiDriver>(`${MESSENGER_API_BASE}/me`);
   return normalizeDriver(result);

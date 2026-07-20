@@ -514,7 +514,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
   async function approve(driver: Driver) {
     try {
       await approveDriver(driver.id, { approvedBy: 'MoveVai Admin' });
-      toast.success(`อนุมัติ ${driver.name} แล้ว`);
+      toast.success(`อนุมัติ ${driver.name} และเปิดรับงานแล้ว`);
       await reloadAll();
       if (activeTab !== 'all') setActiveTab('approved');
       setSelectedId(driver.id);

@@ -69,6 +69,21 @@ export function isMessengerAuthError(error: unknown): error is MessengerAuthErro
   return error instanceof MessengerAuthError;
 }
 
+export class RetailApiError extends Error {
+  constructor(
+    message: string,
+    public readonly code?: string,
+    public readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = 'RetailApiError';
+  }
+}
+
+export function isRetailApiError(error: unknown): error is RetailApiError {
+  return error instanceof RetailApiError;
+}
+
 export function clearLocalMessengerSession(notify = false) {
   localStorage.removeItem(MESSENGER_TOKEN_KEY);
   localStorage.removeItem('movevai:messenger-code');
@@ -106,6 +121,19 @@ export function networkErrorMessage(url: string, error: unknown) {
   if (IS_NATIVE_APP && /expected pattern/i.test(message)) {
     return 'URL ของ API ไม่ถูกต้องสำหรับ iOS native กรุณา build ใหม่ด้วย backend URL แบบเต็ม';
   }
+  if (
+    IS_NATIVE_APP &&
+    /^(load failed|failed to fetch|network request failed)$/i.test(message.trim())
+  ) {
+    let apiOrigin = url;
+    try {
+      apiOrigin = new URL(url).origin;
+    } catch {
+      // assertNativeRequestUrl() ตรวจ URL relative ก่อนเรียก fetch แล้ว; fallback เก็บไว้เพื่อไม่ให้
+      // ข้อความ error เองกลายเป็นสาเหตุให้ request ล้มเหลวอีกชั้น
+    }
+    return `เชื่อมต่อ backend ไม่ได้ (${apiOrigin}) — ตรวจว่า backend หรือ tunnel ยังทำงาน แล้วลองใหม่`;
+  }
   if (IS_NATIVE_APP && url.startsWith('http://localhost:4000')) {
     return `เชื่อมต่อ backend ที่ http://localhost:4000 ไม่ได้ — ตรวจว่า backend รันอยู่บนเครื่อง Mac แล้วลองใหม่ (${message})`;
   }
@@ -139,17 +167,23 @@ type MessengerRefreshResult = {
 
 let messengerRefreshPromise: Promise<MessengerRefreshResult> | null = null;
 
-async function responseErrorMessage(response: Response) {
+async function responseError(response: Response) {
   let message = `${response.status} ${response.statusText}`;
+  let code: string | undefined;
+  let details: unknown;
   try {
-    const body = (await response.json()) as { error?: { message?: string; details?: unknown } };
+    const body = (await response.json()) as {
+      error?: { code?: string; message?: string; details?: unknown };
+    };
     message = body.error?.message ?? message;
-    const fieldSummary = validationFieldSummary(body.error?.details);
+    code = body.error?.code;
+    details = body.error?.details;
+    const fieldSummary = validationFieldSummary(details);
     if (fieldSummary) message = `${message}: ${fieldSummary}`;
   } catch {
     // response ไม่ใช่ JSON
   }
-  return message;
+  return { message, code, details };
 }
 
 async function performMessengerRefresh(): Promise<MessengerRefreshResult> {
@@ -176,7 +210,7 @@ async function performMessengerRefresh(): Promise<MessengerRefreshResult> {
     throw new Error(networkErrorMessage(url, error));
   }
   if (!response.ok) {
-    const message = await responseErrorMessage(response);
+    const { message } = await responseError(response);
     if (response.status === 401) {
       await clearMessengerSession(true);
       throw new MessengerAuthError(message);
@@ -248,7 +282,8 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
     }
   }
   if (!response.ok) {
-    const message = await responseErrorMessage(response);
+    const apiError = await responseError(response);
+    const { message } = apiError;
     const messengerTokenExpired =
       isMessengerRequest &&
       messengerToken &&
@@ -261,7 +296,7 @@ export async function request<T>(url: string, init?: RequestInit): Promise<T> {
     if (isAppRequest && appToken && response.status === 401) {
       clearLocalAppSession(true);
     }
-    throw new Error(message);
+    throw new RetailApiError(message, apiError.code, apiError.details);
   }
   return response.json() as Promise<T>;
 }

@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
+  isRetailApiError,
   loginMessenger,
+  MESSENGER_APPROVAL_PENDING_ERROR,
   registerMessengerDriver,
   type MessengerRegisterResult,
   type MessengerSession,
@@ -164,14 +166,45 @@ function loadPendingRegistration(): PendingRegistration | null {
   }
 }
 
-function savePendingRegistration(driver: MessengerRegisterResult['driver']) {
-  const pending: PendingRegistration = { ...driver, submittedAt: new Date().toISOString() };
+function savePendingRegistration(
+  driver: MessengerRegisterResult['driver'],
+  submittedAt = new Date().toISOString(),
+) {
+  const pending: PendingRegistration = { ...driver, submittedAt };
   localStorage.setItem(PENDING_REGISTRATION_KEY, JSON.stringify(pending));
   return pending;
 }
 
 function clearPendingRegistration() {
   localStorage.removeItem(PENDING_REGISTRATION_KEY);
+}
+
+function pendingRegistrationFromErrorDetails(details: unknown): PendingRegistration | null {
+  const driver =
+    details && typeof details === 'object' && 'driver' in details
+      ? (details as { driver?: unknown }).driver
+      : null;
+  if (!driver || typeof driver !== 'object') return null;
+
+  const value = driver as Record<string, unknown>;
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.code !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.phone !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    code: value.code,
+    name: value.name,
+    phone: value.phone,
+    approvalStatus: 'pending',
+    submittedAt:
+      typeof value.submittedAt === 'string' ? value.submittedAt : new Date().toISOString(),
+  };
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -390,12 +423,16 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
       clearPendingRegistration();
       onLogin(session);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'เข้าสู่ระบบไม่สำเร็จ';
-      if (pending && phone.trim() === pending.phone) {
+      if (isRetailApiError(reason) && reason.code === MESSENGER_APPROVAL_PENDING_ERROR) {
+        const restoredPending = pendingRegistrationFromErrorDetails(reason.details);
+        if (restoredPending) {
+          setPending(savePendingRegistration(restoredPending, restoredPending.submittedAt));
+        }
         setMode('pending');
-      } else {
-        setError(message);
+        return;
       }
+      const message = reason instanceof Error ? reason.message : 'เข้าสู่ระบบไม่สำเร็จ';
+      setError(message);
     } finally {
       setLoading(false);
     }
