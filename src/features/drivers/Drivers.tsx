@@ -624,10 +624,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
           <TabsTrigger value="pending" className="gap-1.5">
             รออนุมัติ ({groupedDrivers.pending.length})
             {groupedDrivers.pending.length > 0 && (
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-warning"
-                aria-label="มีคนขับรออนุมัติ"
-              />
+              <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-label="มีคนขับรออนุมัติ" />
             )}
           </TabsTrigger>
           <TabsTrigger value="rejected">ไม่อนุมัติ ({groupedDrivers.rejected.length})</TabsTrigger>

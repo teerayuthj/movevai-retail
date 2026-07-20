@@ -567,7 +567,8 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                           : 'text-muted-foreground',
                       )}
                     >
-                      กรอกตัวเลข 10 หลัก — หลังได้รับอนุมัติ ให้ใช้เบอร์นี้พร้อม PIN ที่ตั้งไว้เพื่อเข้าสู่ระบบครั้งแรก
+                      กรอกตัวเลข 10 หลัก — หลังได้รับอนุมัติ ให้ใช้เบอร์นี้พร้อม PIN
+                      ที่ตั้งไว้เพื่อเข้าสู่ระบบครั้งแรก
                     </p>
                   </div>
                 </Field>
