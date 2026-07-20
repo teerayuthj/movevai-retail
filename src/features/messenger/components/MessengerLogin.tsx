@@ -10,6 +10,7 @@ import {
 } from '@/lib/retailApi';
 import type { Driver } from '@/data/orderTypes';
 import { resizeImageFileToDataUrl } from '@/lib/imageDataUrl';
+import { formatThaiNationalId, normalizeThaiNationalId } from '@/lib/thaiNationalId';
 import { cn } from '@/lib/utils';
 import { getMessengerDeviceId } from '../messengerDevice';
 import {
@@ -18,13 +19,13 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  FileImage,
   IdCard,
   KeyRound,
   Loader2,
   Phone,
   ShieldCheck,
   Truck,
+  UserRound,
   UserPlus,
 } from 'lucide-react';
 
@@ -45,11 +46,20 @@ const TEST_ACCOUNTS = [
   },
 ] as const;
 const PENDING_REGISTRATION_KEY = 'movevai:messenger-pending-registration';
+const THAI_PHONE_NUMBER_LENGTH = 10;
 
 // โชว์บัญชีตัวอย่าง (ปุ่มกรอกอัตโนมัติ) — เปิดใน web dev เสมอ และเปิดบน native build ได้ผ่าน
 // VITE_SHOW_TEST_LOGIN=true (.env.capacitor) เพื่อความสะดวกตอนเทสต์ โดยไม่หลุดไป release
 // จริงที่ไม่ได้ตั้ง flag นี้ (จะถูก tree-shake ออกเหมือนเดิม)
 const SHOW_TEST_LOGIN = import.meta.env.DEV || import.meta.env.VITE_SHOW_TEST_LOGIN === 'true';
+
+function normalizeThaiPhoneNumber(value: string) {
+  return value.replace(/\D/g, '').slice(0, THAI_PHONE_NUMBER_LENGTH);
+}
+
+function isValidThaiPhoneNumber(value: string) {
+  return normalizeThaiPhoneNumber(value).length === THAI_PHONE_NUMBER_LENGTH;
+}
 
 type LoginMode = 'login' | 'register' | 'pending';
 type RegisterStepId = 'personal' | 'vehicle' | 'photos' | 'security';
@@ -127,7 +137,7 @@ const registerSteps: Array<{
     id: 'photos',
     label: 'รูป',
     title: 'รูปประกอบ',
-    description: 'แนบรูปโปรไฟล์และรูปบัตรประชาชน',
+    description: 'แนบรูปให้ครบ 2 รายการก่อนตั้ง PIN',
   },
   {
     id: 'security',
@@ -173,10 +183,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function ImageCaptureField({
   label,
+  hint,
+  capture,
+  icon,
   value,
   onChange,
 }: {
   label: string;
+  hint: string;
+  capture: 'user' | 'environment';
+  icon: React.ReactNode;
   value: string;
   onChange: (value: string) => void;
 }) {
@@ -196,46 +212,42 @@ function ImageCaptureField({
   }
 
   return (
-    <div className="space-y-2 rounded-lg border p-3">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{label}</span>
-        {value && (
-          <Button type="button" size="sm" variant="ghost" onClick={() => onChange('')}>
-            ล้างรูป
-          </Button>
+    <div className="flex items-center gap-3 rounded-xl border bg-background p-3">
+      <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-muted-foreground">
+        {loading ? (
+          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        ) : value ? (
+          <img src={value} alt="" className="h-full w-full object-cover" />
+        ) : (
+          icon
         )}
       </div>
-      <div className="flex items-center gap-3">
-        <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-md border bg-muted">
-          {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-          ) : value ? (
-            <img src={value} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <FileImage className="h-6 w-6 text-muted-foreground" />
-          )}
-        </div>
-        <div className="min-w-0 flex-1 space-y-2">
-          <input
-            id={inputId}
-            className="sr-only"
-            type="file"
-            accept="image/*"
-            capture="environment"
-            onChange={(event) => void handleFile(event.target.files?.[0])}
-          />
-          <label
-            htmlFor={inputId}
-            className="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-2 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
-          >
-            <Camera className="h-4 w-4" />
-            {value ? 'เปลี่ยนรูป' : 'ถ่าย/เลือกรูป'}
-          </label>
-          <p className="text-xs text-muted-foreground">
-            {value ? 'แนบรูปแล้ว' : 'ใช้กล้องหรือเลือกรูปจากเครื่อง'}
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-semibold">{label}</h3>
+        {value ? (
+          <p className="flex items-center gap-1 text-xs text-success">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            แนบรูปแล้ว
           </p>
-        </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">{hint}</p>
+        )}
       </div>
+      <input
+        id={inputId}
+        className="sr-only"
+        type="file"
+        accept="image/*"
+        capture={capture}
+        onChange={(event) => void handleFile(event.target.files?.[0])}
+      />
+      <label
+        htmlFor={inputId}
+        className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
+      >
+        <Camera className="h-4 w-4" />
+        {value ? 'เปลี่ยน' : 'ถ่ายรูป'}
+      </label>
     </div>
   );
 }
@@ -289,11 +301,13 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
   const [registerStep, setRegisterStep] = useState<RegisterStepId>('personal');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const hasCompleteIdCardNumber = registerForm.idCardNumber.length === 13;
+  const isRegisterPhoneNumberValid = isValidThaiPhoneNumber(registerForm.phone);
 
   const registerStepComplete = useMemo<Record<RegisterStepId, boolean>>(
     () => ({
-      personal: Boolean(registerForm.name.trim() && registerForm.phone.trim()),
-      vehicle: Boolean(registerForm.licensePlate.trim() && registerForm.idCardNumber.trim()),
+      personal: Boolean(registerForm.name.trim() && isRegisterPhoneNumberValid),
+      vehicle: Boolean(registerForm.licensePlate.trim() && hasCompleteIdCardNumber),
       photos: Boolean(registerForm.profilePhotoDataUrl && registerForm.idCardPhotoDataUrl),
       security: Boolean(
         registerForm.pin.trim() &&
@@ -301,7 +315,7 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
         registerForm.pin === registerForm.confirmPin,
       ),
     }),
-    [registerForm],
+    [hasCompleteIdCardNumber, isRegisterPhoneNumberValid, registerForm],
   );
   const canSubmitRegister = registerSteps.every((step) => registerStepComplete[step.id]);
   const registerStepIndex = registerSteps.findIndex((step) => step.id === registerStep);
@@ -320,6 +334,10 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
   }
 
   async function submitLogin() {
+    if (!isValidThaiPhoneNumber(phone)) {
+      setError('กรอกเบอร์โทร 10 หลักให้ถูกต้อง');
+      return;
+    }
     setLoading(true);
     setError('');
     try {
@@ -339,6 +357,16 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
   }
 
   async function submitRegister() {
+    if (!isRegisterPhoneNumberValid) {
+      setRegisterStep('personal');
+      setError('กรอกเบอร์โทร 10 หลักให้ถูกต้อง');
+      return;
+    }
+    if (!hasCompleteIdCardNumber) {
+      setRegisterStep('vehicle');
+      setError('กรอกเลขบัตรประชาชนให้ครบ 13 หลัก');
+      return;
+    }
     if (!canSubmitRegister) {
       setError('กรอกข้อมูลสมัครและแนบรูปให้ครบก่อนส่ง');
       return;
@@ -348,17 +376,17 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
     try {
       const result = await registerMessengerDriver({
         name: registerForm.name.trim(),
-        phone: registerForm.phone.trim(),
+        phone: normalizeThaiPhoneNumber(registerForm.phone),
         pin: registerForm.pin,
         vehicle: registerForm.vehicle,
         vehicleColor: registerForm.vehicleColor.trim() || undefined,
         licensePlate: registerForm.licensePlate.trim(),
-        idCardNumber: registerForm.idCardNumber.trim(),
+        idCardNumber: normalizeThaiNationalId(registerForm.idCardNumber),
         profilePhotoDataUrl: registerForm.profilePhotoDataUrl,
         idCardPhotoDataUrl: registerForm.idCardPhotoDataUrl,
       });
       setPending(savePendingRegistration(result.driver));
-      setPhone(registerForm.phone.trim());
+      setPhone(normalizeThaiPhoneNumber(registerForm.phone));
       setPin('');
       setRegisterForm(emptyRegisterForm);
       setRegisterStep('personal');
@@ -469,16 +497,34 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                     required
                   />
                 </Field>
-                <Field label="เบอร์โทร">
-                  <Input
-                    inputMode="tel"
-                    autoComplete="tel"
-                    value={registerForm.phone}
-                    onChange={(event) =>
-                      setRegisterForm((current) => ({ ...current, phone: event.target.value }))
-                    }
-                    required
-                  />
+                <Field label="เบอร์โทร (10 หลัก)">
+                  <div className="space-y-1.5">
+                    <Input
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      value={registerForm.phone}
+                      onChange={(event) => {
+                        setError('');
+                        setRegisterForm((current) => ({
+                          ...current,
+                          phone: normalizeThaiPhoneNumber(event.target.value),
+                        }));
+                      }}
+                      aria-invalid={Boolean(registerForm.phone) && !isRegisterPhoneNumberValid}
+                      required
+                    />
+                    <p
+                      className={cn(
+                        'text-xs',
+                        registerForm.phone && !isRegisterPhoneNumberValid
+                          ? 'text-destructive'
+                          : 'text-muted-foreground',
+                      )}
+                    >
+                      กรอกตัวเลข 10 หลัก
+                    </p>
+                  </div>
                 </Field>
               </div>
             )}
@@ -545,18 +591,36 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                     required
                   />
                 </Field>
-                <Field label="เลขบัตรประชาชน">
-                  <Input
-                    inputMode="numeric"
-                    value={registerForm.idCardNumber}
-                    onChange={(event) =>
-                      setRegisterForm((current) => ({
-                        ...current,
-                        idCardNumber: event.target.value,
-                      }))
-                    }
-                    required
-                  />
+                <Field label="เลขบัตรประชาชน (13 หลัก)">
+                  <div className="space-y-1.5">
+                    <Input
+                      type="tel"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      maxLength={17}
+                      placeholder="1-2345-67890-12-3"
+                      value={formatThaiNationalId(registerForm.idCardNumber)}
+                      onChange={(event) => {
+                        setError('');
+                        setRegisterForm((current) => ({
+                          ...current,
+                          idCardNumber: normalizeThaiNationalId(event.target.value),
+                        }));
+                      }}
+                      aria-invalid={Boolean(registerForm.idCardNumber) && !hasCompleteIdCardNumber}
+                      required
+                    />
+                    <p
+                      className={cn(
+                        'text-xs',
+                        registerForm.idCardNumber && !hasCompleteIdCardNumber
+                          ? 'text-destructive'
+                          : 'text-muted-foreground',
+                      )}
+                    >
+                      กรอกตัวเลขให้ครบ 13 หลัก
+                    </p>
+                  </div>
                 </Field>
               </div>
             )}
@@ -565,6 +629,9 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
               <div className="grid gap-3">
                 <ImageCaptureField
                   label="รูปโปรไฟล์"
+                  hint="เห็นใบหน้าชัดเจน"
+                  capture="user"
+                  icon={<UserRound className="h-4 w-4" />}
                   value={registerForm.profilePhotoDataUrl}
                   onChange={(value) =>
                     setRegisterForm((current) => ({ ...current, profilePhotoDataUrl: value }))
@@ -572,6 +639,9 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                 />
                 <ImageCaptureField
                   label="รูปบัตรประชาชน"
+                  hint="เห็นข้อมูลครบทั้งใบ"
+                  capture="environment"
+                  icon={<IdCard className="h-4 w-4" />}
                   value={registerForm.idCardPhotoDataUrl}
                   onChange={(value) =>
                     setRegisterForm((current) => ({ ...current, idCardPhotoDataUrl: value }))
@@ -758,12 +828,17 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
             <div className="relative">
               <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                inputMode="tel"
+                type="tel"
+                inputMode="numeric"
                 autoComplete="tel"
                 placeholder="เบอร์โทร"
                 className="h-10 rounded-lg pl-9"
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                onChange={(event) => {
+                  setError('');
+                  setPhone(normalizeThaiPhoneNumber(event.target.value));
+                }}
+                aria-invalid={Boolean(phone) && !isValidThaiPhoneNumber(phone)}
                 required
               />
             </div>
