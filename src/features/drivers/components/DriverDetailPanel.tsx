@@ -7,6 +7,7 @@ import {
   Eye,
   FileImage,
   IdCard,
+  LogOut,
   Package,
   Pencil,
   Phone,
@@ -31,16 +32,10 @@ import { DriverAvatar } from '@/components/DriverAvatar';
 import { VehicleIcon } from './VehicleIcon';
 import { ImagePreviewModal } from './ImagePreviewModal';
 import { DriverAuditPanel } from './DriverAuditPanel';
-import {
-  type DriverTab,
-  approvalStatus,
-  formatIdCardNumber,
-  vehicleLabel,
-} from '../utils/driverInfo';
+import { approvalStatus, formatIdCardNumber, vehicleLabel } from '../utils/driverInfo';
 
 type DriverDetailPanelProps = {
   driver: Driver;
-  tab: DriverTab;
   driverOrders: Order[];
   stats: DriverStats | null;
   statsLoading: boolean;
@@ -53,6 +48,7 @@ type DriverDetailPanelProps = {
   onApprove: (driver: Driver) => void;
   onReject: (driver: Driver) => void;
   onResetPin: (driver: Driver) => void;
+  onRevokeSessions: (driver: Driver) => void;
   onRefreshStats: (driver: Driver) => void;
   onStatsDaysChange: (days: DriverStatsPeriodDays) => void;
   onOpenTrackingHistory?: () => void;
@@ -75,7 +71,6 @@ export function DriverStatusBadge({ driver }: { driver: Driver }) {
 
 export function DriverDetailPanel({
   driver: d,
-  tab,
   driverOrders,
   stats,
   statsLoading,
@@ -88,6 +83,7 @@ export function DriverDetailPanel({
   onApprove,
   onReject,
   onResetPin,
+  onRevokeSessions,
   onRefreshStats,
   onStatsDaysChange,
   onOpenTrackingHistory,
@@ -106,7 +102,7 @@ export function DriverDetailPanel({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-base font-semibold">{d.name}</span>
-                <DriverStatusBadge driver={d} />
+                {approval === 'approved' && <DriverStatusBadge driver={d} />}
                 {approval !== 'approved' && (
                   <Badge
                     variant={approval === 'pending' ? 'warning' : 'destructive'}
@@ -143,7 +139,7 @@ export function DriverDetailPanel({
           </div>
 
           <div className="flex shrink-0 flex-wrap gap-2">
-            {tab === 'pending' ? (
+            {approval === 'pending' ? (
               <>
                 <Button size="sm" onClick={() => onApprove(d)}>
                   <Check className="h-4 w-4" />
@@ -171,7 +167,7 @@ export function DriverDetailPanel({
           </div>
         </div>
 
-        {tab === 'approved' && (
+        {approval === 'approved' && (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex gap-2">
               <Button
@@ -191,45 +187,34 @@ export function DriverDetailPanel({
                 หยุดงาน
               </Button>
             </div>
-            <Button size="sm" variant="outline" onClick={() => onResetPin(d)}>
-              สร้าง / รีเซ็ต Messenger PIN
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => onResetPin(d)}>
+                สร้าง / รีเซ็ต Messenger PIN
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onRevokeSessions(d)}>
+                <LogOut className="h-4 w-4" />
+                ออกจากระบบเครื่อง Messenger
+              </Button>
+            </div>
           </div>
         )}
 
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { label: 'เที่ยวที่รับอยู่', value: deliveryTrips.length },
-            { label: 'จุดงาน', value: driverOrders.length },
-            { label: 'มูลค่างานในมือ', value: formatTHB(totalValue) },
-          ].map((item) => (
-            <div key={item.label} className="rounded-lg bg-muted/40 px-3 py-2">
-              <div className="text-xs text-muted-foreground">{item.label}</div>
-              <div className="mt-0.5 text-lg font-semibold tabular-nums">{item.value}</div>
-            </div>
-          ))}
-        </div>
-
-        {tab !== 'approved' && (
-          <section className="space-y-2 rounded-lg border bg-muted/20 p-3">
-            <h3 className="text-sm font-semibold">เอกสารสมัคร</h3>
-            <div className="grid gap-2 sm:grid-cols-2">
-              <ReviewImage label="โปรไฟล์" src={d.profilePhotoDataUrl} />
-              <ReviewImage label="บัตรประชาชน" src={d.idCardPhotoDataUrl} />
-            </div>
-            <div className="grid gap-1 text-xs text-muted-foreground">
-              <div>
-                เลขบัตร:{' '}
-                <span className="font-mono text-foreground">
-                  {d.idCardNumber ? formatIdCardNumber(d.idCardNumber) : '—'}
-                </span>
+        {approval === 'approved' && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            {[
+              { label: 'เที่ยวที่รับอยู่', value: deliveryTrips.length },
+              { label: 'จุดงาน', value: driverOrders.length },
+              { label: 'มูลค่างานในมือ', value: formatTHB(totalValue) },
+            ].map((item) => (
+              <div key={item.label} className="rounded-lg bg-muted/40 px-3 py-2">
+                <div className="text-xs text-muted-foreground">{item.label}</div>
+                <div className="mt-0.5 text-lg font-semibold tabular-nums">{item.value}</div>
               </div>
-              {d.rejectedReason && (
-                <div className="text-destructive">เหตุผล: {d.rejectedReason}</div>
-              )}
-            </div>
-          </section>
+            ))}
+          </div>
         )}
+
+        {approval !== 'approved' && <DriverApplicationSection driver={d} />}
 
         {driverOrders.length > 0 && (
           <section className="space-y-2">
@@ -247,7 +232,7 @@ export function DriverDetailPanel({
           </section>
         )}
 
-        {tab !== 'pending' && (
+        {approval !== 'pending' && (
           <DriverAuditPanel
             stats={stats}
             loading={statsLoading}
@@ -259,6 +244,90 @@ export function DriverDetailPanel({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function formatApplicationDateTime(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+function ApplicationInfoItem({
+  label,
+  value,
+  mono,
+  className,
+}: {
+  label: string;
+  value?: string | null;
+  mono?: boolean;
+  className?: string;
+}) {
+  return (
+    <div className={className}>
+      <dt className="text-[11px] text-muted-foreground">{label}</dt>
+      <dd className={cn('mt-0.5 text-sm', mono && 'font-mono')}>
+        {value || <span className="text-muted-foreground">— ไม่ได้กรอกตอนสมัคร</span>}
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * ข้อมูลสมัครจาก messenger ครบทุก field ในที่เดียว — ให้ admin ตัดสินใจอนุมัติได้
+ * โดยไม่ต้องไล่หาข้อมูลจาก header; field ที่ว่างแสดง "ไม่ได้กรอกตอนสมัคร" ชัด ๆ
+ */
+function DriverApplicationSection({ driver: d }: { driver: Driver }) {
+  const approval = approvalStatus(d);
+  const submittedAt = formatApplicationDateTime(d.submittedAt ?? d.createdAt);
+  const addressText = [
+    d.addressLine,
+    d.addressSubdistrict,
+    d.addressDistrict,
+    d.addressProvince,
+    d.addressPostalCode,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  return (
+    <section className="space-y-3 rounded-lg border bg-muted/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">ข้อมูลสมัครจาก Messenger</h3>
+        {submittedAt && (
+          <span className="text-[11px] text-muted-foreground">สมัครเมื่อ {submittedAt}</span>
+        )}
+      </div>
+
+      {approval === 'rejected' && d.rejectedReason && (
+        <div className="rounded-md bg-destructive/10 px-2.5 py-1.5 text-xs text-destructive">
+          เหตุผลที่ไม่อนุมัติ: {d.rejectedReason}
+        </div>
+      )}
+
+      <dl className="grid gap-x-4 gap-y-2.5 sm:grid-cols-2">
+        <ApplicationInfoItem label="ชื่อ-นามสกุล" value={d.name} />
+        <ApplicationInfoItem label="เบอร์โทร (ใช้ Login)" value={d.phone} mono />
+        <ApplicationInfoItem
+          label="ยานพาหนะ"
+          value={`${vehicleLabel[d.vehicle]}${d.vehicleColor ? ` · สี${d.vehicleColor}` : ''}`}
+        />
+        <ApplicationInfoItem label="ทะเบียนรถ" value={d.licensePlate} mono />
+        <ApplicationInfoItem
+          label="เลขบัตรประชาชน"
+          value={d.idCardNumber ? formatIdCardNumber(d.idCardNumber) : undefined}
+          mono
+        />
+        <ApplicationInfoItem label="ที่อยู่" value={addressText} className="sm:col-span-2" />
+      </dl>
+
+      <div className="grid gap-2 sm:grid-cols-2">
+        <ReviewImage label="รูปโปรไฟล์" src={d.profilePhotoDataUrl} />
+        <ReviewImage label="รูปบัตรประชาชน" src={d.idCardPhotoDataUrl} />
+      </div>
+    </section>
   );
 }
 
@@ -475,8 +544,9 @@ function ReviewImage({ label, src }: { label: string; src?: string }) {
             </span>
           </button>
         ) : (
-          <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-md border bg-background">
+          <div className="flex aspect-[4/3] flex-col items-center justify-center gap-1 overflow-hidden rounded-md border bg-background">
             <FileImage className="h-5 w-5 text-muted-foreground" />
+            <span className="text-[10px] text-muted-foreground">ไม่ได้แนบรูปตอนสมัคร</span>
           </div>
         )}
       </div>

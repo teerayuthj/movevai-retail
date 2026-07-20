@@ -19,6 +19,7 @@ import {
   normalizeIdCardNumber,
   vehicleLabel,
 } from './utils/driverInfo';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -35,6 +36,7 @@ import {
   fetchAppDrivers,
   fetchDriverStats,
   rejectDriver,
+  revokeMessengerSessions,
   updateDriver,
   upsertMessengerAccount,
   type DriverMutationInput,
@@ -418,6 +420,9 @@ type DriversPageProps = {
   onOpenTrackingHistory?: (driverCode: string) => void;
 };
 
+// แท็บ list = สถานะอนุมัติ + 'all' รวมทุกสถานะ กัน admin ไม่เห็นคนที่รออนุมัติ
+type DriverListTab = 'all' | DriverTab;
+
 function statsCacheKey(driverId: string, days: DriverStatsPeriodDays) {
   return `${driverId}:${days}`;
 }
@@ -426,7 +431,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
   const { orders, completeDelivery, failDelivery, syncFromBackend } = useRetailStore();
   const [managedDrivers, setManagedDrivers] = useState<Driver[]>([]);
   const [driversLoading, setDriversLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<DriverTab>('approved');
+  const [activeTab, setActiveTab] = useState<DriverListTab>('all');
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [failTargetId, setFailTargetId] = useState<string | null>(null);
@@ -454,6 +459,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
 
   const groupedDrivers = useMemo(
     () => ({
+      all: managedDrivers,
       approved: managedDrivers.filter((driver) => approvalStatus(driver) === 'approved'),
       pending: managedDrivers.filter((driver) => approvalStatus(driver) === 'pending'),
       rejected: managedDrivers.filter((driver) => approvalStatus(driver) === 'rejected'),
@@ -480,6 +486,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
   }, [visibleDrivers, selectedId, driversLoading]);
 
   const selectedDriver = visibleDrivers.find((driver) => driver.id === selectedId) ?? null;
+  const selectedApproval = selectedDriver ? approvalStatus(selectedDriver) : null;
 
   const loadStats = useCallback(async (driverId: string, days: DriverStatsPeriodDays) => {
     setStatsLoadingId(driverId);
@@ -494,11 +501,11 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
   }, []);
 
   useEffect(() => {
-    if (!selectedId || activeTab === 'pending') return;
+    if (!selectedId || selectedApproval === 'pending') return;
     const key = statsCacheKey(selectedId, statsDays);
     if (statsByDriver[key]) return;
     void loadStats(selectedId, statsDays);
-  }, [selectedId, activeTab, statsByDriver, statsDays, loadStats]);
+  }, [selectedId, selectedApproval, statsByDriver, statsDays, loadStats]);
 
   async function reloadAll() {
     await Promise.all([loadDrivers(), syncFromBackend()]);
@@ -509,7 +516,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
       await approveDriver(driver.id, { approvedBy: 'MoveVai Admin' });
       toast.success(`อนุมัติ ${driver.name} แล้ว`);
       await reloadAll();
-      setActiveTab('approved');
+      if (activeTab !== 'all') setActiveTab('approved');
       setSelectedId(driver.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'อนุมัติไม่สำเร็จ');
@@ -523,7 +530,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
       await rejectDriver(driver.id, reason);
       toast.success(`ไม่อนุมัติ ${driver.name} แล้ว`);
       await reloadAll();
-      setActiveTab('rejected');
+      if (activeTab !== 'all') setActiveTab('rejected');
       setSelectedId(driver.id);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'บันทึกการไม่อนุมัติไม่สำเร็จ');
@@ -556,9 +563,25 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
     const pin = temporaryPin();
     try {
       await upsertMessengerAccount(driver.id, { phone, pin });
-      window.alert(`PIN ชั่วคราวของ ${driver.name}: ${pin}\nกรุณาบันทึกตอนนี้ ระบบจะไม่แสดงซ้ำ`);
+      window.alert(
+        `PIN ชั่วคราวของ ${driver.name}: ${pin}\nกรุณาบันทึกตอนนี้ ระบบจะไม่แสดงซ้ำ\n\nอุปกรณ์เดิมถูกออกจากระบบแล้ว`,
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'สร้าง PIN ไม่สำเร็จ');
+    }
+  }
+
+  async function revokeSessions(driver: Driver) {
+    if (!window.confirm(`ให้ออกจากระบบเครื่อง Messenger ของ ${driver.name}?`)) return;
+    try {
+      const result = await revokeMessengerSessions(driver.id);
+      toast.success(
+        result.revoked > 0
+          ? `ออกจากระบบเครื่องของ ${driver.name} แล้ว`
+          : 'ไม่พบเครื่องที่ใช้งานอยู่',
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'ยกเลิก Session ไม่สำเร็จ');
     }
   }
 
@@ -594,10 +617,19 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DriverTab)}>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as DriverListTab)}>
         <TabsList>
+          <TabsTrigger value="all">ทั้งหมด ({groupedDrivers.all.length})</TabsTrigger>
           <TabsTrigger value="approved">ใช้งาน ({groupedDrivers.approved.length})</TabsTrigger>
-          <TabsTrigger value="pending">รออนุมัติ ({groupedDrivers.pending.length})</TabsTrigger>
+          <TabsTrigger value="pending" className="gap-1.5">
+            รออนุมัติ ({groupedDrivers.pending.length})
+            {groupedDrivers.pending.length > 0 && (
+              <span
+                className="h-1.5 w-1.5 rounded-full bg-warning"
+                aria-label="มีคนขับรออนุมัติ"
+              />
+            )}
+          </TabsTrigger>
           <TabsTrigger value="rejected">ไม่อนุมัติ ({groupedDrivers.rejected.length})</TabsTrigger>
         </TabsList>
       </Tabs>
@@ -633,6 +665,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
                       ['assigned', 'in_transit'].includes(order.status),
                   ).length;
                   const isSelected = driver.id === selectedId;
+                  const approval = approvalStatus(driver);
 
                   return (
                     <button
@@ -655,7 +688,19 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
                         </div>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
-                        {activeTab === 'approved' && <DriverStatusBadge driver={driver} />}
+                        {approval === 'approved' ? (
+                          (activeTab === 'approved' || activeTab === 'all') && (
+                            <DriverStatusBadge driver={driver} />
+                          )
+                        ) : (
+                          // แท็บรวมต้องเห็นชัดว่าใครยังไม่ผ่านอนุมัติ กัน admin สับสน
+                          <Badge
+                            variant={approval === 'pending' ? 'warning' : 'destructive'}
+                            className="h-5 px-1.5 text-[10px]"
+                          >
+                            {approval === 'pending' ? 'รออนุมัติ' : 'ไม่อนุมัติ'}
+                          </Badge>
+                        )}
                         {activeOrderCount > 0 && (
                           <span className="text-[10px] tabular-nums text-muted-foreground">
                             {activeOrderCount} จุดงาน
@@ -673,7 +718,6 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
         {selectedDriver ? (
           <DriverDetailPanel
             driver={selectedDriver}
-            tab={activeTab}
             driverOrders={orders.filter(
               (order) =>
                 order.assignedDriverId === selectedDriver.id &&
@@ -690,6 +734,7 @@ export function DriversPage({ onOpenTrackingHistory }: DriversPageProps) {
             onApprove={(driver) => void approve(driver)}
             onReject={(driver) => void reject(driver)}
             onResetPin={(driver) => void resetPin(driver)}
+            onRevokeSessions={(driver) => void revokeSessions(driver)}
             onRefreshStats={(driver) => void loadStats(driver.id, statsDays)}
             onStatsDaysChange={setStatsDays}
             onOpenTrackingHistory={

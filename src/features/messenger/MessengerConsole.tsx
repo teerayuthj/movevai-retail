@@ -69,6 +69,7 @@ import {
   isMessengerAuthError,
   logoutMessenger,
   MESSENGER_AUTH_EXPIRED_EVENT,
+  refreshMessengerSession,
   type MessengerSession,
 } from '@/lib/retailApi';
 import { MessengerLogin } from './components/MessengerLogin';
@@ -386,7 +387,8 @@ function resolveMessengerCode() {
 }
 
 export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
-  const [authenticated, setAuthenticated] = useState(hasMessengerSession);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [authChecking, setAuthChecking] = useState(true);
   const {
     orders,
     drivers,
@@ -428,6 +430,28 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   const autoOpenedSessionId = useRef<string | null>(null);
   const endingStaleSessionId = useRef<string | null>(null);
   const autoStartingTrackingRouteId = useRef<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const hadAccessToken = hasMessengerSession();
+    void refreshMessengerSession()
+      .then((session) => {
+        if (!active) return;
+        setMessengerCode(session.rider.code);
+        setAuthenticated(true);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        // เครือข่ายล่มไม่ควรทำให้คนขับหลุดจากระบบ ถ้ายังมี access token ในเครื่อง
+        setAuthenticated(hadAccessToken && !isMessengerAuthError(error));
+      })
+      .finally(() => {
+        if (active) setAuthChecking(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const resetSessionUi = useCallback(() => {
     setCloseTargetId(null);
@@ -1021,6 +1045,17 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     setAssignedView('map');
   }, []);
   const mapOrder = mapOrderId ? (myJobs.find((order) => order.id === mapOrderId) ?? null) : null;
+
+  if (authChecking) {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-background">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          กำลังตรวจสอบเครื่องนี้
+        </div>
+      </main>
+    );
+  }
 
   if (!authenticated) {
     return (
