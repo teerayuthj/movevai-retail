@@ -273,7 +273,7 @@ export function AppShell({ page, onChangePage, children }: Props) {
                           onClick={(event) => handleNavigate(event, item.key)}
                           aria-label={item.label}
                           className={cn(
-                            'relative flex items-center rounded-lg text-sm transition-colors',
+                            'relative flex items-center rounded-lg text-[13px] leading-5 transition-colors',
                             collapsed ? 'mx-auto h-9 w-9 justify-center' : 'w-full gap-3 px-3 py-2',
                             active
                               ? 'bg-primary/10 text-primary font-medium'
