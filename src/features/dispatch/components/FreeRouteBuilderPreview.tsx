@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import type { DragEvent } from 'react';
 import {
   ArrowDown,
@@ -73,6 +73,41 @@ type BuilderJob = {
 type DispatchMode = 'scheduled' | 'immediate';
 const ACCEPT_WITHIN_MINUTES_OPTIONS = [5, 10, 15, 20, 30];
 
+// จำ draft ที่ admin กำลังกรอกไว้ กันหายเวลาเผลอเปลี่ยนหน้าแล้วกลับมา
+const DRAFT_STORAGE_KEY = 'movevai:route-builder-draft:v1';
+
+type BuilderDraft = {
+  jobs: BuilderJob[];
+  plannedDate: string;
+  plannedTime: string;
+  driverId: string;
+  messengerTitle: string;
+  note: string;
+  mode: DispatchMode;
+  acceptWithinMinutes: number;
+};
+
+function loadDraft(): Partial<BuilderDraft> | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<BuilderDraft>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 function newJobId() {
   return `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -145,7 +180,8 @@ export function FreeRouteBuilderPreview({
   orders: Order[];
   onCreated: (result: RouteTemplateRun) => Promise<void> | void;
 }) {
-  const [jobs, setJobs] = useState<BuilderJob[]>([]);
+  const initialDraft = useMemo(() => loadDraft(), []);
+  const [jobs, setJobs] = useState<BuilderJob[]>(() => initialDraft?.jobs ?? []);
   const [search, setSearch] = useState('');
   const [libraryTab, setLibraryTab] = useState<'all' | 'favorite'>('favorite');
   const [libraryDragId, setLibraryDragId] = useState<string | null>(null);
@@ -169,15 +205,41 @@ export function FreeRouteBuilderPreview({
   const [deletingAddressId, setDeletingAddressId] = useState<string | null>(null);
   const [updatingFavoriteId, setUpdatingFavoriteId] = useState<string | null>(null);
   const [locating, setLocating] = useState(false);
-  const [plannedDate, setPlannedDate] = useState(todayDateKey());
-  const [plannedTime, setPlannedTime] = useState('');
-  const [driverId, setDriverId] = useState('');
-  const [messengerTitle, setMessengerTitle] = useState('');
-  const [note, setNote] = useState('');
-  const [mode, setMode] = useState<DispatchMode>('immediate');
-  const [acceptWithinMinutes, setAcceptWithinMinutes] = useState(15);
+  const [plannedDate, setPlannedDate] = useState(() => initialDraft?.plannedDate ?? todayDateKey());
+  const [plannedTime, setPlannedTime] = useState(() => initialDraft?.plannedTime ?? '');
+  const [driverId, setDriverId] = useState(() => initialDraft?.driverId ?? '');
+  const [messengerTitle, setMessengerTitle] = useState(() => initialDraft?.messengerTitle ?? '');
+  const [note, setNote] = useState(() => initialDraft?.note ?? '');
+  const [mode, setMode] = useState<DispatchMode>(() => initialDraft?.mode ?? 'immediate');
+  const [acceptWithinMinutes, setAcceptWithinMinutes] = useState(
+    () => initialDraft?.acceptWithinMinutes ?? 15,
+  );
   const [confirmDispatchOpen, setConfirmDispatchOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // เก็บ draft ลง localStorage ทุกครั้งที่ค่าเปลี่ยน กันหายเวลาเปลี่ยนหน้าแล้วกลับมา
+  useEffect(() => {
+    const hasContent = jobs.length > 0 || messengerTitle.trim() !== '' || note.trim() !== '';
+    if (!hasContent) {
+      clearDraft();
+      return;
+    }
+    const draft: BuilderDraft = {
+      jobs,
+      plannedDate,
+      plannedTime,
+      driverId,
+      messengerTitle,
+      note,
+      mode,
+      acceptWithinMinutes,
+    };
+    try {
+      window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [jobs, plannedDate, plannedTime, driverId, messengerTitle, note, mode, acceptWithinMinutes]);
 
   const addresses = useMemo(() => [...savedAddressBookEntries(savedAddresses)], [savedAddresses]);
   const favoriteCount = addresses.filter((entry) => entry.favorite).length;
@@ -511,6 +573,12 @@ export function FreeRouteBuilderPreview({
       });
       await onCreated(result);
       setConfirmDispatchOpen(false);
+      // สร้างเที่ยวสำเร็จแล้ว เคลียร์ฟอร์ม + draft ที่จำไว้ กันค้างข้ามเที่ยว
+      setJobs([]);
+      setMessengerTitle('');
+      setNote('');
+      setPlannedTime('');
+      clearDraft();
       toast.success(
         mode === 'immediate'
           ? `ส่งเที่ยวให้ ${selectedDriver?.name ?? 'Messenger'} แล้ว · ${result.orderIds.length} จุด`
@@ -1066,7 +1134,7 @@ export function FreeRouteBuilderPreview({
                           onDragOver={(event) => dragAddressOverSlot(event, job.id, kind)}
                           onDragLeave={(event) => leaveAddressSlot(event, job.id, kind)}
                           onDrop={(event) => dropAddressInSlot(event, job.id, kind)}
-                          className={`mx-3 my-2 flex items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-2 transition-colors ${
+                          className={`mx-3 my-2 flex min-h-16 items-center justify-between gap-2 rounded-lg border border-dashed px-3 py-4 transition-colors ${
                             addressDropTarget?.jobId === job.id && addressDropTarget.kind === kind
                               ? isPickup
                                 ? 'border-info bg-info/10 ring-1 ring-info/30'
