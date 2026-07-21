@@ -3,7 +3,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
+  isRetailApiError,
   loginMessenger,
+  MESSENGER_APPROVAL_PENDING_ERROR,
   registerMessengerDriver,
   type MessengerRegisterResult,
   type MessengerSession,
@@ -19,7 +21,9 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   IdCard,
+  ImagePlus,
   KeyRound,
   Loader2,
   Phone,
@@ -125,7 +129,7 @@ const registerSteps: Array<{
     id: 'personal',
     label: 'ข้อมูล',
     title: 'ข้อมูลติดต่อ',
-    description: 'ระบุชื่อและเบอร์โทรสำหรับบัญชี Messenger',
+    description: 'ระบุชื่อและเบอร์โทรที่ใช้เข้าสู่ระบบ Messenger ครั้งแรก',
   },
   {
     id: 'vehicle',
@@ -162,14 +166,45 @@ function loadPendingRegistration(): PendingRegistration | null {
   }
 }
 
-function savePendingRegistration(driver: MessengerRegisterResult['driver']) {
-  const pending: PendingRegistration = { ...driver, submittedAt: new Date().toISOString() };
+function savePendingRegistration(
+  driver: MessengerRegisterResult['driver'],
+  submittedAt = new Date().toISOString(),
+) {
+  const pending: PendingRegistration = { ...driver, submittedAt };
   localStorage.setItem(PENDING_REGISTRATION_KEY, JSON.stringify(pending));
   return pending;
 }
 
 function clearPendingRegistration() {
   localStorage.removeItem(PENDING_REGISTRATION_KEY);
+}
+
+function pendingRegistrationFromErrorDetails(details: unknown): PendingRegistration | null {
+  const driver =
+    details && typeof details === 'object' && 'driver' in details
+      ? (details as { driver?: unknown }).driver
+      : null;
+  if (!driver || typeof driver !== 'object') return null;
+
+  const value = driver as Record<string, unknown>;
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.code !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.phone !== 'string'
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    code: value.code,
+    name: value.name,
+    phone: value.phone,
+    approvalStatus: 'pending',
+    submittedAt:
+      typeof value.submittedAt === 'string' ? value.submittedAt : new Date().toISOString(),
+  };
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -196,7 +231,8 @@ function ImageCaptureField({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const inputId = useId();
+  const cameraInputId = useId();
+  const photoLibraryInputId = useId();
   const [loading, setLoading] = useState(false);
 
   async function handleFile(file?: File) {
@@ -234,20 +270,36 @@ function ImageCaptureField({
         )}
       </div>
       <input
-        id={inputId}
+        id={cameraInputId}
         className="sr-only"
         type="file"
         accept="image/*"
         capture={capture}
         onChange={(event) => void handleFile(event.target.files?.[0])}
       />
-      <label
-        htmlFor={inputId}
-        className="inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-3 text-sm font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
-      >
-        <Camera className="h-4 w-4" />
-        {value ? 'เปลี่ยน' : 'ถ่ายรูป'}
-      </label>
+      <input
+        id={photoLibraryInputId}
+        className="sr-only"
+        type="file"
+        accept="image/*"
+        onChange={(event) => void handleFile(event.target.files?.[0])}
+      />
+      <div className="flex shrink-0 flex-col gap-1.5">
+        <label
+          htmlFor={cameraInputId}
+          className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          <Camera className="h-3.5 w-3.5" />
+          ถ่ายรูป
+        </label>
+        <label
+          htmlFor={photoLibraryInputId}
+          className="inline-flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-input bg-background px-2.5 text-xs font-medium shadow-xs transition-colors hover:bg-accent hover:text-accent-foreground"
+        >
+          <ImagePlus className="h-3.5 w-3.5" />
+          เลือกรูป
+        </label>
+      </div>
     </div>
   );
 }
@@ -263,26 +315,52 @@ function PendingView({
     <div className="w-full max-w-sm space-y-4 rounded-lg border bg-background p-6 shadow-sm">
       <div className="flex items-start gap-3">
         <div className="rounded-full bg-warning/10 p-2 text-warning">
-          <CheckCircle2 className="h-5 w-5" />
+          <Clock3 className="h-5 w-5" />
         </div>
-        <div>
-          <h1 className="text-xl font-semibold">ส่งใบสมัครแล้ว</h1>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 inline-flex rounded-full bg-warning/10 px-2 py-0.5 text-xs font-medium text-warning">
+            รอตรวจสอบ
+          </div>
+          <h1 className="text-xl font-semibold">กำลังรอการอนุมัติ</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            บัญชีจะใช้งานได้หลัง admin ตรวจรูปบัตรประชาชนและอนุมัติ
+            ทีมงานกำลังตรวจสอบข้อมูลและรูปบัตรประชาชนของคุณ
           </p>
         </div>
       </div>
       {pending && (
-        <div className="space-y-1 rounded-lg border p-3 text-sm">
-          <div className="font-medium">{pending.name}</div>
-          <div className="font-mono text-xs text-muted-foreground">{pending.code}</div>
-          <div className="text-xs text-muted-foreground">
-            ส่งเมื่อ {new Date(pending.submittedAt).toLocaleString('th-TH')}
+        <div className="space-y-3 rounded-lg border p-4 text-sm">
+          <div>
+            <div className="text-xs text-muted-foreground">ชื่อผู้สมัคร</div>
+            <div className="font-medium">{pending.name}</div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-xs text-muted-foreground">รหัสผู้สมัคร</div>
+              <div className="font-mono text-xs font-medium">{pending.code}</div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">ส่งคำขอเมื่อ</div>
+              <div className="text-xs font-medium">
+                {new Date(pending.submittedAt).toLocaleString('th-TH', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                })}
+              </div>
+            </div>
           </div>
         </div>
       )}
+      <div className="flex items-start gap-2 rounded-lg bg-primary/5 p-3 text-sm">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+        <div>
+          <p className="font-medium">หลังได้รับอนุมัติ</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+            ใช้เบอร์โทรและ PIN ที่ลงทะเบียนไว้เพื่อเข้าสู่ระบบ
+          </p>
+        </div>
+      </div>
       <Button className="w-full" variant="outline" onClick={onBackToLogin}>
-        กลับไปหน้าเข้าสู่ระบบ
+        ไปหน้าเข้าสู่ระบบ
       </Button>
     </div>
   );
@@ -345,12 +423,16 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
       clearPendingRegistration();
       onLogin(session);
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : 'เข้าสู่ระบบไม่สำเร็จ';
-      if (pending && phone.trim() === pending.phone) {
+      if (isRetailApiError(reason) && reason.code === MESSENGER_APPROVAL_PENDING_ERROR) {
+        const restoredPending = pendingRegistrationFromErrorDetails(reason.details);
+        if (restoredPending) {
+          setPending(savePendingRegistration(restoredPending, restoredPending.submittedAt));
+        }
         setMode('pending');
-      } else {
-        setError(message);
+        return;
       }
+      const message = reason instanceof Error ? reason.message : 'เข้าสู่ระบบไม่สำเร็จ';
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -522,7 +604,8 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                           : 'text-muted-foreground',
                       )}
                     >
-                      กรอกตัวเลข 10 หลัก
+                      กรอกตัวเลข 10 หลัก — หลังได้รับอนุมัติ ให้ใช้เบอร์นี้พร้อม PIN
+                      ที่ตั้งไว้เพื่อเข้าสู่ระบบครั้งแรก
                     </p>
                   </div>
                 </Field>
@@ -854,6 +937,14 @@ export function MessengerLogin({ onLogin }: { onLogin: (session: MessengerSessio
                 onChange={(e) => setPin(e.target.value)}
                 required
               />
+            </div>
+          </div>
+          <div className="flex items-start gap-2 rounded-lg bg-primary/5 p-2.5 text-xs text-muted-foreground">
+            <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+            <div className="space-y-0.5">
+              <p className="font-medium text-foreground">เข้าสู่ระบบครั้งเดียวบนเครื่องนี้</p>
+              <p>ระบบจะจำเครื่องและเข้าให้อัตโนมัติในครั้งถัดไป</p>
+              <p>บัญชีใช้ได้ทีละ 1 เครื่อง หากเข้าเครื่องใหม่ เครื่องเดิมจะออกจากระบบ</p>
             </div>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}

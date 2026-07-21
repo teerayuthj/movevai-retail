@@ -1,16 +1,20 @@
 import type { Driver } from '@/data/orderTypes';
 import type { SubmitDeliveryInput } from '@/state/retail/types';
+import { Capacitor } from '@capacitor/core';
 import {
   MESSENGER_API_BASE,
   MESSENGER_TOKEN_KEY,
-  clearLocalMessengerSession,
+  clearMessengerSession,
   proofPayload,
   request,
 } from './client';
+import { storeMessengerRefreshSession } from './messengerSessionStorage';
 import { type ApiDriver, type ApiOrder, normalizeDriver, normalizeOrder } from './shared';
 import type { DriverApprovalStatus } from './shared';
 import type { MessengerProfileUpdateInput } from './drivers';
 import type { MessengerTrackingHistory } from './deliveryTracking';
+
+export const MESSENGER_APPROVAL_PENDING_ERROR = 'RIDER_APPROVAL_PENDING';
 
 export async function fetchMessengerProfile() {
   const result = await request<ApiDriver>(`${MESSENGER_API_BASE}/me`);
@@ -127,6 +131,8 @@ export async function submitMessengerOrder(
 
 export type MessengerSession = {
   token: string;
+  refreshToken: string;
+  refreshExpiresAt: string;
   // backend response field ยังเป็น "rider"
   rider: { id: string; code: string; name: string; phone: string };
 };
@@ -156,8 +162,9 @@ export type MessengerRegisterResult = {
 export async function loginMessenger(phone: string, pin: string, deviceId: string) {
   const session = await request<MessengerSession>(`${MESSENGER_API_BASE}/auth/login`, {
     method: 'POST',
-    body: JSON.stringify({ phone, pin, deviceId }),
+    body: JSON.stringify({ phone, pin, deviceId, platform: Capacitor.getPlatform() }),
   });
+  await storeMessengerRefreshSession({ refreshToken: session.refreshToken, deviceId });
   localStorage.setItem(MESSENGER_TOKEN_KEY, session.token);
   localStorage.setItem('movevai:messenger-code', session.rider.code);
   return session;
@@ -195,7 +202,7 @@ export async function logoutMessenger() {
   } catch {
     /* clear local session even when offline/expired */
   }
-  clearLocalMessengerSession();
+  await clearMessengerSession();
 }
 
 export type MessengerTrackingSession = {

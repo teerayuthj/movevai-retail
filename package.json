@@ -19,8 +19,8 @@
     "agent:ready:android": "npm run build:cap:android && npx cap sync android",
     "agent:ready:native": "npm run agent:ready:ios && npm run agent:ready:android",
     "build:cap": "npm run build:cap:ios",
-    "build:cap:ios": "tsc -b && vite build --mode capacitor",
-    "build:cap:android": "VITE_MESSENGER_API_BASE_URL=${CAP_API_BASE:-http://10.0.2.2:4000}/v1/rider VITE_APP_API_BASE_URL=${CAP_API_BASE:-http://10.0.2.2:4000}/v1/app npm run build:cap:ios",
+    "build:cap:ios": "export CAP_API_BASE=${CAP_API_BASE:-http://localhost:4000}; tsc -b && vite build --mode capacitor",
+    "build:cap:android": "CAP_API_BASE=${CAP_API_BASE:-http://10.0.2.2:4000} npm run build:cap:ios",
     "cap:sync": "npm run agent:ready:native",
     "cap:ios": "npm run build:cap:ios && npx cap sync ios && npx cap open ios",
     "cap:android": "npm run build:cap:android && npx cap sync android && npx cap open android",
@@ -36,6 +36,7 @@
     ]
   },
   "dependencies": {
+    "@aparajita/capacitor-secure-storage": "^8.0.0",
     "@capacitor/android": "^8.4.1",
     "@capacitor/core": "^8.4.1",
     "@capacitor/geolocation": "^8.2.0",

@@ -191,6 +191,13 @@ function devPushSubscriptionSink() {
 }
 
 export default defineConfig(({ mode }) => ({
+  // Vite โหลด .env.capacitor หลัง config และอาจทับ VITE_* ที่ส่งจาก shell ได้
+  // จึงส่ง CAP_API_BASE ผ่าน define โดยตรง: simulator ใช้ localhost, Android emulator ใช้ 10.0.2.2
+  define: {
+    __MOVEVAI_CAP_API_BASE__: JSON.stringify(
+      mode === 'capacitor' ? (process.env.CAP_API_BASE ?? '') : '',
+    ),
+  },
   build: {
     rollupOptions: {
       input:

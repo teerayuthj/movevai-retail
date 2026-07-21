@@ -125,12 +125,15 @@ export function SecuritySessionPage() {
                   <Input
                     type="number"
                     min={5}
-                    max={1440}
+                    max={10080}
                     value={policy.idleTimeoutMinutes}
                     onChange={(event) =>
                       setPolicy({ ...policy, idleTimeoutMinutes: Number(event.target.value) })
                     }
                   />
+                  <span className="block text-xs font-normal text-muted-foreground">
+                    สูงสุด 10,080 นาที (7 วัน)
+                  </span>
                 </label>
                 <label className="space-y-1.5 text-sm font-medium">
                   จำนวนอุปกรณ์สูงสุด

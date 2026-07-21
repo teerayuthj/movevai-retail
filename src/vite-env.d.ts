@@ -1,5 +1,7 @@
 /// <reference types="vite/client" />
 
+declare const __MOVEVAI_CAP_API_BASE__: string;
+
 interface ImportMetaEnv {
   readonly VITE_VAPID_PUBLIC_KEY?: string;
   readonly VITE_MESSENGER_API_BASE_URL?: string;

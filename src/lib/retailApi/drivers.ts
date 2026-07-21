@@ -224,3 +224,10 @@ export function upsertMessengerAccount(
     { method: 'POST', body: JSON.stringify(input) },
   );
 }
+
+export function revokeMessengerSessions(driverCode: string) {
+  return request<{ ok: boolean; revoked: number }>(
+    `${APP_API_BASE}/drivers/${encodeURIComponent(driverCode)}/rider-sessions/revoke`,
+    { method: 'POST' },
+  );
+}
