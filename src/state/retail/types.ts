@@ -147,6 +147,7 @@ export type RetailStore = RetailState & {
       acceptWithinMinutes?: number;
       startWithinMinutes?: number;
       startPolicy?: 'manual' | 'accept_starts';
+      forceNow?: boolean;
     },
   ) => Promise<PlanningRoute>;
   cancelRoute: (

@@ -7,7 +7,6 @@ import {
   Users,
   BookUser,
   Mailbox,
-  CalendarClock,
   Route,
   History,
   FileSpreadsheet,
@@ -56,9 +55,8 @@ export const NAV_SECTIONS: NavSection[] = [
     id: 'dispatch',
     label: 'จัดส่ง & มอบหมาย',
     items: [
-      { key: 'queue', label: 'ส่งทันที', icon: Truck, showBadge: true },
+      { key: 'delivery_workspace', label: 'ศูนย์จัดส่ง', icon: Truck, showBadge: true },
       { key: 'route_builder', label: 'สร้างเที่ยววิ่ง', icon: Waypoints },
-      { key: 'planning', label: 'Planning', icon: CalendarClock, showBadge: true },
     ],
   },
   {

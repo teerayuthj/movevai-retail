@@ -5,9 +5,7 @@ export const PAGE_PERMISSION: Partial<Record<PageKey, RetailPermission>> = {
   overview: 'overview.view',
   script_transform: 'script_transform.use',
   inbox: 'inbox.manage',
-  queue: 'queue.manage',
   route_builder: 'route_builder.manage',
-  planning: 'planning.manage',
   delivery_tracking: 'delivery_tracking.view',
   live_view: 'live_view.view',
   notifications: 'notifications.manage',
@@ -24,6 +22,11 @@ export const PAGE_PERMISSION: Partial<Record<PageKey, RetailPermission>> = {
 
 export function canAccessPage(user: RetailCurrentUser, page: PageKey) {
   if (user.role.code === 'admin' || page === 'profile') return true;
+  if (page === 'delivery_workspace') {
+    return (
+      user.permissions.includes('queue.manage') || user.permissions.includes('planning.manage')
+    );
+  }
   const permission = PAGE_PERMISSION[page];
   return permission ? user.permissions.includes(permission) : false;
 }
@@ -32,9 +35,8 @@ export function firstAccessiblePage(user: RetailCurrentUser): PageKey {
   const candidates: PageKey[] = [
     'overview',
     'inbox',
-    'queue',
+    'delivery_workspace',
     'route_builder',
-    'planning',
     'delivery_tracking',
     'drivers',
     'customers',
