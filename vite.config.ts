@@ -39,23 +39,6 @@ const messengerManifest = {
   ],
 };
 
-function readLocalEnv() {
-  const envPath = path.resolve(__dirname, '.env');
-  if (!fs.existsSync(envPath)) return {};
-
-  return Object.fromEntries(
-    fs
-      .readFileSync(envPath, 'utf8')
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith('#') && line.includes('='))
-      .map((line) => {
-        const [key, ...valueParts] = line.split('=');
-        return [key, valueParts.join('=').replace(/^['"]|['"]$/g, '')];
-      }),
-  ) as Record<string, string>;
-}
-
 // dev-only: surface "ลูกค้า" (customer.html) และ "messenger" (messenger.html) มี entry แยก
 // แต่ใช้ path เดิม (/t*, /track*, /messenger*) — rewrite ให้ vite เสิร์ฟ entry ที่ถูกต้องแทน index.html (admin)
 // production: ต้องตั้ง rewrite เดียวกันที่ hosting layer:
@@ -102,25 +85,10 @@ function nativeEntryAlias() {
   };
 }
 
-async function sendDevPush(subscription: unknown, payload: unknown) {
-  const localEnv = readLocalEnv();
-  const publicKey = process.env.VAPID_PUBLIC_KEY ?? localEnv.VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY ?? localEnv.VAPID_PRIVATE_KEY;
-  const subject = process.env.VAPID_SUBJECT ?? localEnv.VAPID_SUBJECT ?? 'mailto:dev@example.com';
-
-  if (!publicKey || !privateKey) throw new Error('missing VAPID keys');
-
-  const webpushModule = await import('web-push');
-  const webpush = webpushModule.default ?? webpushModule;
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-  await webpush.sendNotification(subscription, JSON.stringify(payload));
-}
-
-// dev-only: รับ push subscription จากมือถือ (ตอนกด "เปิดรับ Push") มาเซฟลงไฟล์บนเครื่อง dev
-// เพื่อไม่ต้อง copy-paste subscription ข้ามเครื่องเอง — ใช้กับ scripts/send-push.mjs
-function devPushSubscriptionSink() {
+// VitePWA ปิด dev service worker ไว้ จึงเสิร์ฟ manifest ของ Messenger เองใน dev
+function devMessengerManifest() {
   return {
-    name: 'dev-push-subscription-sink',
+    name: 'dev-messenger-manifest',
     apply: 'serve' as const,
     configureServer(server: import('vite').ViteDevServer) {
       server.middlewares.use('/manifest.webmanifest', (req, res, next) => {
@@ -130,61 +98,6 @@ function devPushSubscriptionSink() {
         }
         res.setHeader('content-type', 'application/manifest+json');
         res.end(JSON.stringify(messengerManifest));
-      });
-
-      server.middlewares.use('/__dev/push-subscription', (req, res) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405;
-          res.end();
-          return;
-        }
-        let body = '';
-        req.on('data', (chunk) => {
-          body += chunk;
-        });
-        req.on('end', () => {
-          try {
-            const parsed = JSON.parse(body);
-            const outPath = path.resolve(__dirname, 'scripts/push-subscription.json');
-            fs.writeFileSync(outPath, JSON.stringify(parsed, null, 2));
-            server.config.logger.info(`✓ บันทึก push subscription → ${outPath}`);
-            res.statusCode = 204;
-            res.end();
-          } catch {
-            res.statusCode = 400;
-            res.end('invalid json');
-          }
-        });
-      });
-
-      server.middlewares.use('/__dev/push-test', (req, res) => {
-        if (req.method !== 'POST') {
-          res.statusCode = 405;
-          res.end();
-          return;
-        }
-        let body = '';
-        req.on('data', (chunk) => {
-          body += chunk;
-        });
-        req.on('end', () => {
-          void (async () => {
-            try {
-              const parsed = JSON.parse(body) as { subscription?: unknown; payload?: unknown };
-              if (!parsed.subscription || !parsed.payload) throw new Error('missing payload');
-              await sendDevPush(parsed.subscription, parsed.payload);
-              server.config.logger.info('✓ ยิง dev push test สำเร็จ');
-              res.statusCode = 204;
-              res.end();
-            } catch (error) {
-              server.config.logger.error(
-                `✗ ยิง dev push test ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`,
-              );
-              res.statusCode = 500;
-              res.end('send failed');
-            }
-          })();
-        });
       });
     },
   };
@@ -221,7 +134,7 @@ export default defineConfig(({ mode }) => ({
     react(),
     surfaceEntryRouting(),
     ...(mode === 'capacitor' ? [nativeEntryAlias()] : []),
-    devPushSubscriptionSink(),
+    devMessengerManifest(),
     // PWA: ทำให้ "เปิดแอป Messenger" ติดตั้งลงหน้าจอมือถือได้ + offline app-shell
     // (ระยะ 2 ส่วนที่ไม่ต้องมี backend — ดู CLAUDE.md / messenger architecture)
     VitePWA({

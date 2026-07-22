@@ -31,13 +31,7 @@ import { useInstallPrompt } from './hooks/useInstallPrompt';
 import { useMessengerTab } from './hooks/useMessengerTab';
 import { useSwipeTabTransition } from './hooks/useSwipeTabTransition';
 import { usePullToRefresh } from './hooks/usePullToRefresh';
-import {
-  clearMessengerAppBadge,
-  currentPermission,
-  DEFAULT_MESSENGER_CODE,
-  isPushSupported,
-  subscribeToPush,
-} from './push';
+import { clearMessengerAppBadge, DEFAULT_MESSENGER_CODE } from './push';
 import { isNativePushSupported, registerNativePush } from './nativePush';
 import { MessengerHeader } from './components/MessengerHeader';
 import { JobCard } from './components/JobCard';
@@ -477,6 +471,7 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
   );
 
   const messenger = drivers.find((driver) => driver.id === messengerCode) ?? null;
+  const messengerId = messenger?.id;
 
   const myJobs = useMemo(
     () =>
@@ -592,20 +587,12 @@ export function MessengerConsolePage({ onExit }: { onExit?: () => void }) {
     });
   }, [assignedOrderCount, inTransitOrderCount, jobsError, jobsLoading, tracking]);
 
-  // คง subscription ของเครื่องนี้ให้สดเมื่อเคยอนุญาต Push แล้ว
-  // ใช้ได้ทั้ง PWA และ Desktop Web ที่เปิดผ่าน HTTPS/localhost
-  useEffect(() => {
-    if (!messenger || !isPushSupported() || currentPermission() !== 'granted') {
-      return;
-    }
-    void subscribeToPush(messenger.id);
-  }, [messenger]);
-
   // native (iOS/Android): ขอ permission + ผูก device token (APNs/FCM) กับคนขับ
+  // ใช้ id เป็น dependency เพื่อไม่ register ใหม่ทุกครั้งที่ polling แทน driver object
   useEffect(() => {
-    if (!messenger || !isNativePushSupported()) return;
-    void registerNativePush(messenger.id);
-  }, [messenger]);
+    if (!messengerId || !isNativePushSupported()) return;
+    void registerNativePush(messengerId);
+  }, [messengerId]);
 
   // เริ่มส่งงาน = จังหวะ messenger ออกไปส่งของจริง → ถ้ายังไม่ได้บันทึก Route ของรอบนี้
   // ให้ start tracking อัตโนมัติ เพื่อให้ "ทุกรอบถูกบันทึก" โดยไม่ต้องพึ่งความจำ messenger
