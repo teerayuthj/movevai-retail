@@ -12,6 +12,7 @@ import {
 import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { formatRouteDistance } from '@/lib/routeDistance';
+import { shortRouteCode } from '@/lib/routeCode';
 import { BellRing, Ban, Clock, Info, RefreshCw, Route, UserCog } from 'lucide-react';
 
 const ACTIVE_ORDER_STATUSES = new Set(['in_transit', 'pending_confirmation', 'returning']);
@@ -136,7 +137,7 @@ export function PublishedRoutesCard({
               <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2 font-medium">
                   <Route className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{route.code}</span>
+                  <span className="truncate">{shortRouteCode(route.code)}</span>
                 </div>
                 {cancelled ? (
                   <Badge variant="muted">

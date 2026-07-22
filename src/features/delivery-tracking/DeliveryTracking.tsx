@@ -17,6 +17,7 @@ import {
 } from '@/data/orderTypes';
 import { getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import { getInTransitElapsedMinutes } from '@/lib/deliveryExecution';
+import { shortRouteCode } from '@/lib/routeCode';
 import { canReviseDeliveryProof, deliveryProofRevisionLimits } from '@/state/retail/delivery';
 import {
   fetchAppOrder,
@@ -365,7 +366,9 @@ export function DeliveryTrackingPage({
     const routeId = routeAction?.order.deliveryRoute?.id;
     if (!routeAction || !routeId) return;
     setRouteActionError('');
-    const routeCode = routeAction.order.deliveryRoute?.code ?? routeId;
+    const routeCode = routeAction.order.deliveryRoute
+      ? shortRouteCode(routeAction.order.deliveryRoute.code)
+      : routeId;
     try {
       if (routeAction.type === 'cancel') {
         await cancelRoute(routeId, { reason: value as PlanningCancelReason, note });
@@ -879,7 +882,7 @@ export function DeliveryTrackingPage({
       {routeAction?.type === 'cancel' && routeAction.order.deliveryRoute && (
         <ResolutionDialog
           open
-          title={`ดึง Route ${routeAction.order.deliveryRoute.code} กลับมาจัดการ`}
+          title={`ดึง Route ${shortRouteCode(routeAction.order.deliveryRoute.code)} กลับมาจัดการ`}
           description={`นำทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับมาจัดการ โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={PLANNING_CANCEL_REASONS}
@@ -894,7 +897,7 @@ export function DeliveryTrackingPage({
       {routeAction?.type === 'reassign' && routeAction.order.deliveryRoute && (
         <ReassignRouteDialog
           open
-          title={`เปลี่ยนคนขับ Route ${routeAction.order.deliveryRoute.code}`}
+          title={`เปลี่ยนคนขับ Route ${shortRouteCode(routeAction.order.deliveryRoute.code)}`}
           description={`ย้ายงานที่ยังรอส่ง ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดไปคนขับใหม่`}
           error={routeActionError}
           drivers={drivers}

@@ -23,6 +23,7 @@ import {
   groupRouteOrdersIntoJobs,
 } from '@/lib/deliveryJobs';
 import { formatPlanningDateTime, getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
+import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
 import type { DriverStats, DriverStatsPeriodDays } from '@/lib/retailApi';
 import { Badge } from '@/components/ui/badge';
@@ -386,7 +387,9 @@ function DeliveryTripCard({
             <div className="flex items-center gap-1 text-[10px] font-medium text-muted-foreground">
               <Route className="h-3.5 w-3.5" />
               {route ? 'เที่ยววิ่ง' : 'งานเดี่ยว'}
-              <span className="truncate font-mono">{route?.code ?? first?.orderNo}</span>
+              <span className="truncate font-mono">
+                {route ? shortRouteCode(route.code) : first?.orderNo}
+              </span>
             </div>
             <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
               <span>

@@ -18,6 +18,7 @@ import {
 import { formatTHB } from '@/data/orderTypes';
 import type { DriverActivityItem, DriverStats, DriverStatsPeriodDays } from '@/lib/retailApi';
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
+import { shortRouteCode } from '@/lib/routeCode';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
@@ -340,7 +341,9 @@ export function DriverAuditPanel({
                       className="flex flex-col gap-2 p-2.5 text-xs sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
-                        <div className="font-mono font-medium">{item.routeCode}</div>
+                        <div className="font-mono font-medium">
+                          รอบ {shortRouteCode(item.routeCode)}
+                        </div>
                         <div className="text-muted-foreground">
                           มอบหมาย {formatDateTime(item.publishedAt)} · กำหนด{' '}
                           {formatDateTime(item.acceptBy)}
@@ -403,7 +406,9 @@ export function DriverAuditPanel({
                         aria-expanded={expanded}
                       >
                         <div className="min-w-0">
-                          <div className="truncate font-mono font-medium">{item.routeCode}</div>
+                          <div className="truncate font-mono font-medium">
+                            รอบ {shortRouteCode(item.routeCode)}
+                          </div>
                           <div className="mt-0.5 text-xs text-muted-foreground">
                             จบเมื่อ {formatDateTime(item.at)} · สำเร็จ {item.deliveredStops}/
                             {item.stopTotal} จุด
@@ -554,7 +559,9 @@ export function DriverAuditPanel({
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div>
                             <div className="font-medium">{presentation.title}</div>
-                            <div className="font-mono text-xs">{item.routeCode}</div>
+                            <div className="font-mono text-xs">
+                              รอบ {shortRouteCode(item.routeCode)}
+                            </div>
                           </div>
                           <Badge variant={presentation.variant}>{presentation.badge}</Badge>
                         </div>

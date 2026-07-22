@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { type Order, statusLabel } from '@/data/orderTypes';
 import { formatPlanningDateTime, getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import { groupRouteOrdersIntoJobs } from '@/lib/deliveryJobs';
+import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ChevronUp, Navigation, Route } from 'lucide-react';
 
@@ -91,7 +92,7 @@ export function TrackingRouteCard({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
               <Route className="h-3.5 w-3.5" /> เที่ยววิ่ง
-              <span className="font-mono">{route?.code ?? 'Route'}</span>
+              <span className="font-mono">{route ? shortRouteCode(route.code) : 'Route'}</span>
             </div>
             <div className="mt-1 truncate text-sm font-semibold">{routeTitle(sortedOrders)}</div>
           </div>

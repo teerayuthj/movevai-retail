@@ -24,6 +24,7 @@ import { Select } from '@/components/ui/select';
 import type { Driver } from '@/data/orderTypes';
 import { fetchDeliveryCalendar, type DeliveryCalendarItem } from '@/lib/retailApi';
 import { getTodayDateKey } from '@/lib/deliveryPlanning';
+import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
 
 type CalendarFilter = 'all' | 'planned' | 'released' | 'urgent' | 'completed' | 'cancelled';
@@ -76,7 +77,7 @@ function calendarItemAccent(item: DeliveryCalendarItem) {
 }
 
 function calendarItemTitle(item: DeliveryCalendarItem) {
-  if (item.orderCount === 1) return item.orders[0]?.customerName ?? item.code;
+  if (item.orderCount === 1) return item.orders[0]?.customerName ?? shortRouteCode(item.code);
   return `รอบส่ง ${item.orderCount} จุด`;
 }
 
@@ -310,7 +311,7 @@ export function DeliveryCalendar({
                             <PopoverTrigger asChild>
                               <button
                                 type="button"
-                                aria-label={`ดูรายละเอียด ${item.code}`}
+                                aria-label={`ดูรายละเอียด ${shortRouteCode(item.code)}`}
                                 aria-pressed={selected}
                                 className={cn(
                                   'w-full rounded-lg border p-2 text-left transition-all',
@@ -322,7 +323,7 @@ export function DeliveryCalendar({
                               >
                                 <div className="flex items-center justify-between gap-1">
                                   <span className="min-w-0 truncate font-mono text-[11px] font-medium">
-                                    {item.code}
+                                    {shortRouteCode(item.code)}
                                   </span>
                                   <span className="shrink-0 text-[10px] text-muted-foreground">
                                     {item.plannedTime ?? 'ไม่ระบุเวลา'}
@@ -366,7 +367,7 @@ export function DeliveryCalendar({
                                         {calendarItemTitle(item)}
                                       </h3>
                                       <p className="mt-1 font-mono text-xs font-medium text-muted-foreground">
-                                        {item.code}
+                                        {shortRouteCode(item.code)}
                                       </p>
                                     </div>
                                     <Button

@@ -28,6 +28,7 @@ import {
   type PlanningCancelReason,
 } from '@/data/orderTypes';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { shortRouteCode } from '@/lib/routeCode';
 import {
   canPlanOrder,
   canReleasePlannedOrder,
@@ -508,15 +509,17 @@ export function PlanningPage({
       const stopCount = routeAction.route.stops.length;
       toast.success(
         routeAction.type === 'cancel'
-          ? `ดึง Route ${routeAction.route.code} (${stopCount} จุด) กลับมาจัดการแล้ว — แจ้งคนขับเรียบร้อย`
-          : `เปลี่ยนคนขับ Route ${routeAction.route.code} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
+          ? `ดึง Route ${shortRouteCode(routeAction.route.code)} (${stopCount} จุด) กลับมาจัดการแล้ว — แจ้งคนขับเรียบร้อย`
+          : `เปลี่ยนคนขับ Route ${shortRouteCode(routeAction.route.code)} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
       );
       setRouteAction(null);
       setRoutes(scheduledRoutesOnly(await fetchPlanningRoutes(selectedDate)));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       setRouteActionError(message);
-      toast.error(`ดำเนินการ Route ${routeAction.route.code} ไม่สำเร็จ — ${message}`);
+      toast.error(
+        `ดำเนินการ Route ${shortRouteCode(routeAction.route.code)} ไม่สำเร็จ — ${message}`,
+      );
     }
   };
 
@@ -748,7 +751,7 @@ export function PlanningPage({
                     </div>
                     <p className="mt-0.5 text-[11px] text-muted-foreground">
                       {selectedRoute
-                        ? `${selectedRoute.code} · ${selectedRoute.driver.name}`
+                        ? `${shortRouteCode(selectedRoute.code)} · ${selectedRoute.driver.name}`
                         : singleSelectedOrder
                           ? `${singleSelectedOrder.orderNo} · ${singleSelectedOrder.customer.address}`
                           : selectedOrders.length > 1
@@ -1008,7 +1011,7 @@ export function PlanningPage({
       {routeAction?.type === 'cancel' && (
         <ResolutionDialog
           open
-          title={`ดึง Route ${routeAction.route.code} กลับมาจัดการ`}
+          title={`ดึง Route ${shortRouteCode(routeAction.route.code)} กลับมาจัดการ`}
           description={`นำทั้ง Route ${routeAction.route.stops.length} จุดกลับมาจัดการ โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={planningCancelReasons}
@@ -1129,7 +1132,7 @@ export function PlanningPage({
       {routeAction?.type === 'reassign' && (
         <ReassignRouteDialog
           open
-          title={`เปลี่ยนคนขับ Route ${routeAction.route.code}`}
+          title={`เปลี่ยนคนขับ Route ${shortRouteCode(routeAction.route.code)}`}
           description={`ย้ายงานที่ยังรอส่ง ${routeAction.route.stops.length} จุดไปคนขับใหม่`}
           error={routeActionError}
           drivers={drivers}

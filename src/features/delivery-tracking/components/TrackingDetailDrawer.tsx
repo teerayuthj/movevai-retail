@@ -21,6 +21,7 @@ import { getProofReviewAgeMinutes } from '@/lib/deliveryProofReview';
 import { getFastDispatchSla } from '@/lib/fastDispatch';
 import { formatPlanningDateTime } from '@/lib/deliveryPlanning';
 import { groupRouteOrdersIntoJobs } from '@/lib/deliveryJobs';
+import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
 import { ChevronDown, Clock3, Link2, Loader2, MapPin, Route, UserRound } from 'lucide-react';
 
@@ -68,7 +69,9 @@ export function TrackingDetailDrawer({
     <DetailDrawer
       open={!!order}
       title={
-        <span className="font-mono">{isRoute ? (route?.code ?? 'Route') : order?.orderNo}</span>
+        <span className="font-mono">
+          {isRoute ? (route ? shortRouteCode(route.code) : 'Route') : order?.orderNo}
+        </span>
       }
       subtitle={
         order
