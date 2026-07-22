@@ -99,13 +99,18 @@ export function DaySummaryCard({
           </div>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={onReleaseSelected} disabled={releaseSelectedDisabled}>
-            <Route className="h-4 w-4" />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button size="action" onClick={onReleaseSelected} disabled={releaseSelectedDisabled}>
+            <Route className="h-5 w-5" />
             Publish เฉพาะที่เลือก ({releasableSelectedCount})
           </Button>
-          <Button variant="outline" onClick={onReleaseAll} disabled={releaseAllDisabled}>
-            <Truck className="h-4 w-4" />
+          <Button
+            size="action"
+            variant="outline"
+            onClick={onReleaseAll}
+            disabled={releaseAllDisabled}
+          >
+            <Truck className="h-5 w-5" />
             Publish งานพร้อมทั้งหมด ({releasableAllCount})
           </Button>
         </div>

@@ -458,11 +458,12 @@ export function DeliveryManage({
                         </div>
                       </div>
                       <Button
+                        size="action"
                         className="w-full"
                         disabled={!canUrgent}
                         onClick={() => setUrgentOpen(true)}
                       >
-                        <Send className="h-4 w-4" /> สร้าง Route และส่งงาน
+                        <Send className="h-5 w-5" /> สร้าง Route และส่งงาน
                       </Button>
                     </div>
                   ) : (
@@ -556,16 +557,17 @@ export function DeliveryManage({
                         />
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2">
-                        <Button onClick={() => void savePlan()} disabled={saving}>
-                          <CalendarClock className="h-4 w-4" />{' '}
+                        <Button size="action" onClick={() => void savePlan()} disabled={saving}>
+                          <CalendarClock className="h-5 w-5" />{' '}
                           {saving ? 'กำลังบันทึก…' : 'บันทึกแผน'}
                         </Button>
                         <Button
+                          size="action"
                           variant="outline"
                           onClick={() => void releasePlan()}
                           disabled={saving || !canRelease}
                         >
-                          <CheckCircle2 className="h-4 w-4" /> ปล่อยรอบส่ง
+                          <CheckCircle2 className="h-5 w-5" /> ปล่อยรอบส่ง
                         </Button>
                       </div>
                       {isUnreleasedPlannedOrder(selectedOrder) && (

@@ -204,18 +204,19 @@ export function PlanSettingsCard({
           />
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button onClick={onApply} disabled={selectedCount === 0}>
-            <CalendarClock className="h-4 w-4" />
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button size="action" onClick={onApply} disabled={selectedCount === 0}>
+            <CalendarClock className="h-5 w-5" />
             บันทึกแผน
           </Button>
           <Button
+            size="action"
             variant="outline"
             className="border-destructive/40 text-destructive hover:bg-destructive/5"
             onClick={onCancelPlans}
             disabled={cancelDisabled}
           >
-            <XCircle className="h-4 w-4" />
+            <XCircle className="h-5 w-5" />
             ยกเลิกงานที่เลือก
           </Button>
         </div>

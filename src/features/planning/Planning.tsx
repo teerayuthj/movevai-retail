@@ -1106,16 +1106,17 @@ export function PlanningPage({
                 </div>
               ))}
             </div>
-            <div className="flex justify-end gap-2 border-t bg-muted/30 px-5 py-3">
+            <div className="flex flex-col-reverse gap-2 border-t bg-muted/30 px-5 py-3 sm:flex-row sm:justify-end">
               <Button
                 variant="outline"
-                size="sm"
+                size="action"
                 onClick={() => setConfirmPlanningWorkloadOpen(false)}
               >
                 กลับไปตรวจสอบ
               </Button>
               <Button
-                size="sm"
+                size="action"
+                className="sm:min-w-48"
                 disabled={operationState !== 'idle'}
                 onClick={() => {
                   setConfirmPlanningWorkloadOpen(false);

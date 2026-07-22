@@ -278,6 +278,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
       {selectedOrder.status === 'ready' && (
         <div className="space-y-2">
           <Button
+            size="action"
             className="w-full"
             disabled={!canUrgentDispatch}
             onClick={() => {
@@ -286,7 +287,7 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
               setUrgentTarget({ orderId: selectedOrder.id, driverIds: selectedDriverIds });
             }}
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-5 w-5" />
             ส่งทันที
           </Button>
           <Button
@@ -303,10 +304,11 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
       {selectedOrder.status === 'assigned' && (
         <div className="space-y-2">
           <Button
+            size="action"
             className="w-full"
             onClick={() => handleStartRoute([selectedOrder.id], selectedOrder.id)}
           >
-            <Route className="h-4 w-4" />
+            <Route className="h-5 w-5" />
             สร้าง Route และเริ่มจัดส่ง
           </Button>
           <Button

@@ -100,12 +100,13 @@ export function RouteBuilder({ locationSearch, onOpenPlanning, onOpenTracking }:
           </p>
         </div>
         <Button
+          size="action"
           variant="outline"
           onClick={() => {
             setQuickCreateOpen(true);
           }}
         >
-          <Zap className="h-4 w-4" /> สร้างงานด่วน
+          <Zap className="h-5 w-5" /> สร้างงานด่วน
         </Button>
       </div>
 
