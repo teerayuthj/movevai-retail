@@ -183,7 +183,7 @@ export function FreeRouteBuilderPreview({
   const initialDraft = useMemo(() => loadDraft(), []);
   const [jobs, setJobs] = useState<BuilderJob[]>(() => initialDraft?.jobs ?? []);
   const [search, setSearch] = useState('');
-  const [libraryTab, setLibraryTab] = useState<'all' | 'favorite'>('favorite');
+  const [libraryTab, setLibraryTab] = useState<'all' | 'favorite'>('all');
   const [libraryDragId, setLibraryDragId] = useState<string | null>(null);
   const [libraryDragOverId, setLibraryDragOverId] = useState<string | null>(null);
   const [savingOrder, setSavingOrder] = useState(false);
