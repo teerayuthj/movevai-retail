@@ -871,8 +871,13 @@ export function QuickCreateDialog({
         </div>
 
         <footer className="sticky bottom-0 border-t bg-background p-4 sm:px-6">
-          <Button className="w-full" onClick={() => void submit()} disabled={submitting}>
-            <Send className="h-4 w-4" />
+          <Button
+            size="action"
+            className="w-full"
+            onClick={() => void submit()}
+            disabled={submitting}
+          >
+            <Send className="h-5 w-5" />
             {submitting
               ? 'กำลังส่งงานด่วน…'
               : selectedDriver

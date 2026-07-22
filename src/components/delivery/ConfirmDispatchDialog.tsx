@@ -99,11 +99,16 @@ export function ConfirmDispatchDialog({
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t bg-muted/30 px-5 py-3">
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={submitting}>
+        <div className="flex flex-col-reverse gap-2 border-t bg-muted/30 px-5 py-3 sm:flex-row sm:items-center sm:justify-end">
+          <Button variant="outline" size="action" onClick={onCancel} disabled={submitting}>
             กลับไปแก้ไข
           </Button>
-          <Button size="sm" onClick={onConfirm} disabled={submitting || errors.length > 0}>
+          <Button
+            size="action"
+            className="sm:min-w-56"
+            onClick={onConfirm}
+            disabled={submitting || errors.length > 0}
+          >
             {submitting ? 'กำลังส่งงาน…' : confirmLabel}
           </Button>
         </div>

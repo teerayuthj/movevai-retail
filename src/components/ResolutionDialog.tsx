@@ -177,12 +177,13 @@ export function ResolutionDialog<R extends string, A extends string = never>({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t bg-muted/30 px-5 py-3">
-          <Button variant="outline" size="sm" onClick={onCancel}>
+        <div className="flex flex-col-reverse gap-2 border-t bg-muted/30 px-5 py-3 sm:flex-row sm:justify-end">
+          <Button variant="outline" size="action" onClick={onCancel}>
             ยกเลิก
           </Button>
           <Button
-            size="sm"
+            size="action"
+            className="sm:min-w-48"
             variant={confirmVariant}
             disabled={!canSubmit}
             onClick={() => {

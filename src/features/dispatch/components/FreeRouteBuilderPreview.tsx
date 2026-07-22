@@ -1171,12 +1171,13 @@ export function FreeRouteBuilderPreview({
 
         <Button
           type="button"
+          size="action"
           variant="outline"
           className="mt-2 w-full border-dashed"
           disabled={jobs.some((job) => !job.pickup && !job.dropoff)}
           onClick={addEmptyJob}
         >
-          <Plus className="h-4 w-4" /> เพิ่มงานรับ–ส่ง
+          <Plus className="h-5 w-5" /> เพิ่มงานรับ–ส่ง
         </Button>
 
         {routeStops.length > 0 && (
@@ -1413,11 +1414,12 @@ export function FreeRouteBuilderPreview({
 
         <Button
           data-testid="create-route-run"
+          size="action"
           className="mt-3 w-full"
           disabled={submitting || Boolean(validationError) || missingDispatchRequirement}
           onClick={openDispatchPreview}
         >
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+          {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Play className="h-5 w-5" />}
           {submitting
             ? 'กำลังสร้างเที่ยว…'
             : mode === 'immediate'

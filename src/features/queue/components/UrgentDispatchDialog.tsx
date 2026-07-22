@@ -185,12 +185,13 @@ export function UrgentDispatchDialog({
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 border-t bg-muted/30 px-5 py-3">
-          <Button variant="outline" size="sm" onClick={onCancel} disabled={loading}>
+        <div className="flex flex-col-reverse gap-2 border-t bg-muted/30 px-5 py-3 sm:flex-row sm:justify-end">
+          <Button variant="outline" size="action" onClick={onCancel} disabled={loading}>
             กลับ
           </Button>
           <Button
-            size="sm"
+            size="action"
+            className="sm:min-w-56"
             disabled={loading}
             onClick={() =>
               onConfirm({
@@ -199,7 +200,7 @@ export function UrgentDispatchDialog({
               })
             }
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-5 w-5" />
             {loading ? 'กำลังสร้าง Route…' : 'ยืนยันส่งทันที'}
           </Button>
         </div>

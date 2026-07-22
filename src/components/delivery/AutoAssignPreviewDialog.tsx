@@ -230,26 +230,26 @@ export function AutoAssignPreviewDialog({
           <div className="flex gap-2">
             {counting ? (
               <>
-                <Button variant="outline" size="sm" onClick={stopCountdown}>
+                <Button variant="outline" size="action" onClick={stopCountdown}>
                   <Pause className="h-4 w-4" />
                   ตรวจสอบเอง
                 </Button>
-                <Button size="sm" onClick={() => onConfirm(assignable.map((p) => p.order.id))}>
-                  <Sparkles className="h-4 w-4" />
+                <Button size="action" onClick={() => onConfirm(assignable.map((p) => p.order.id))}>
+                  <Sparkles className="h-5 w-5" />
                   จ่ายเลย
                 </Button>
               </>
             ) : (
               <>
-                <Button variant="outline" size="sm" onClick={onCancel}>
+                <Button variant="outline" size="action" onClick={onCancel}>
                   ยกเลิก
                 </Button>
                 <Button
-                  size="sm"
+                  size="action"
                   disabled={selectedCount === 0}
                   onClick={() => onConfirm(Array.from(selected))}
                 >
-                  <Sparkles className="h-4 w-4" />
+                  <Sparkles className="h-5 w-5" />
                   จ่ายงาน + ส่งเลย {selectedCount} รายการ
                 </Button>
               </>
