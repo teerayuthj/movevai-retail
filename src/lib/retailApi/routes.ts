@@ -40,14 +40,22 @@ export type PlanningRoute = {
   stops: { id: string; sequence: number; status: string; order: ApiOrder }[];
 };
 
+export type DeliveryCalendarOrderItem = {
+  name: string;
+  qty: number;
+};
+
 export type DeliveryCalendarOrder = {
   id: string;
   orderNo: string | null;
   code: string;
   customerName: string;
+  customerPhone: string;
+  customerAddress: string;
   source: string;
   status: string;
   dispatchReadiness: string | null;
+  items: DeliveryCalendarOrderItem[];
 };
 
 export type DeliveryCalendarItem = {
@@ -68,6 +76,8 @@ export type DeliveryCalendarItem = {
   orders: DeliveryCalendarOrder[];
   publishedAt?: string;
   requiresAcceptance: boolean;
+  // ช่องทางที่สร้างเที่ยว เช่น 'ad_hoc_route' (สร้างเที่ยววิ่ง), 'quick_create'
+  createdVia?: string;
 };
 
 export type DeliveryCalendarResponse = {

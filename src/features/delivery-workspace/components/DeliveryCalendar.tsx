@@ -5,14 +5,21 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   Eye,
   Loader2,
+  MapPin,
+  Package,
+  Phone,
   RefreshCw,
   Route,
+  UsersRound,
+  X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
 import type { Driver } from '@/data/orderTypes';
 import { fetchDeliveryCalendar, type DeliveryCalendarItem } from '@/lib/retailApi';
@@ -26,7 +33,13 @@ type Props = {
   refreshKey: number;
   onOpenManage: (orderId?: string, mode?: 'immediate' | 'planning') => void;
   onOpenTracking: (orderId?: string) => void;
+  // จำกัดให้เห็นเฉพาะเที่ยวที่สร้างจากช่องทางนี้ (createdVia) เช่น 'ad_hoc_route'
+  // สำหรับปฏิทินในหน้าสร้างเที่ยววิ่ง; ถ้าไม่ส่งมา = เห็นทุกช่องทาง (ศูนย์จัดส่ง)
+  restrictSource?: string;
 };
+
+// จำนวนเที่ยวที่โชว์ต่อวันก่อนยุบส่วนที่เหลือเป็นปุ่ม "+N เที่ยว"
+const DAY_VISIBLE_LIMIT = 4;
 
 function dateKey(date: Date) {
   return format(date, 'yyyy-MM-dd');
@@ -53,13 +66,39 @@ function matchesFilter(item: DeliveryCalendarItem, filter: CalendarFilter) {
   return item.status === filter;
 }
 
-export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTracking }: Props) {
+function calendarItemAccent(item: DeliveryCalendarItem) {
+  if (item.status === 'cancelled') return 'bg-destructive';
+  if (item.dispatchMode === 'urgent') return 'bg-warning';
+  if (item.status === 'completed') return 'bg-success';
+  if (item.status === 'active') return 'bg-info';
+  if (item.kind === 'plan') return 'bg-primary';
+  return 'bg-success';
+}
+
+function calendarItemTitle(item: DeliveryCalendarItem) {
+  if (item.orderCount === 1) return item.orders[0]?.customerName ?? item.code;
+  return `รอบส่ง ${item.orderCount} จุด`;
+}
+
+function calendarItemType(item: DeliveryCalendarItem) {
+  if (item.dispatchMode === 'urgent') return 'งานส่งทันที';
+  return item.kind === 'plan' ? 'แผนจัดส่ง' : 'รอบจัดส่ง';
+}
+
+export function DeliveryCalendar({
+  drivers,
+  refreshKey,
+  onOpenManage,
+  onOpenTracking,
+  restrictSource,
+}: Props) {
   const initialWeek = startOfWeek(parseISO(getTodayDateKey()), { weekStartsOn: 1 });
   const [weekStart, setWeekStart] = useState(initialWeek);
   const [driverCode, setDriverCode] = useState('');
   const [filter, setFilter] = useState<CalendarFilter>('all');
   const [items, setItems] = useState<DeliveryCalendarItem[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(() => new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [requestKey, setRequestKey] = useState(0);
@@ -79,14 +118,18 @@ export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTrac
         dateTo,
         driverCode: driverCode || undefined,
       });
-      setItems(response.items);
+      setItems(
+        restrictSource
+          ? response.items.filter((item) => item.createdVia === restrictSource)
+          : response.items,
+      );
     } catch (loadError) {
       setItems([]);
       setError(loadError instanceof Error ? loadError.message : 'โหลดภาพรวมปฏิทินไม่สำเร็จ');
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, driverCode]);
+  }, [dateFrom, dateTo, driverCode, restrictSource]);
 
   useEffect(() => {
     void loadCalendar();
@@ -96,8 +139,7 @@ export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTrac
     () => items.filter((item) => matchesFilter(item, filter)),
     [filter, items],
   );
-  const selectedItem =
-    visibleItems.find((item) => item.id === selectedId) ?? visibleItems[0] ?? null;
+  const selectedItem = visibleItems.find((item) => item.id === selectedId) ?? null;
   const itemsByDate = useMemo(() => {
     const grouped = new Map<string, DeliveryCalendarItem[]>();
     visibleItems.forEach((item) =>
@@ -110,6 +152,14 @@ export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTrac
     (item) => item.kind === 'route' && item.dispatchMode !== 'urgent',
   ).length;
   const urgentCount = items.filter((item) => item.dispatchMode === 'urgent').length;
+
+  const toggleDayExpanded = (dayKey: string) =>
+    setExpandedDays((current) => {
+      const next = new Set(current);
+      if (next.has(dayKey)) next.delete(dayKey);
+      else next.add(dayKey);
+      return next;
+    });
 
   return (
     <div className="space-y-4">
@@ -125,7 +175,9 @@ export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTrac
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            แสดงแผนและ Route ที่สร้างจากมุมมอง “จัดการงาน” แล้ว
+            {restrictSource === 'ad_hoc_route'
+              ? 'แสดงเฉพาะเที่ยวที่สร้างจากหน้าสร้างเที่ยววิ่ง'
+              : 'แสดงแผนและ Route ที่สร้างจากมุมมอง “จัดการงาน” แล้ว'}
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-2">
@@ -224,6 +276,12 @@ export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTrac
                 const key = dateKey(day);
                 const dayItems = itemsByDate.get(key) ?? [];
                 const isToday = key === getTodayDateKey();
+                const isExpanded = expandedDays.has(key);
+                const shownItems =
+                  isExpanded || dayItems.length <= DAY_VISIBLE_LIMIT
+                    ? dayItems
+                    : dayItems.slice(0, DAY_VISIBLE_LIMIT);
+                const hiddenCount = dayItems.length - shownItems.length;
                 return (
                   <section
                     key={key}
@@ -240,45 +298,247 @@ export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTrac
                       {isToday && <Badge variant="info">วันนี้</Badge>}
                     </div>
                     <div className="space-y-2">
-                      {dayItems.map((item) => {
+                      {shownItems.map((item) => {
                         const status = calendarStatus(item);
                         const selected = selectedItem?.id === item.id;
                         return (
-                          <button
+                          <Popover
                             key={item.id}
-                            type="button"
-                            aria-pressed={selected}
-                            onClick={() => setSelectedId(item.id)}
-                            className={cn(
-                              'w-full rounded-lg border p-2 text-left transition-all',
-                              selected
-                                ? 'border-primary bg-primary/5 ring-1 ring-primary'
-                                : 'bg-card hover:border-primary/40',
-                              item.status === 'cancelled' && 'opacity-60',
-                            )}
+                            open={selected}
+                            onOpenChange={(open) => setSelectedId(open ? item.id : null)}
                           >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="min-w-0 truncate font-mono text-[11px] font-medium">
-                                {item.code}
-                              </span>
-                              <span className="shrink-0 text-[10px] text-muted-foreground">
-                                {item.plannedTime ?? 'ไม่ระบุเวลา'}
-                              </span>
-                            </div>
-                            <div className="mt-1 truncate text-xs font-medium">
-                              {item.driver?.name ?? 'รอเลือก Messenger'}
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              <Badge variant={status.variant} className="h-5 px-1.5 text-[10px]">
-                                {status.label}
-                              </Badge>
-                              <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                                {item.orderCount} จุด
-                              </Badge>
-                            </div>
-                          </button>
+                            <PopoverTrigger asChild>
+                              <button
+                                type="button"
+                                aria-label={`ดูรายละเอียด ${item.code}`}
+                                aria-pressed={selected}
+                                className={cn(
+                                  'w-full rounded-lg border p-2 text-left transition-all',
+                                  selected
+                                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                                    : 'bg-card hover:border-primary/40',
+                                  item.status === 'cancelled' && 'opacity-60',
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="min-w-0 truncate font-mono text-[11px] font-medium">
+                                    {item.code}
+                                  </span>
+                                  <span className="shrink-0 text-[10px] text-muted-foreground">
+                                    {item.plannedTime ?? 'ไม่ระบุเวลา'}
+                                  </span>
+                                </div>
+                                <div className="mt-1 truncate text-xs font-medium">
+                                  {item.driver?.name ?? 'รอเลือก Messenger'}
+                                </div>
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  <Badge
+                                    variant={status.variant}
+                                    className="h-5 px-1.5 text-[10px]"
+                                  >
+                                    {status.label}
+                                  </Badge>
+                                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
+                                    {item.orderCount} จุด
+                                  </Badge>
+                                </div>
+                              </button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              side="right"
+                              align="center"
+                              sideOffset={10}
+                              collisionPadding={16}
+                              className="w-[min(22rem,calc(100vw-2rem))] rounded-[1.25rem] border-border/80 bg-popover p-2 shadow-2xl"
+                            >
+                              <div className="space-y-2">
+                                <section className="rounded-[0.9rem] bg-muted/70 px-3 py-3">
+                                  <div className="flex items-start gap-2">
+                                    <span
+                                      aria-hidden="true"
+                                      className={cn(
+                                        'mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full',
+                                        calendarItemAccent(item),
+                                      )}
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                      <h3 className="break-words text-base font-semibold leading-tight">
+                                        {calendarItemTitle(item)}
+                                      </h3>
+                                      <p className="mt-1 font-mono text-xs font-medium text-muted-foreground">
+                                        {item.code}
+                                      </p>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon-xs"
+                                      aria-label="ปิดรายละเอียด"
+                                      onClick={() => setSelectedId(null)}
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                </section>
+
+                                <section className="space-y-2 rounded-[0.9rem] bg-muted/70 px-3 py-3 text-sm">
+                                  <div className="flex gap-2.5">
+                                    <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <div>
+                                      <div className="font-medium">
+                                        {format(parseISO(item.plannedDate), 'd MMMM yyyy', {
+                                          locale: th,
+                                        })}
+                                        {item.plannedTime ? ` · ${item.plannedTime} น.` : ''}
+                                      </div>
+                                      <div className="mt-0.5 text-xs text-muted-foreground">
+                                        {calendarItemType(item)} · {calendarStatus(item).label}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-2.5">
+                                    <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                                    <div>
+                                      <div className="font-medium">
+                                        {item.driver?.name ?? 'ยังไม่เลือก Messenger'}
+                                      </div>
+                                      {item.coDrivers.length > 0 && (
+                                        <div className="mt-0.5 text-xs text-muted-foreground">
+                                          ร่วมส่ง:{' '}
+                                          {item.coDrivers.map((driver) => driver.name).join(', ')}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </section>
+
+                                <section className="rounded-[0.9rem] bg-muted/70 px-3 py-3">
+                                  <div className="mb-2 flex items-center gap-2">
+                                    <MapPin className="h-4 w-4 text-muted-foreground" />
+                                    <h4 className="text-sm font-semibold">
+                                      รายการจัดส่ง ({item.orderCount})
+                                    </h4>
+                                  </div>
+                                  <div className="app-scroll max-h-64 space-y-1.5 overflow-y-auto pr-1">
+                                    {item.orders.map((order) => {
+                                      const phone =
+                                        order.customerPhone && order.customerPhone !== '-'
+                                          ? order.customerPhone
+                                          : null;
+                                      const address =
+                                        order.customerAddress && order.customerAddress !== '-'
+                                          ? order.customerAddress
+                                          : null;
+                                      // เที่ยว ad-hoc ใช้ชื่อเที่ยวเป็นชื่อ item (ไม่ใช่สินค้าจริง)
+                                      // จึงซ้ำกับหมายเหตุ — ซ่อนไว้ ให้โชว์เฉพาะออเดอร์ที่มีสินค้าจริง
+                                      const itemLabel =
+                                        item.createdVia === 'ad_hoc_route'
+                                          ? ''
+                                          : order.items
+                                              .map((line) =>
+                                                line.qty > 1
+                                                  ? `${line.name} ×${line.qty}`
+                                                  : line.name,
+                                              )
+                                              .join(', ');
+                                      return (
+                                        <div
+                                          key={order.id}
+                                          className="space-y-1 rounded-lg bg-background/80 px-2.5 py-2"
+                                        >
+                                          <div className="flex items-center justify-between gap-2">
+                                            <div className="truncate text-sm font-medium">
+                                              {order.customerName}
+                                            </div>
+                                            <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                                              {order.orderNo ?? order.code}
+                                            </span>
+                                          </div>
+                                          {phone && (
+                                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                              <Phone className="h-3 w-3 shrink-0" />
+                                              <a href={`tel:${phone}`} className="hover:underline">
+                                                {phone}
+                                              </a>
+                                            </div>
+                                          )}
+                                          {address && (
+                                            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                                              <MapPin className="mt-0.5 h-3 w-3 shrink-0" />
+                                              <span className="whitespace-pre-wrap break-words">
+                                                {address}
+                                              </span>
+                                            </div>
+                                          )}
+                                          {itemLabel && (
+                                            <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                                              <Package className="mt-0.5 h-3 w-3 shrink-0" />
+                                              <span className="break-words">{itemLabel}</span>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </section>
+
+                                {item.note && (
+                                  <section className="rounded-[0.9rem] bg-muted/70 px-3 py-3">
+                                    <div className="text-[11px] font-medium text-muted-foreground">
+                                      หมายเหตุ
+                                    </div>
+                                    <p className="mt-1 whitespace-pre-wrap text-sm">{item.note}</p>
+                                  </section>
+                                )}
+
+                                <div className="flex items-center justify-end gap-2 px-1 pt-1">
+                                  <Button
+                                    type="button"
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => setSelectedId(null)}
+                                  >
+                                    ปิด
+                                  </Button>
+                                  {item.kind === 'plan' ? (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedId(null);
+                                        onOpenManage(item.orders[0]?.id, 'planning');
+                                      }}
+                                    >
+                                      <CalendarDays className="h-3.5 w-3.5" /> ไปที่จัดการงาน
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      onClick={() => {
+                                        setSelectedId(null);
+                                        onOpenTracking(item.orders[0]?.id);
+                                      }}
+                                    >
+                                      <Route className="h-3.5 w-3.5" /> ติดตามการจัดส่ง
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
                         );
                       })}
+                      {dayItems.length > DAY_VISIBLE_LIMIT && (
+                        <button
+                          type="button"
+                          onClick={() => toggleDayExpanded(key)}
+                          aria-expanded={isExpanded}
+                          className="w-full rounded-lg border border-dashed py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                        >
+                          {isExpanded ? 'ย่อ' : `+${hiddenCount} เที่ยว`}
+                        </button>
+                      )}
                       {!loading && dayItems.length === 0 && (
                         <div className="py-8 text-center text-xs text-muted-foreground">
                           ไม่มีรอบส่ง
@@ -295,56 +555,6 @@ export function DeliveryCalendar({ drivers, refreshKey, onOpenManage, onOpenTrac
               })}
             </div>
           </div>
-        </Card>
-      )}
-
-      {selectedItem && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <Route className="h-4 w-4" /> {selectedItem.code}
-                </CardTitle>
-                <div className="mt-1 text-xs text-muted-foreground">
-                  {selectedItem.plannedDate} ·{' '}
-                  {selectedItem.plannedTime ? `${selectedItem.plannedTime} น.` : 'ไม่ระบุเวลา'}
-                </div>
-              </div>
-              <Badge variant={calendarStatus(selectedItem).variant}>
-                {calendarStatus(selectedItem).label}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-              <div>
-                <div className="text-[11px] text-muted-foreground">Messenger</div>
-                <div className="font-medium">{selectedItem.driver?.name ?? 'ยังไม่เลือก'}</div>
-              </div>
-              <div>
-                <div className="text-[11px] text-muted-foreground">จำนวนจุดส่ง</div>
-                <div className="font-medium">{selectedItem.orderCount} จุด</div>
-              </div>
-              <div className="sm:col-span-2">
-                <div className="text-[11px] text-muted-foreground">ลูกค้า</div>
-                <div className="font-medium">
-                  {selectedItem.orders.map((order) => order.customerName).join(', ')}
-                </div>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              {selectedItem.kind === 'plan' ? (
-                <Button onClick={() => onOpenManage(selectedItem.orders[0]?.id, 'planning')}>
-                  <CalendarDays className="h-4 w-4" /> ไปที่จัดการงาน
-                </Button>
-              ) : (
-                <Button onClick={() => onOpenTracking(selectedItem.orders[0]?.id)}>
-                  <Route className="h-4 w-4" /> ไปที่ติดตามการจัดส่ง
-                </Button>
-              )}
-            </div>
-          </CardContent>
         </Card>
       )}
     </div>
