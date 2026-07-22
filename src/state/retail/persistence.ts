@@ -46,7 +46,11 @@ export function persistState(next: RetailState) {
     // ที่ยังไม่ sync เพื่อให้ localStorage มีขนาดคงที่เมื่อจำนวน order ในระบบเพิ่มขึ้น
     const persisted: RetailState = {
       ...next,
-      orders: migrateOrders(next.orders.filter((order) => LOCAL_DRAFT_STATUSES.has(order.status))),
+      // เก็บเฉพาะ draft ที่ยังไม่ sync จริง (ยังไม่มี orderNo จาก backend) — order ที่มีเลขแล้ว
+      // เป็นของ backend, re-fetch เอาได้ ไม่ควร cache เพื่อไม่ให้ order ที่ถูกลบคืนชีพหลัง refresh
+      orders: migrateOrders(
+        next.orders.filter((order) => LOCAL_DRAFT_STATUSES.has(order.status) && !order.orderNo),
+      ),
       // notifications เป็นข้อความล้วน (เล็ก) ต่างจาก orders — เก็บไว้เต็มเพื่อให้ outbox คงอยู่
       notifications: next.notifications,
     };

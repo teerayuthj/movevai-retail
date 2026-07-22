@@ -9,9 +9,6 @@ dev-dist/
 # native build env (may hold internal key) — commit .env.capacitor.example instead
 .env.capacitor
 
-# device push subscription (มี endpoint เฉพาะเครื่อง — อย่า commit)
-scripts/push-subscription.json
-
 # Firebase/Google service config (contains API keys) — keep out of VCS
 android/app/google-services.json
 ios/App/App/GoogleService-Info.plist

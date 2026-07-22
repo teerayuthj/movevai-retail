@@ -300,6 +300,9 @@ export function RetailProvider({
       const localDrafts = current.orders.filter(
         (order) =>
           LOCAL_DRAFT_STATUSES.includes(order.status) &&
+          // orderNo ออกโดย backend เท่านั้น — ถ้ามีเลขแล้วแต่ backend ไม่คืนมา แปลว่าถูกลบ/ยกเลิก
+          // ต้องทิ้ง ห้ามคืนชีพจาก cache. เฉพาะ draft ที่ยังไม่มีเลข (ยังไม่ sync) เท่านั้นที่เก็บ
+          !order.orderNo &&
           !remoteIds.has(order.id) &&
           !remoteCodes.has(order.orderNo),
       );

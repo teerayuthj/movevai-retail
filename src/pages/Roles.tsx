@@ -27,9 +27,9 @@ const PERMISSION_GROUPS: Array<{
   {
     label: 'จัดส่งและติดตาม',
     items: [
-      ['queue.manage', 'ส่งทันที', 'มอบหมายงานรายรายการ'],
+      ['queue.manage', 'ศูนย์จัดส่ง · ส่งทันที', 'มอบหมายงานรายรายการ'],
       ['route_builder.manage', 'สร้างเที่ยววิ่ง', 'สร้างและแก้ไขเที่ยววิ่ง'],
-      ['planning.manage', 'Planning', 'วางแผนและ Publish'],
+      ['planning.manage', 'ศูนย์จัดส่ง · Planning', 'วางแผน Publish และดู Calendar'],
       ['delivery_tracking.view', 'ติดตามการจัดส่ง', 'ดูและจัดการสถานะงาน'],
       ['live_view.view', 'Live View', 'ดูตำแหน่ง Messenger แบบสด'],
       ['notifications.manage', 'แจ้งเตือนลูกค้า', 'จัดการข้อความแจ้งเตือน'],

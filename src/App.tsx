@@ -20,7 +20,9 @@ const InboxPage = lazy(() => import('@/pages/Inbox').then((m) => ({ default: m.I
 const RouteBuilderPage = lazy(() =>
   import('@/pages/RouteBuilder').then((m) => ({ default: m.RouteBuilderPage })),
 );
-const QueuePage = lazy(() => import('@/pages/Queue').then((m) => ({ default: m.QueuePage })));
+const DeliveryWorkspacePage = lazy(() =>
+  import('@/pages/DeliveryWorkspace').then((m) => ({ default: m.DeliveryWorkspacePage })),
+);
 const DeliveryTrackingPage = lazy(() =>
   import('@/pages/DeliveryTracking').then((m) => ({ default: m.DeliveryTrackingPage })),
 );
@@ -35,9 +37,6 @@ const TrackingHistoryPage = lazy(() =>
 );
 const NotificationsPage = lazy(() =>
   import('@/pages/Notifications').then((m) => ({ default: m.NotificationsPage })),
-);
-const PlanningPage = lazy(() =>
-  import('@/pages/Planning').then((m) => ({ default: m.PlanningPage })),
 );
 const PostalQueuePage = lazy(() =>
   import('@/pages/PostalQueue').then((m) => ({ default: m.PostalQueuePage })),
@@ -84,6 +83,23 @@ type AdminSurfaceProps = {
   navigateToPage: (page: PageKey, options?: { search?: string }) => void;
 };
 
+function buildWorkspaceSearch(search: string | undefined, mode: 'immediate' | 'planning') {
+  const params = new URLSearchParams(search ?? '');
+  params.set('view', 'manage');
+  params.set('mode', mode);
+  return `?${params.toString()}`;
+}
+
+function normalizeLegacyWorkspaceSearch(pathname: string, search: string) {
+  if (pathname !== '/driver-queue' && pathname !== '/delivery-planning') return search;
+  const params = new URLSearchParams(search);
+  if (!params.has('view')) params.set('view', 'manage');
+  if (!params.has('mode')) {
+    params.set('mode', pathname === '/delivery-planning' ? 'planning' : 'immediate');
+  }
+  return `?${params.toString()}`;
+}
+
 function AdminSurface({ page, locationSearch, navigateToPage }: AdminSurfaceProps) {
   const { status, user } = useAdminAuth();
 
@@ -119,19 +135,31 @@ function AdminSurface({ page, locationSearch, navigateToPage }: AdminSurfaceProp
               {page === 'inbox' && (
                 <InboxPage
                   locationSearch={locationSearch}
-                  onOpenQueue={(search) => navigateToPage('queue', { search })}
-                  onOpenPlanning={(search) => navigateToPage('planning', { search })}
+                  onOpenQueue={(search) =>
+                    navigateToPage('delivery_workspace', {
+                      search: buildWorkspaceSearch(search, 'immediate'),
+                    })
+                  }
+                  onOpenPlanning={(search) =>
+                    navigateToPage('delivery_workspace', {
+                      search: buildWorkspaceSearch(search, 'planning'),
+                    })
+                  }
                 />
               )}
               {page === 'route_builder' && (
                 <RouteBuilderPage
                   locationSearch={locationSearch}
-                  onOpenPlanning={(search) => navigateToPage('planning', { search })}
+                  onOpenPlanning={(search) =>
+                    navigateToPage('delivery_workspace', {
+                      search: buildWorkspaceSearch(search, 'planning'),
+                    })
+                  }
                   onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
                 />
               )}
-              {page === 'queue' && (
-                <QueuePage
+              {page === 'delivery_workspace' && (
+                <DeliveryWorkspacePage
                   locationSearch={locationSearch}
                   onOpenInbox={(search) => navigateToPage('inbox', { search })}
                   onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
@@ -140,7 +168,11 @@ function AdminSurface({ page, locationSearch, navigateToPage }: AdminSurfaceProp
               {page === 'delivery_tracking' && (
                 <DeliveryTrackingPage
                   locationSearch={locationSearch}
-                  onOpenQueue={(search) => navigateToPage('queue', { search })}
+                  onOpenQueue={(search) =>
+                    navigateToPage('delivery_workspace', {
+                      search: buildWorkspaceSearch(search, 'immediate'),
+                    })
+                  }
                   onOpenTrackingHistory={() => navigateToPage('tracking_history')}
                   onOpenDeliveryReport={() => navigateToPage('delivery_report')}
                 />
@@ -151,12 +183,6 @@ function AdminSurface({ page, locationSearch, navigateToPage }: AdminSurfaceProp
                 <TrackingHistoryPage locationSearch={locationSearch} />
               )}
               {page === 'notifications' && <NotificationsPage />}
-              {page === 'planning' && (
-                <PlanningPage
-                  locationSearch={locationSearch}
-                  onOpenInbox={(search) => navigateToPage('inbox', { search })}
-                />
-              )}
               {page === 'postal' && <PostalQueuePage locationSearch={locationSearch} />}
               {page === 'drivers' && (
                 <DriversPage
@@ -183,20 +209,27 @@ function AdminSurface({ page, locationSearch, navigateToPage }: AdminSurfaceProp
 export default function App() {
   const [page, setPage] = useState<PageKey>(() => getPageFromPath(window.location.pathname));
   const [locationPathname, setLocationPathname] = useState(() => window.location.pathname);
-  const [locationSearch, setLocationSearch] = useState(() => window.location.search);
+  const [locationSearch, setLocationSearch] = useState(() =>
+    normalizeLegacyWorkspaceSearch(window.location.pathname, window.location.search),
+  );
 
   useEffect(() => {
     const syncPageWithLocation = () => {
       const nextPage = getPageFromPath(window.location.pathname);
       const canonicalPath = getCanonicalPath(window.location.pathname);
+      const normalizedSearch = normalizeLegacyWorkspaceSearch(
+        window.location.pathname,
+        window.location.search,
+      );
+      const canonicalUrl = `${canonicalPath}${normalizedSearch}`;
 
-      if (window.location.pathname !== canonicalPath) {
-        window.history.replaceState(window.history.state, '', canonicalPath);
+      if (`${window.location.pathname}${window.location.search}` !== canonicalUrl) {
+        window.history.replaceState(window.history.state, '', canonicalUrl);
       }
 
       setPage(nextPage);
       setLocationPathname(window.location.pathname);
-      setLocationSearch(window.location.search);
+      setLocationSearch(normalizedSearch);
     };
 
     syncPageWithLocation();

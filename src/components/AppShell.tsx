@@ -5,12 +5,8 @@ import { getPathForPage, type PageKey } from '@/lib/routes';
 import { Badge } from '@/components/ui/badge';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useRetailStore } from '@/state/retailStore';
-import {
-  canPlanOrder,
-  isUnreleasedPlannedOrder,
-  isVisibleInExecutionQueue,
-} from '@/lib/deliveryPlanning';
-import { getDeliveryTrackingTab, getDriverQueueTab } from '@/lib/deliveryExecution';
+import { canPlanOrder, isUnreleasedPlannedOrder } from '@/lib/deliveryPlanning';
+import { getDeliveryTrackingTab } from '@/lib/deliveryExecution';
 import { NAV_SECTIONS } from '@/components/app-shell/navConfig';
 import { CollapsedSidebarTooltip } from '@/components/app-shell/CollapsedSidebarTooltip';
 import { SidebarUserMenu } from '@/components/app-shell/SidebarUserMenu';
@@ -52,19 +48,13 @@ export function AppShell({ page, onChangePage, children }: Props) {
   const badgeCounts: Partial<Record<PageKey, number>> = {
     inbox: orders.filter((o) => ['new', 'parsing', 'needs_review', 'ready'].includes(o.status))
       .length,
-    queue: orders.filter(
-      (o) =>
-        getDriverQueueTab(o) &&
-        (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
-        isVisibleInExecutionQueue(o),
-    ).length,
+    delivery_workspace: orders.filter((o) => canPlanOrder(o)).length,
     delivery_tracking: orders.filter(
       (o) =>
         getDeliveryTrackingTab(o) &&
         (o.shippingMethod ?? 'internal_driver') === 'internal_driver' &&
         !isUnreleasedPlannedOrder(o),
     ).length,
-    planning: orders.filter((o) => canPlanOrder(o) && isUnreleasedPlannedOrder(o)).length,
     postal: orders.filter((o) => o.shippingMethod === 'thai_post' && o.status === 'ready').length,
     messenger: orders.filter((o) =>
       ['assigned', 'in_transit', 'pending_confirmation'].includes(o.status),
@@ -139,7 +129,9 @@ export function AppShell({ page, onChangePage, children }: Props) {
         return;
       }
       if (isUnreleasedPlannedOrder(order)) {
-        onChangePage('planning', { search: `?${orderSearch}` });
+        onChangePage('delivery_workspace', {
+          search: `?view=manage&mode=planning&${orderSearch}`,
+        });
         return;
       }
       if (order.status !== 'ready') {
@@ -156,7 +148,9 @@ export function AppShell({ page, onChangePage, children }: Props) {
       return;
     }
 
-    onChangePage('queue', { search: `?${orderSearch}` });
+    onChangePage('delivery_workspace', {
+      search: `?view=manage&mode=immediate&${orderSearch}`,
+    });
   };
 
   const handleGlobalSearch = async (query: string) => {

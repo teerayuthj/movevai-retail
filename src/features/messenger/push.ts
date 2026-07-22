@@ -1,4 +1,4 @@
-// Web Push ฝั่ง client — ขอ permission, subscribe กับ push service, และยิง local notification ทดสอบ
+// Web Push ฝั่ง client — ขอ permission, subscribe กับ push service และผูกเครื่องกับ backend
 // public key มาจาก env (VITE_VAPID_PUBLIC_KEY) — ดู .env.example
 import { Capacitor } from '@capacitor/core';
 
@@ -140,19 +140,6 @@ export async function subscribeToPush(
     }
   } catch {
     return { ok: false, reason: 'backend-registration-failed' };
-  }
-
-  // เก็บ dev sink ไว้สำหรับ manual smoke test เท่านั้น
-  if (import.meta.env.DEV) {
-    try {
-      await fetch('/__dev/push-subscription', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(json),
-      });
-    } catch {
-      // เงียบไว้ — ผู้ใช้ใช้ปุ่ม copy เป็น fallback ได้
-    }
   }
 
   return { ok: true, subscription: json };

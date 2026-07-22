@@ -12,8 +12,6 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "typecheck": "tsc -b --noEmit",
-    "push:keys": "web-push generate-vapid-keys",
-    "push:send": "node --env-file=.env scripts/send-push.mjs",
     "gps:mock": "node --env-file=.env scripts/mock-messenger-gps.mjs",
     "agent:ready:ios": "npm run build:cap:ios && npx cap sync ios",
     "agent:ready:android": "npm run build:cap:android && npx cap sync android",
@@ -99,7 +97,6 @@
     "typescript-eslint": "8.59.1",
     "vite": "^8.0.16",
     "vite-plugin-pwa": "^1.3.0",
-    "web-push": "^3.6.7",
     "workbox-precaching": "^7.4.1",
     "workbox-routing": "^7.4.1"
   }

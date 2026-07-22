@@ -40,6 +40,53 @@ export type PlanningRoute = {
   stops: { id: string; sequence: number; status: string; order: ApiOrder }[];
 };
 
+export type DeliveryCalendarOrderItem = {
+  name: string;
+  qty: number;
+};
+
+export type DeliveryCalendarOrder = {
+  id: string;
+  orderNo: string | null;
+  code: string;
+  customerName: string;
+  customerPhone: string;
+  customerAddress: string;
+  source: string;
+  status: string;
+  dispatchReadiness: string | null;
+  items: DeliveryCalendarOrderItem[];
+};
+
+export type DeliveryCalendarItem = {
+  id: string;
+  entityId: string;
+  kind: 'plan' | 'route';
+  code: string;
+  plannedDate: string;
+  plannedTime?: string;
+  scheduledFor?: string;
+  dispatchMode: 'scheduled' | 'urgent';
+  status: string;
+  releaseState: 'planned' | 'released';
+  note?: string;
+  driver?: { code: string; name: string };
+  coDrivers: { code: string; name: string }[];
+  orderCount: number;
+  orders: DeliveryCalendarOrder[];
+  publishedAt?: string;
+  requiresAcceptance: boolean;
+  // ช่องทางที่สร้างเที่ยว เช่น 'ad_hoc_route' (สร้างเที่ยววิ่ง), 'quick_create'
+  createdVia?: string;
+};
+
+export type DeliveryCalendarResponse = {
+  dateFrom: string;
+  dateTo: string;
+  driverCode?: string;
+  items: DeliveryCalendarItem[];
+};
+
 function normalizeRoute(route: PlanningRoute): PlanningRoute {
   return {
     ...route,
@@ -290,6 +337,7 @@ export async function publishUrgentPlanningRoute(input: {
   acceptWithinMinutes?: number;
   startWithinMinutes?: number;
   startPolicy?: 'manual' | 'accept_starts';
+  forceNow?: boolean;
 }) {
   const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/urgent`, {
     method: 'POST',
@@ -302,6 +350,21 @@ export async function fetchPlanningRoutes(date?: string) {
   const search = date ? `?date=${encodeURIComponent(date)}` : '';
   const routes = await request<PlanningRoute[]>(`${APP_API_BASE}/planning/routes${search}`);
   return routes.map(normalizeRoute);
+}
+
+export async function fetchDeliveryCalendar(input: {
+  dateFrom: string;
+  dateTo: string;
+  driverCode?: string;
+}) {
+  const search = new URLSearchParams({
+    dateFrom: input.dateFrom,
+    dateTo: input.dateTo,
+  });
+  if (input.driverCode) search.set('driverCode', input.driverCode);
+  return request<DeliveryCalendarResponse>(
+    `${APP_API_BASE}/planning/calendar?${search.toString()}`,
+  );
 }
 
 export async function retryPlanningRoutePush(routeId: string) {

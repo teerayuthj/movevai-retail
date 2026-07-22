@@ -3,13 +3,12 @@ export type PageKey =
   | 'script_transform'
   | 'inbox'
   | 'route_builder'
-  | 'queue'
+  | 'delivery_workspace'
   | 'delivery_tracking'
   | 'live_view'
   | 'delivery_report'
   | 'tracking_history'
   | 'notifications'
-  | 'planning'
   | 'postal'
   | 'drivers'
   | 'customers'
@@ -37,13 +36,16 @@ const routeDefinitions: RouteDefinition[] = [
     path: '/route-builder',
     aliases: ['/route-templates', '/dispatch-board'],
   },
-  { page: 'queue', path: '/driver-queue' },
+  {
+    page: 'delivery_workspace',
+    path: '/delivery-workspace',
+    aliases: ['/driver-queue', '/delivery-planning'],
+  },
   { page: 'delivery_tracking', path: '/delivery-tracking' },
   { page: 'live_view', path: '/live-view' },
   { page: 'delivery_report', path: '/delivery-report' },
   { page: 'tracking_history', path: '/tracking-history' },
   { page: 'notifications', path: '/notifications' },
-  { page: 'planning', path: '/delivery-planning' },
   { page: 'postal', path: '/thai-post' },
   { page: 'drivers', path: '/drivers' },
   { page: 'customers', path: '/customers' },
