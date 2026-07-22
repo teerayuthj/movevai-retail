@@ -33,6 +33,7 @@ import {
   summarizeOrderAcceptance,
 } from '@/lib/acceptanceMetrics';
 import { downloadCsv } from '@/lib/export';
+import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
 import { formatElapsedDuration, getDeliveryDurationMinutes } from '@/lib/deliveryExecution';
 import { MessengerOrderMapPage } from '@/features/messenger/components/MessengerOrderMapPage';
@@ -328,7 +329,7 @@ function buildReportCsv(rows: ReportRow[]) {
         acceptanceLabel(acceptance),
         acceptance.responseMinutes ?? '',
         acceptance.lateMinutes || '',
-        order.deliveryRoute?.code ?? '',
+        order.deliveryRoute ? shortRouteCode(order.deliveryRoute.code) : '',
         plannedAt ? formatDateTime(plannedAt) : '',
         closedAt ? formatDateTime(closedAt) : '',
         deliveryDuration(order, closedAt),
@@ -750,7 +751,9 @@ export function DeliveryReportPage() {
                   </div>
 
                   <div className="min-w-0 text-xs">
-                    <div className="truncate font-medium">{order.deliveryRoute?.code ?? '—'}</div>
+                    <div className="truncate font-medium">
+                      {order.deliveryRoute ? shortRouteCode(order.deliveryRoute.code) : '—'}
+                    </div>
                     <div className="text-muted-foreground">
                       {plannedAt ? formatDateTime(plannedAt) : 'ไม่ระบุวันนัด'}
                     </div>
@@ -877,7 +880,11 @@ export function DeliveryReportPage() {
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <div>
                   <div className="text-muted-foreground">Route</div>
-                  <div>{selectedRow.order.deliveryRoute?.code ?? '—'}</div>
+                  <div>
+                    {selectedRow.order.deliveryRoute
+                      ? shortRouteCode(selectedRow.order.deliveryRoute.code)
+                      : '—'}
+                  </div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">วันนัด</div>

@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { formatOverdueDuration, formatPlanningDateTime } from '@/lib/deliveryPlanning';
 import { formatElapsedDuration, getInTransitElapsedTone } from '@/lib/deliveryExecution';
 import { formatRouteDistance } from '@/lib/routeDistance';
+import { shortRouteCode } from '@/lib/routeCode';
 import {
   ArrowUpRight,
   CheckCircle2,
@@ -188,7 +189,7 @@ export function TrackingCard({
               overdueMinutes != null ? 'text-destructive' : 'text-muted-foreground',
             )}
           >
-            {order.deliveryRoute?.code ?? 'Route'} · นัดส่ง{' '}
+            {order.deliveryRoute ? shortRouteCode(order.deliveryRoute.code) : 'Route'} · นัดส่ง{' '}
             {formatPlanningDateTime(order.deliveryPlan.plannedDate, order.deliveryPlan.plannedTime)}
           </div>
         )}

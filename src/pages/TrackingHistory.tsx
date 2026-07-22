@@ -15,6 +15,7 @@ import {
 import { TrackingReplayMap } from '@/features/delivery-tracking/components/TrackingReplayMap';
 import { AlertCircle, Loader2, MapPin, RefreshCw, Route as RouteIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { shortRouteCode } from '@/lib/routeCode';
 
 const RANGE_OPTIONS = [
   { days: 1, label: 'เฉพาะวันที่' },
@@ -134,7 +135,7 @@ const STOP_STATUS_LABELS: Record<string, string> = {
 };
 
 function sessionTitle(session: { route: { code: string } | null; label: string | null }) {
-  return session.route?.code ?? session.label ?? 'Test Route';
+  return session.route ? shortRouteCode(session.route.code) : (session.label ?? 'Test Route');
 }
 
 function messengerOptionLabel(driver: { id: string; name: string; zone?: string }) {

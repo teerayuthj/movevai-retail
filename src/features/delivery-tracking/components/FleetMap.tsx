@@ -20,6 +20,7 @@ import {
 import { BANGKOK_CENTER, isPlausibleThaiCoord } from '@/features/messenger/geocode';
 import { useRouteStops } from '@/features/messenger/hooks/useRouteStops';
 import type { Order } from '@/data/orderTypes';
+import { shortRouteCode } from '@/lib/routeCode';
 import {
   AlertCircle,
   Clock3,
@@ -148,7 +149,7 @@ function assignmentStageLabel(item: MessengerPresence) {
 
 function routeLabel(messenger: Pick<LiveMessengerTracking, 'route' | 'label' | 'sessionType'>) {
   return (
-    messenger.route?.code ??
+    (messenger.route ? shortRouteCode(messenger.route.code) : null) ??
     messenger.label ??
     (messenger.sessionType === 'test' ? 'Test Route' : 'Route')
   );
@@ -544,7 +545,7 @@ export function FleetMap({
                       {' · '}Tracking เปิด
                       <br />
                       {assignmentStageLabel(presence)}
-                      {presence.assignment && ` · ${presence.assignment.code}`}
+                      {presence.assignment && ` · ${shortRouteCode(presence.assignment.code)}`}
                     </>
                   )}
                 </Popup>
@@ -582,7 +583,7 @@ export function FleetMap({
                   {item.assignment && (
                     <>
                       <br />
-                      {item.assignment.code} · {item.assignment.openStopCount} งาน
+                      {shortRouteCode(item.assignment.code)} · {item.assignment.openStopCount} งาน
                       {item.assignment.acceptOverdue && (
                         <span style={{ color: '#dc2626' }}> · เลยกำหนดรับงาน</span>
                       )}
@@ -699,8 +700,8 @@ export function FleetMap({
                       : locationPermissionLabel(item.presence?.locationPermission)}
                   </div>
                   <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    {item.assignment?.code ?? 'ไม่มี Route'} · Tracking{' '}
-                    {item.tracking.active ? 'เปิด' : 'ปิด'}
+                    {item.assignment ? shortRouteCode(item.assignment.code) : 'ไม่มี Route'} ·
+                    Tracking {item.tracking.active ? 'เปิด' : 'ปิด'}
                   </div>
                 </div>
                 <Badge

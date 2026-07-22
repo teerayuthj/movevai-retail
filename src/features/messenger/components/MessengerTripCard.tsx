@@ -131,9 +131,7 @@ export function MessengerTripCard({
             <div className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
               <Route className="h-3.5 w-3.5" /> {isPlannedPreview ? 'แผนล่วงหน้า' : 'เที่ยววิ่ง'}
               {trip.routeCode && (
-                <span className="font-mono" title={trip.routeCode}>
-                  · รอบ {shortRouteCode(trip.routeCode)}
-                </span>
+                <span className="font-mono">· รอบ {shortRouteCode(trip.routeCode)}</span>
               )}
             </div>
             <h2 className="mt-1 truncate text-base font-semibold">

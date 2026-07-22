@@ -7,6 +7,7 @@ import type { Order } from '@/data/orderTypes';
 import { BANGKOK_CENTER } from '@/features/messenger/geocode';
 import { formatPlanningDate } from '@/lib/deliveryPlanning';
 import { formatRouteDistance, formatRouteDuration } from '@/lib/routeDistance';
+import { shortRouteCode } from '@/lib/routeCode';
 import { useOrdersGeo } from '../hooks/useOrdersGeo';
 
 type PlannedRouteOverlay = {
@@ -215,7 +216,9 @@ export function PlanningMap({
         <div className="absolute left-2 top-2 z-[500] max-w-[calc(100%-1rem)] rounded-lg border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur">
           <div className="flex items-center gap-1.5 font-medium">
             <Route className="h-3.5 w-3.5 text-info" />
-            {route.preview ? routePreviewTitle : `${route.code} · ${route.driverName}`}
+            {route.preview
+              ? routePreviewTitle
+              : `${shortRouteCode(route.code ?? 'Route')} · ${route.driverName}`}
           </div>
           {route.loading ? (
             <div className="mt-0.5 flex items-center gap-1.5 text-muted-foreground">
