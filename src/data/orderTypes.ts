@@ -262,6 +262,7 @@ export type OrderActivityEventType =
   | 'delivery_plan_cleared'
   | 'delivery_plan_released'
   | 'delivery_route_cancelled'
+  | 'delivery_route_return_resolved'
   | 'delivery_route_reassigned'
   | 'delivery_urgent_route_published';
 
@@ -411,6 +412,11 @@ export type OrderMetadata = {
       appointmentDate?: string;
       appointmentTime?: string;
       dispatchMode?: 'scheduled' | 'urgent';
+    };
+    routeReturnResolution?: {
+      resolution: 'replan' | 'immediate' | 'awaiting_decision';
+      resolvedAt: string;
+      note?: string;
     };
     routeGroup?: string;
     /** หมายเหตุที่ Dispatch ใส่ให้ Messenger เห็นตลอดทั้งเที่ยว */

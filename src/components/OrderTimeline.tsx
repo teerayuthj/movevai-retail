@@ -78,6 +78,7 @@ const ICON_BY_TYPE: Record<OrderActivityEventType, IconConfig> = {
   delivery_plan_cleared: { Icon: Ban, tone: 'warning' },
   delivery_plan_released: { Icon: CheckCircle2, tone: 'success' },
   delivery_route_cancelled: { Icon: Ban, tone: 'danger' },
+  delivery_route_return_resolved: { Icon: RefreshCcw, tone: 'info' },
   delivery_route_reassigned: { Icon: UserCog, tone: 'warning' },
   delivery_urgent_route_published: { Icon: Zap, tone: 'danger' },
 };

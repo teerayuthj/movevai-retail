@@ -61,6 +61,7 @@ import {
   confirmAppDelivery,
   rejectImportOrders as rejectImportOrdersApi,
   restoreImportOrders as restoreImportOrdersApi,
+  resolveReturnedOrder as resolveReturnedOrderApi,
   fetchAppDrivers,
   fetchAppOrders,
   fetchMessengerOrders,
@@ -636,6 +637,14 @@ export function RetailProvider({
     [commit],
   );
 
+  const resolveReturnedOrder = useCallback(
+    async (orderId: string, input: Parameters<RetailStore['resolveReturnedOrder']>[1]) => {
+      const canonical = await resolveReturnedOrderApi(orderId, input);
+      commit((current) => ({ ...current, orders: replaceOrder(current.orders, canonical) }));
+    },
+    [commit],
+  );
+
   const failDelivery = useCallback(
     (orderId: string, input: Parameters<RetailStore['failDelivery']>[1]) => {
       commit((current) => failDeliveryState(current, orderId, input));
@@ -860,6 +869,7 @@ export function RetailProvider({
       markPostalHandedOver,
       completePostalDelivery,
       cancelOrder,
+      resolveReturnedOrder,
       failDelivery,
       markReturning,
       markReturned,
@@ -907,6 +917,7 @@ export function RetailProvider({
       markPostalHandedOver,
       completePostalDelivery,
       cancelOrder,
+      resolveReturnedOrder,
       failDelivery,
       markReturning,
       markReturned,

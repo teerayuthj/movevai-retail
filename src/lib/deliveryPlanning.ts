@@ -1,4 +1,5 @@
 import type { Order } from '@/data/orderTypes';
+import { isUnresolvedDeliveryCenterRouteReturn } from '@/features/delivery-workspace/returnedDeliveryCenterOrders';
 import { isAdHocRouteOrder } from '@/lib/orderSourceLink';
 
 export const SCHEDULED_DELIVERY_GRACE_MINUTES = 15;
@@ -185,6 +186,7 @@ export function canPlanOrder(order: Order) {
   return (
     isInternalDriverOrder(order) &&
     !isAdHocRouteOrder(order) &&
+    !isUnresolvedDeliveryCenterRouteReturn(order) &&
     order.status === 'ready' &&
     order.deliveryPlan?.releaseState !== 'released'
   );
@@ -200,6 +202,7 @@ export function isVisibleInExecutionQueue(order: Order) {
   return (
     isInternalDriverOrder(order) &&
     !isAdHocRouteOrder(order) &&
+    !isUnresolvedDeliveryCenterRouteReturn(order) &&
     !isUnreleasedPlannedOrder(order) &&
     order.deliveryPlan?.releaseState !== 'released' &&
     !order.deliveryRoute

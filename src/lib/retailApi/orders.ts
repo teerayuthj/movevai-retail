@@ -82,6 +82,20 @@ export async function cancelOrder(
   return normalizeOrder(result);
 }
 
+export async function resolveReturnedOrder(
+  orderId: string,
+  input: {
+    resolution: 'replan' | 'immediate' | 'awaiting_decision';
+    note?: string;
+  },
+) {
+  const result = await request<ApiOrder>(
+    `${APP_API_BASE}/orders/${encodeURIComponent(orderId)}/resolve-route-return`,
+    { method: 'POST', body: JSON.stringify(input) },
+  );
+  return normalizeOrder(result);
+}
+
 // ถอนการมอบหมายงานที่ยังไม่มี Route แล้วคืนเข้า ready queue
 export async function unassignAppOrder(
   orderId: string,

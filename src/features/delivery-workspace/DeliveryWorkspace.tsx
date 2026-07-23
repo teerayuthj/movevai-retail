@@ -3,14 +3,17 @@ import { CalendarDays, ListChecks, RefreshCw, Route, RotateCcw } from 'lucide-re
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { toast } from 'sonner';
 import { useRetailStore } from '@/state/retailStore';
 import { useAdminAuth } from '@/auth/AuthContext';
 import { groupReturnedAdHocRouteTrips } from '@/features/dispatch/returnedRouteTrips';
+import { ReturnedDeliveryCenterOrders } from './components/ReturnedDeliveryCenterOrders';
+import { groupReturnedDeliveryCenterOrders } from './returnedDeliveryCenterOrders';
 import { canPlanOrder } from '@/lib/deliveryPlanning';
 import { DeliveryManage } from './components/DeliveryManage';
 import { DeliveryCalendar } from './components/DeliveryCalendar';
 
-type WorkspaceView = 'manage' | 'calendar';
+type WorkspaceView = 'manage' | 'returned' | 'calendar';
 type ManageMode = 'immediate' | 'planning';
 
 type Props = {
@@ -22,7 +25,9 @@ type Props = {
 
 function parseWorkspaceSearch(locationSearch: string) {
   const params = new URLSearchParams(locationSearch);
-  const view = params.get('view') === 'calendar' ? 'calendar' : 'manage';
+  const requestedView = params.get('view');
+  const view: WorkspaceView =
+    requestedView === 'calendar' || requestedView === 'returned' ? requestedView : 'manage';
   const mode =
     params.get('mode') === 'planning'
       ? 'planning'
@@ -43,7 +48,7 @@ export function DeliveryWorkspacePage({
   onOpenRouteBuilder,
 }: Props) {
   const parsed = useMemo(() => parseWorkspaceSearch(locationSearch), [locationSearch]);
-  const { orders, drivers, syncFromBackend } = useRetailStore();
+  const { orders, drivers, cancelOrder, resolveReturnedOrder, syncFromBackend } = useRetailStore();
   const { user } = useAdminAuth();
   const isAdmin = user?.role.code === 'admin';
   const canImmediate = Boolean(isAdmin || user?.permissions.includes('queue.manage'));
@@ -57,6 +62,11 @@ export function DeliveryWorkspacePage({
   });
   const manageableCount = orders.filter(canPlanOrder).length;
   const returnedTrips = useMemo(() => groupReturnedAdHocRouteTrips(orders), [orders]);
+  const returnedOrderGroups = useMemo(() => groupReturnedDeliveryCenterOrders(orders), [orders]);
+  const returnedOrderCount = returnedOrderGroups.reduce(
+    (total, group) => total + group.orders.length,
+    0,
+  );
 
   useEffect(() => {
     setView(parsed.view);
@@ -70,7 +80,8 @@ export function DeliveryWorkspacePage({
   }, [parsed]);
 
   const changeView = (nextView: string) => {
-    const normalized = nextView === 'calendar' ? 'calendar' : 'manage';
+    const normalized: WorkspaceView =
+      nextView === 'calendar' || nextView === 'returned' ? nextView : 'manage';
     setView(normalized);
     const params = new URLSearchParams(window.location.search);
     params.set('view', normalized);
@@ -125,6 +136,14 @@ export function DeliveryWorkspacePage({
               {manageableCount}
             </Badge>
           </TabsTrigger>
+          <TabsTrigger value="returned" className="gap-2 rounded-b-none px-4 py-2.5">
+            <RotateCcw className="h-4 w-4" /> ดึงกลับ
+            {returnedOrderCount > 0 && (
+              <Badge variant="warning" className="h-5 px-1.5 text-[10px]">
+                {returnedOrderCount}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="calendar" className="gap-2 rounded-b-none px-4 py-2.5">
             <CalendarDays className="h-4 w-4" /> ภาพรวมปฏิทิน
           </TabsTrigger>
@@ -157,6 +176,34 @@ export function DeliveryWorkspacePage({
             onOpenInbox={onOpenInbox}
             onOpenTracking={onOpenTracking}
             onChanged={handleChanged}
+          />
+        </TabsContent>
+        <TabsContent value="returned">
+          <ReturnedDeliveryCenterOrders
+            groups={returnedOrderGroups}
+            canImmediate={canImmediate}
+            canPlanning={canPlanning}
+            onResolve={async (item, resolution) => {
+              await resolveReturnedOrder(item.order.id, { resolution });
+              handleChanged();
+              if (resolution === 'replan') {
+                toast.success(`เลือก ${item.order.orderNo} เพื่อจัดรอบใหม่แล้ว`);
+                openManage(item.order.id, 'planning');
+                return;
+              }
+              if (resolution === 'immediate') {
+                toast.success(`เลือก ${item.order.orderNo} เพื่อส่งทันทีแล้ว`);
+                openManage(item.order.id, 'immediate');
+                return;
+              }
+              toast.success(`คืน ${item.order.orderNo} ไปรอตัดสินใจแล้ว`);
+              openManage(item.order.id);
+            }}
+            onCancel={async (item, reason, note) => {
+              await cancelOrder(item.order.id, { reason, note });
+              handleChanged();
+              toast.success(`ยกเลิก ${item.order.orderNo} แล้ว`);
+            }}
           />
         </TabsContent>
         <TabsContent value="calendar">

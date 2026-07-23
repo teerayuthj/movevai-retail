@@ -129,6 +129,13 @@ export type RetailStore = RetailState & {
   markPostalHandedOver: (orderIds: string[]) => void;
   completePostalDelivery: (orderId: string, success?: boolean) => void;
   cancelOrder: (orderId: string, input: CancelOrderInput) => Promise<void>;
+  resolveReturnedOrder: (
+    orderId: string,
+    input: {
+      resolution: 'replan' | 'immediate' | 'awaiting_decision';
+      note?: string;
+    },
+  ) => Promise<void>;
   failDelivery: (orderId: string, input: FailDeliveryInput) => void;
   markReturning: (orderId: string, input: MarkReturningInput) => void;
   markReturned: (orderId: string, input?: MarkReturnedInput) => void;
