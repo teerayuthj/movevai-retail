@@ -85,6 +85,8 @@ export type DeliveryCalendarItem = {
   lineProfile?: DeliveryCalendarLineProfile;
   publishedAt?: string;
   requiresAcceptance: boolean;
+  // messenger รับงานแล้วหรือยัง — ใช้แยก "รอรับงาน" กับ "รับแล้ว รอออก"
+  acceptedAt?: string;
   // ช่องทางที่สร้างเที่ยว เช่น 'ad_hoc_route' (สร้างเที่ยววิ่ง), 'quick_create'
   createdVia?: string;
 };
@@ -394,6 +396,38 @@ export function fetchDeliveryWorkspaceCalendar(input: DeliveryCalendarRequest) {
 
 export function fetchRouteBuilderCalendar(input: DeliveryCalendarRequest) {
   return fetchScopedDeliveryCalendar('route-builder', input);
+}
+
+export type DeliveryCalendarSummaryDay = {
+  date: string;
+  count: number;
+};
+
+export type DeliveryCalendarSummaryResponse = {
+  year: number;
+  driverCode?: string;
+  days: DeliveryCalendarSummaryDay[];
+};
+
+type DeliveryCalendarSummaryRequest = {
+  year: number;
+  driverCode?: string;
+};
+
+function fetchScopedDeliveryCalendarSummary(path: string, input: DeliveryCalendarSummaryRequest) {
+  const search = new URLSearchParams({ year: String(input.year) });
+  if (input.driverCode) search.set('driverCode', input.driverCode);
+  return request<DeliveryCalendarSummaryResponse>(
+    `${APP_API_BASE}/planning/calendar/${path}/summary?${search.toString()}`,
+  );
+}
+
+export function fetchDeliveryWorkspaceCalendarSummary(input: DeliveryCalendarSummaryRequest) {
+  return fetchScopedDeliveryCalendarSummary('delivery-workspace', input);
+}
+
+export function fetchRouteBuilderCalendarSummary(input: DeliveryCalendarSummaryRequest) {
+  return fetchScopedDeliveryCalendarSummary('route-builder', input);
 }
 
 export async function retryPlanningRoutePush(routeId: string) {
