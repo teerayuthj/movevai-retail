@@ -60,6 +60,7 @@ export function PlanningOrderCard({
             <CopyOrderNoButton orderNo={order.orderNo} />
             {isUnreleasedPlannedOrder(order) ? (
               <Badge variant="info" className="h-5 px-1.5 text-[10px]">
+                ออก{' '}
                 {formatPlanningDateTime(
                   order.deliveryPlan!.plannedDate,
                   order.deliveryPlan!.plannedTime,
@@ -68,6 +69,15 @@ export function PlanningOrderCard({
             ) : (
               <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
                 ยังไม่วางแผน
+              </Badge>
+            )}
+            {order.deliveryPlan?.appointmentDate && (
+              <Badge variant="outline" className="h-5 px-1.5 text-[10px] text-info">
+                นัด{' '}
+                {formatPlanningDateTime(
+                  order.deliveryPlan.appointmentDate,
+                  order.deliveryPlan.appointmentTime,
+                )}
               </Badge>
             )}
             {needsAttention && (

@@ -182,19 +182,16 @@ function getImportedDelivery(order: Order): { date: string; time?: string } | nu
   return { date, time };
 }
 
-/** กำหนดวัน/เวลาส่งที่จะโชว์ให้ลูกค้า — รอบส่งจริง (deliveryRoute) มาก่อนแผนร่าง */
+/** วัน/เวลานัดที่จะโชว์ให้ลูกค้า — ไม่ใช้เวลาออกของ Route แทนเวลานัด */
 export function getPlannedDelivery(order: Order): { date: string; time?: string } | null {
   const importedDelivery = getImportedDelivery(order);
-  if (order.deliveryRoute?.dispatchMode === 'urgent' && importedDelivery) {
-    return importedDelivery;
+  if (order.deliveryPlan?.appointmentDate) {
+    return {
+      date: order.deliveryPlan.appointmentDate,
+      time: order.deliveryPlan.appointmentTime,
+    };
   }
-  if (order.deliveryRoute?.plannedDate) {
-    return { date: order.deliveryRoute.plannedDate, time: order.deliveryRoute.plannedTime };
-  }
-  if (order.deliveryPlan?.plannedDate) {
-    return { date: order.deliveryPlan.plannedDate, time: order.deliveryPlan.plannedTime };
-  }
-  return null;
+  return importedDelivery;
 }
 
 type LatLng = { lat: number; lng: number };

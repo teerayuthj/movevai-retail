@@ -20,6 +20,10 @@ type PlanSettingsCardProps = {
   onPlanDate: (value: string) => void;
   planTime: string;
   onPlanTime: (value: string) => void;
+  appointmentDate: string;
+  onAppointmentDate: (value: string) => void;
+  appointmentTime: string;
+  onAppointmentTime: (value: string) => void;
   plannedDriverIds: string[];
   onPlannedDriverIds: (value: string[]) => void;
   readiness: DispatchReadiness;
@@ -39,6 +43,10 @@ export function PlanSettingsCard({
   onPlanDate,
   planTime,
   onPlanTime,
+  appointmentDate,
+  onAppointmentDate,
+  appointmentTime,
+  onAppointmentTime,
   plannedDriverIds,
   onPlannedDriverIds,
   readiness,
@@ -104,6 +112,34 @@ export function PlanSettingsCard({
                   <XCircle className="h-4 w-4" />
                 </Button>
               )}
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-info/30 bg-info/5 p-3">
+          <div className="mb-2">
+            <div className="text-xs font-semibold text-info">นัดหมายลูกค้า</div>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              ใช้วันและเวลานี้คำนวณสถานะเลยกำหนด ไม่ใช้เวลาออกแทน
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="grid gap-2">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                วันที่นัด (จำเป็น)
+              </label>
+              <DatePicker value={appointmentDate} onChange={onAppointmentDate} className="w-full" />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-[11px] font-medium text-muted-foreground">
+                เวลานัด (จำเป็น)
+              </label>
+              <input
+                type="time"
+                value={appointmentTime}
+                onChange={(event) => onAppointmentTime(event.target.value)}
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+              />
             </div>
           </div>
         </div>

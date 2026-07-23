@@ -92,6 +92,15 @@ function calendarItemType(item: DeliveryCalendarItem) {
   return item.kind === 'plan' ? 'แผนจัดส่ง' : 'รอบจัดส่ง';
 }
 
+function calendarAppointmentLabel(item: DeliveryCalendarItem) {
+  if (!item.appointmentDate || !item.appointmentTime) return null;
+  const dateLabel =
+    item.appointmentDate === item.plannedDate
+      ? ''
+      : `${format(parseISO(item.appointmentDate), 'd MMM', { locale: th })} · `;
+  return `นัด ${dateLabel}${item.appointmentTime} น.`;
+}
+
 export function DeliveryCalendar({
   drivers,
   refreshKey,
@@ -388,6 +397,12 @@ export function DeliveryCalendar({
                                     </span>
                                   </div>
                                 )}
+                                {calendarAppointmentLabel(item) && (
+                                  <div className="mt-1.5 flex items-center gap-1 text-[10px] font-medium text-info">
+                                    <CalendarDays className="h-3 w-3" />
+                                    {calendarAppointmentLabel(item)}
+                                  </div>
+                                )}
                               </button>
                             </PopoverTrigger>
                             <PopoverContent
@@ -433,6 +448,7 @@ export function DeliveryCalendar({
                                     <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                                     <div>
                                       <div className="font-medium">
+                                        เวลาออก ·{' '}
                                         {format(parseISO(item.plannedDate), 'd MMMM yyyy', {
                                           locale: th,
                                         })}
@@ -443,6 +459,23 @@ export function DeliveryCalendar({
                                       </div>
                                     </div>
                                   </div>
+                                  {item.appointmentDate && item.appointmentTime && (
+                                    <div className="flex gap-2.5 text-info">
+                                      <CalendarDays className="mt-0.5 h-4 w-4 shrink-0" />
+                                      <div>
+                                        <div className="font-medium">
+                                          นัดลูกค้า ·{' '}
+                                          {format(parseISO(item.appointmentDate), 'd MMMM yyyy', {
+                                            locale: th,
+                                          })}{' '}
+                                          · {item.appointmentTime} น.
+                                        </div>
+                                        <div className="mt-0.5 text-xs text-muted-foreground">
+                                          ใช้คำนวณสถานะเลยกำหนด
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-2.5">
                                     {driverRecord ? (
                                       <DriverAvatar driver={driverRecord} className="h-8 w-8" />

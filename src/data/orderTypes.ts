@@ -71,6 +71,8 @@ export type PlanningCancelReason =
 export type DeliveryPlan = {
   plannedDate: string; // local date key in YYYY-MM-DD
   plannedTime?: string; // local time in HH:mm (24h)
+  appointmentDate?: string; // วันที่นัดลูกค้า (แยกจากวันออก)
+  appointmentTime?: string; // เวลานัดลูกค้าใน HH:mm (24h)
   plannedDriverId?: string;
   releaseState: 'planned' | 'released';
   releasedAt?: string;
@@ -260,6 +262,7 @@ export type OrderActivityEventType =
   | 'delivery_plan_cleared'
   | 'delivery_plan_released'
   | 'delivery_route_cancelled'
+  | 'delivery_route_return_resolved'
   | 'delivery_route_reassigned'
   | 'delivery_urgent_route_published';
 
@@ -280,6 +283,8 @@ export type OrderActivityChangeField =
   | 'dispatchReadiness'
   | 'deliveryPlan.plannedDate'
   | 'deliveryPlan.plannedTime'
+  | 'deliveryPlan.appointmentDate'
+  | 'deliveryPlan.appointmentTime'
   | 'deliveryPlan.plannedDriverId'
   | 'deliveryPlan.releaseState';
 
@@ -385,6 +390,34 @@ export type OrderMetadata = {
     routeRunKey?: string;
     routeTemplateRunId?: string;
     adHocRouteRunId?: string;
+    routeDraft?: {
+      plannedDate: string;
+      plannedTime?: string;
+      appointmentDate: string;
+      appointmentTime: string;
+      dispatchMode: 'planning' | 'scheduled' | 'immediate';
+      driverCode?: string;
+      acceptWithinMinutes: number;
+    };
+    returnedFromRoute?: {
+      routeId: string;
+      routeCode: string;
+      returnedAt: string;
+      reason: PlanningCancelReason;
+      note?: string;
+      driverCode?: string;
+      driverName?: string;
+      plannedDate: string;
+      plannedTime?: string;
+      appointmentDate?: string;
+      appointmentTime?: string;
+      dispatchMode?: 'scheduled' | 'urgent';
+    };
+    routeReturnResolution?: {
+      resolution: 'replan' | 'immediate' | 'awaiting_decision';
+      resolvedAt: string;
+      note?: string;
+    };
     routeGroup?: string;
     /** หมายเหตุที่ Dispatch ใส่ให้ Messenger เห็นตลอดทั้งเที่ยว */
     routeNote?: string;

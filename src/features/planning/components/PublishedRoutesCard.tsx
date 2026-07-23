@@ -6,8 +6,7 @@ import { planningCancelReasonLabel, statusLabel } from '@/data/orderTypes';
 import {
   formatOverdueDuration,
   formatPlanningDate,
-  getPlanningDateTimeMs,
-  SCHEDULED_DELIVERY_GRACE_MINUTES,
+  getAssignedOrderOverdueMinutes,
 } from '@/lib/deliveryPlanning';
 import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
@@ -49,16 +48,11 @@ function formatScheduledPush(route: PlanningRoute) {
 }
 
 function getRouteOverdueMinutes(route: PlanningRoute, nowMs: number) {
-  if (route.status === 'cancelled' || route.status === 'completed' || !route.plannedTime)
-    return null;
-
-  const scheduledAt =
-    getPlanningDateTimeMs(route.plannedDate, route.plannedTime) ??
-    (route.scheduledFor ? new Date(route.scheduledFor).getTime() : null);
-  if (scheduledAt == null) return null;
-  const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
-  if (Number.isNaN(scheduledAt) || nowMs < overdueAt) return null;
-  return Math.floor((nowMs - scheduledAt) / 60_000);
+  if (route.status === 'cancelled' || route.status === 'completed') return null;
+  const overdueMinutes = route.stops
+    .map((stop) => getAssignedOrderOverdueMinutes(stop.order, nowMs))
+    .filter((minutes): minutes is number => minutes != null);
+  return overdueMinutes.length > 0 ? Math.max(...overdueMinutes) : null;
 }
 
 function canEditPublishedRoute(route: PlanningRoute) {
@@ -159,7 +153,7 @@ export function PublishedRoutesCard({
               </div>
               <div className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                นัดส่ง {formatPlanningDate(route.plannedDate)} ·{' '}
+                เวลาออก {formatPlanningDate(route.plannedDate)} ·{' '}
                 {route.plannedTime ? `${route.plannedTime} น.` : 'ไม่ระบุเวลา'}
               </div>
               {route.plannedDistanceMeters != null && route.plannedDistanceMeters > 0 && (

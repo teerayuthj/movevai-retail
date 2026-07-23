@@ -72,6 +72,8 @@ export type ConfirmDeliveryInput = {
 export type PlanOrdersInput = {
   plannedDate: string;
   plannedTime?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
   plannedDriverId?: string;
   dispatchReadiness?: DispatchReadiness;
   note?: string;
@@ -127,6 +129,13 @@ export type RetailStore = RetailState & {
   markPostalHandedOver: (orderIds: string[]) => void;
   completePostalDelivery: (orderId: string, success?: boolean) => void;
   cancelOrder: (orderId: string, input: CancelOrderInput) => Promise<void>;
+  resolveReturnedOrder: (
+    orderId: string,
+    input: {
+      resolution: 'replan' | 'immediate' | 'awaiting_decision';
+      note?: string;
+    },
+  ) => Promise<void>;
   failDelivery: (orderId: string, input: FailDeliveryInput) => void;
   markReturning: (orderId: string, input: MarkReturningInput) => void;
   markReturned: (orderId: string, input?: MarkReturnedInput) => void;
@@ -147,6 +156,8 @@ export type RetailStore = RetailState & {
       acceptWithinMinutes?: number;
       startWithinMinutes?: number;
       startPolicy?: 'manual' | 'accept_starts';
+      appointmentDate?: string;
+      appointmentTime?: string;
       forceNow?: boolean;
     },
   ) => Promise<PlanningRoute>;

@@ -143,7 +143,7 @@ export function MessengerTripCard({
           </Badge>
         </div>
 
-        {(statusChip || first.deliveryPlan?.plannedDate) && (
+        {(statusChip || first.deliveryPlan?.plannedDate || first.deliveryPlan?.appointmentDate) && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             {isPlannedPreview && (
               <span className="inline-flex items-center gap-1 rounded-full border border-info/30 bg-info/10 px-2.5 py-0.5 text-[11px] font-medium text-info">
@@ -163,8 +163,16 @@ export function MessengerTripCard({
             {first.deliveryPlan?.plannedDate && (
               <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2.5 py-0.5 text-[11px] text-muted-foreground">
                 <CalendarClock className="h-3.5 w-3.5" />
-                นัด {formatPlanningDate(first.deliveryPlan.plannedDate)}
+                ออก {formatPlanningDate(first.deliveryPlan.plannedDate)}
                 {first.deliveryPlan.plannedTime && ` · ${first.deliveryPlan.plannedTime} น.`}
+              </span>
+            )}
+            {first.deliveryPlan?.appointmentDate && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-info/30 bg-info/5 px-2.5 py-0.5 text-[11px] text-info">
+                <AlarmClock className="h-3.5 w-3.5" />
+                นัด {formatPlanningDate(first.deliveryPlan.appointmentDate)}
+                {first.deliveryPlan.appointmentTime &&
+                  ` · ${first.deliveryPlan.appointmentTime} น.`}
               </span>
             )}
           </div>

@@ -70,6 +70,8 @@ export type DeliveryCalendarItem = {
   code: string;
   plannedDate: string;
   plannedTime?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
   scheduledFor?: string;
   dispatchMode: 'scheduled' | 'urgent';
   status: string;
@@ -237,6 +239,8 @@ export async function createRouteTemplateRun(
     selectedPickupStopIds: string[];
     plannedDate?: string;
     plannedTime?: string;
+    appointmentDate?: string;
+    appointmentTime?: string;
     driverId?: string;
     dispatchMode?: 'planning' | 'scheduled' | 'immediate';
     messengerTitle?: string;
@@ -255,6 +259,8 @@ export async function createAdHocRouteRun(input: {
   stops: RouteTemplate['stops'];
   plannedDate: string;
   plannedTime?: string;
+  appointmentDate: string;
+  appointmentTime: string;
   driverId?: string;
   dispatchMode: 'planning' | 'scheduled' | 'immediate';
   note?: string;
@@ -273,6 +279,8 @@ export async function savePlanning(input: {
   orderIds: string[];
   plannedDate: string;
   plannedTime?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
   driverCode?: string;
   dispatchReadiness?: Order['dispatchReadiness'];
   note?: string;
@@ -319,6 +327,8 @@ export async function publishPlanningRoute(input: {
   orderIds: string[];
   plannedDate: string;
   plannedTime?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
   driverCode: string;
   note?: string;
   origin?: RouteOrigin;
@@ -344,6 +354,8 @@ export async function publishUrgentPlanningRoute(input: {
   acceptWithinMinutes?: number;
   startWithinMinutes?: number;
   startPolicy?: 'manual' | 'accept_starts';
+  appointmentDate?: string;
+  appointmentTime?: string;
   forceNow?: boolean;
 }) {
   const route = await request<PlanningRoute>(`${APP_API_BASE}/planning/routes/urgent`, {

@@ -62,6 +62,8 @@ export type CreateDispatchJobInput = {
   driver?: Driver;
   plannedDate: string;
   plannedTime?: string;
+  appointmentDate: string;
+  appointmentTime: string;
   acceptWithinMinutes: number;
   startWithinMinutes: number;
   startPolicy: DispatchStartPolicy;

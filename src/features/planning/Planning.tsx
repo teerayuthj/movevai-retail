@@ -34,6 +34,7 @@ import {
   canReleasePlannedOrder,
   formatPlanningDate,
   getNextHourTime,
+  getPlanningDateTimeMs,
   getPlannedLoadCount,
   getTodayDateKey,
   getTomorrowDateKey,
@@ -102,6 +103,8 @@ export function PlanningPage({
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [planDate, setPlanDate] = useState(() => getDefaultPlanningDate(orders));
   const [planTime, setPlanTime] = useState(() => getNextHourTime());
+  const [appointmentDate, setAppointmentDate] = useState(() => getDefaultPlanningDate(orders));
+  const [appointmentTime, setAppointmentTime] = useState(() => getNextHourTime());
   const [plannedDriverIds, setPlannedDriverIds] = useState<string[]>([]);
   const [readiness, setReadiness] = useState<DispatchReadiness>('ready');
   const [planNote, setPlanNote] = useState('');
@@ -162,7 +165,7 @@ export function PlanningPage({
   const selectedOrderSnapshot = selectedOrders
     .map(
       (order) =>
-        `${order.id}:${order.deliveryPlan?.plannedDate ?? ''}:${order.deliveryPlan?.plannedTime ?? ''}:${order.deliveryPlan?.plannedDriverId ?? ''}:${order.dispatchReadiness ?? 'ready'}:${order.deliveryPlan?.note ?? ''}`,
+        `${order.id}:${order.deliveryPlan?.plannedDate ?? ''}:${order.deliveryPlan?.plannedTime ?? ''}:${order.deliveryPlan?.appointmentDate ?? ''}:${order.deliveryPlan?.appointmentTime ?? ''}:${order.deliveryPlan?.plannedDriverId ?? ''}:${order.dispatchReadiness ?? 'ready'}:${order.deliveryPlan?.note ?? ''}`,
     )
     .join('|');
   const selectedPlannedOrders = selectedOrders.filter((order) => isUnreleasedPlannedOrder(order));
@@ -193,12 +196,20 @@ export function PlanningPage({
   const releaseMissingTimeCount = releaseConfirmOrders.filter(
     (order) => !order.deliveryPlan?.plannedTime,
   ).length;
+  const releaseMissingAppointmentCount = releaseConfirmOrders.filter(
+    (order) => !order.deliveryPlan?.appointmentDate || !order.deliveryPlan?.appointmentTime,
+  ).length;
   const releaseConfirmErrors = [
     ...(releaseConfirmScope && releaseConfirmOrders.length === 0
       ? ['ไม่มีงานที่พร้อมปล่อยรอบส่งแล้ว — ปิดหน้าต่างนี้เพื่อตรวจสอบรายการอีกครั้ง']
       : []),
     ...(releaseMissingTimeCount > 0
       ? [`มี ${releaseMissingTimeCount} งานยังไม่ระบุเวลาออก — กลับไประบุเวลาก่อนปล่อยรอบส่ง`]
+      : []),
+    ...(releaseMissingAppointmentCount > 0
+      ? [
+          `มี ${releaseMissingAppointmentCount} งานยังไม่ระบุวันหรือเวลานัดลูกค้า — กลับไประบุก่อนปล่อยรอบส่ง`,
+        ]
       : []),
   ];
   const assignedPlannedOrders = plannedForSelectedDate.filter(
@@ -288,6 +299,20 @@ export function PlanningPage({
     )
       ? (firstOrder.deliveryPlan?.plannedTime ?? '')
       : '';
+    const sharedAppointmentDate = selectedOrders.every(
+      (order) =>
+        (order.deliveryPlan?.appointmentDate ?? '') ===
+        (firstOrder.deliveryPlan?.appointmentDate ?? ''),
+    )
+      ? (firstOrder.deliveryPlan?.appointmentDate ?? '')
+      : '';
+    const sharedAppointmentTime = selectedOrders.every(
+      (order) =>
+        (order.deliveryPlan?.appointmentTime ?? '') ===
+        (firstOrder.deliveryPlan?.appointmentTime ?? ''),
+    )
+      ? (firstOrder.deliveryPlan?.appointmentTime ?? '')
+      : '';
     const sharedDriver = selectedOrders.every(
       (order) => order.deliveryPlan?.plannedDriverId === firstOrder.deliveryPlan?.plannedDriverId,
     )
@@ -306,6 +331,8 @@ export function PlanningPage({
 
     setPlanDate(sharedDate ?? selectedDate);
     setPlanTime(sharedTime || getNextHourTime());
+    setAppointmentDate(sharedAppointmentDate || sharedDate || selectedDate);
+    setAppointmentTime(sharedAppointmentTime || getNextHourTime());
     setPlannedDriverIds(sharedDriver ? [sharedDriver] : uniqueDriverIds(selectedOrders));
     setReadiness(sharedReadiness);
     setPlanNote(sharedNote);
@@ -400,6 +427,8 @@ export function PlanningPage({
     setSelectedRouteId(null);
     setPlanDate(selectedDate);
     setPlanTime(getNextHourTime());
+    setAppointmentDate(selectedDate);
+    setAppointmentTime(getNextHourTime());
     setPlannedDriverIds([]);
     setReadiness('ready');
     setPlanNote('');
@@ -411,12 +440,24 @@ export function PlanningPage({
       toast.error('กรุณาระบุเวลาออกก่อนบันทึกแผน');
       return;
     }
+    if (!appointmentDate || !appointmentTime) {
+      toast.error('กรุณาระบุวันและเวลานัดลูกค้าก่อนบันทึกแผน');
+      return;
+    }
+    const departureAt = getPlanningDateTimeMs(planDate, planTime);
+    const appointmentAt = getPlanningDateTimeMs(appointmentDate, appointmentTime);
+    if (departureAt == null || appointmentAt == null || appointmentAt < departureAt) {
+      toast.error('เวลานัดลูกค้าต้องไม่ก่อนเวลาออก');
+      return;
+    }
     setOperationState('saving');
     setOperationError('');
     try {
       const baseInput = {
         plannedDate: planDate,
         plannedTime: planTime || undefined,
+        appointmentDate,
+        appointmentTime,
         dispatchReadiness: readiness,
         note: planNote.trim() || undefined,
       };
@@ -524,6 +565,12 @@ export function PlanningPage({
     const withoutDepartureTime = targetOrders.find((order) => !order.deliveryPlan?.plannedTime);
     if (withoutDepartureTime) {
       throw new Error('กรุณาระบุเวลาออกให้ครบก่อน Publish รอบส่ง');
+    }
+    const withoutAppointment = targetOrders.find(
+      (order) => !order.deliveryPlan?.appointmentDate || !order.deliveryPlan?.appointmentTime,
+    );
+    if (withoutAppointment) {
+      throw new Error('กรุณาระบุวันและเวลานัดลูกค้าให้ครบก่อน Publish รอบส่ง');
     }
     const groups = new Map<string, string[]>();
     targetOrders.forEach((order) => {
@@ -885,6 +932,10 @@ export function PlanningPage({
             onPlanDate={setPlanDate}
             planTime={planTime}
             onPlanTime={setPlanTime}
+            appointmentDate={appointmentDate}
+            onAppointmentDate={setAppointmentDate}
+            appointmentTime={appointmentTime}
+            onAppointmentTime={setAppointmentTime}
             plannedDriverIds={plannedDriverIds}
             onPlannedDriverIds={setPlannedDriverIds}
             readiness={readiness}

@@ -183,24 +183,28 @@ export function TrackingCard({
         </div>
 
         <div className="mt-1.5 text-sm font-medium">{order.customer.name}</div>
-        {(order.status === 'assigned' || isPlannedPreview) && order.deliveryPlan && (
-          <div
-            className={cn(
-              'mt-1 text-[11px] font-medium',
-              overdueMinutes != null ? 'text-destructive' : 'text-muted-foreground',
-            )}
-          >
-            {order.deliveryRoute ? shortRouteCode(order.deliveryRoute.code) : 'Route'}
-            {order.deliveryRoute && (
-              <CopyRouteCodeButton
-                code={order.deliveryRoute.code}
-                className="ml-0.5 inline-flex h-4 w-4 align-middle"
-              />
-            )}{' '}
-            · นัดส่ง{' '}
-            {formatPlanningDateTime(order.deliveryPlan.plannedDate, order.deliveryPlan.plannedTime)}
-          </div>
-        )}
+        {(order.status === 'assigned' || isPlannedPreview) &&
+          order.deliveryPlan?.appointmentDate && (
+            <div
+              className={cn(
+                'mt-1 text-[11px] font-medium',
+                overdueMinutes != null ? 'text-destructive' : 'text-muted-foreground',
+              )}
+            >
+              {order.deliveryRoute ? shortRouteCode(order.deliveryRoute.code) : 'Route'}
+              {order.deliveryRoute && (
+                <CopyRouteCodeButton
+                  code={order.deliveryRoute.code}
+                  className="ml-0.5 inline-flex h-4 w-4 align-middle"
+                />
+              )}{' '}
+              · นัดส่ง{' '}
+              {formatPlanningDateTime(
+                order.deliveryPlan.appointmentDate,
+                order.deliveryPlan.appointmentTime,
+              )}
+            </div>
+          )}
         {order.status === 'in_transit' && order.inTransitAt && (
           <div className="mt-1 text-[11px] font-medium text-info">
             เริ่มจัดส่ง {formatDateTime(order.inTransitAt)}
