@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { DetailDrawer } from '@/components/DetailDrawer';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import { CustomerTrackingQrCard } from '@/components/CustomerTrackingQrCard';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import {
@@ -69,8 +71,13 @@ export function TrackingDetailDrawer({
     <DetailDrawer
       open={!!order}
       title={
-        <span className="font-mono">
+        <span className="inline-flex items-center gap-1 font-mono">
           {isRoute ? (route ? shortRouteCode(route.code) : 'Route') : order?.orderNo}
+          {isRoute ? (
+            <CopyRouteCodeButton code={route?.code} />
+          ) : (
+            <CopyOrderNoButton orderNo={order?.orderNo} />
+          )}
         </span>
       }
       subtitle={

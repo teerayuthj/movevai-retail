@@ -693,40 +693,14 @@ export function RetailProvider({
   );
 
   const cancelRoute = useCallback(
-    async (
-      routeId: string,
-      input: Parameters<RetailStore['cancelRoute']>[1],
-      restore?: Parameters<RetailStore['cancelRoute']>[2],
-    ) => {
+    async (routeId: string, input: Parameters<RetailStore['cancelRoute']>[1]) => {
       const route = await cancelPlanningRoute(routeId, input);
-
-      // backend ลบ stops ทิ้งตอน cancel (เพื่อปล่อย unique orderId) แล้ว restore order
-      // กลับเป็น releaseState='planned' พร้อม plannedDate/Time เดิมให้เรียบร้อย ดังนั้น
-      // response.stops จึง "ว่างเสมอ" — ไม่ใช่สัญญาณว่าดึงกลับไม่สำเร็จ จึงห้าม throw
-      // ที่ backend ไม่ได้คงไว้คือ plannedDriverId (Messenger) เลย savePlanning ซ้ำด้วย
-      // ข้อมูล route เดิมจาก frontend (restore) เพื่อคง Messenger ตามแผนเดิมไว้
-      const plan =
-        restore && restore.orderIds.length > 0
-          ? restore
-          : route.stops.length > 0
-            ? {
-                orderIds: route.stops.map((stop) => stop.order.id),
-                plannedDate: route.plannedDate,
-                plannedTime: route.plannedTime,
-                driverCode: route.driver.code,
-                note: route.note,
-              }
-            : null;
-      if (plan) {
-        const canonical = await savePlanning(plan);
-        commit((current) => ({
-          ...current,
-          orders: canonical.reduce(replaceOrder, current.orders),
-        }));
-      }
+      // backend ยกเลิก Route และล้าง delivery plan ใน transaction เดียว
+      // sync ใหม่เพื่อให้ order กลับเป็น ready ใน Queue ทันที
+      await syncFromBackend();
       return route;
     },
-    [commit],
+    [syncFromBackend],
   );
 
   const reassignRoute = useCallback(

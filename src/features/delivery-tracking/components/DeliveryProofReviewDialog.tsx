@@ -3,6 +3,7 @@ import { AlertTriangle, CheckCircle2, ClipboardCheck, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import type {
   DeliveryProofReviewDecision,
   DeliveryProofReviewReason,
@@ -91,7 +92,10 @@ export function DeliveryProofReviewDialog({ order, onClose, onSubmit }: Props) {
             <div className="flex items-center gap-2 font-semibold">
               <ClipboardCheck className="h-4 w-4 text-primary" /> ตรวจหลักฐานส่งมอบ
             </div>
-            <div className="mt-1 font-mono text-xs text-muted-foreground">{order.orderNo}</div>
+            <div className="mt-1 flex items-center gap-1 font-mono text-xs text-muted-foreground">
+              {order.orderNo}
+              <CopyOrderNoButton orderNo={order.orderNo} />
+            </div>
           </div>
           <button
             type="button"

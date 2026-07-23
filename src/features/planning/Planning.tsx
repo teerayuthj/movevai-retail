@@ -491,17 +491,10 @@ export function PlanningPage({
     setRouteActionError('');
     try {
       if (routeAction.type === 'cancel') {
-        await cancelRoute(
-          routeAction.route.id,
-          { reason: value as PlanningCancelReason, note },
-          {
-            orderIds: routeAction.route.stops.map((stop) => stop.order.id),
-            plannedDate: routeAction.route.plannedDate,
-            plannedTime: routeAction.route.plannedTime,
-            driverCode: routeAction.route.driver.code,
-            note: routeAction.route.note,
-          },
-        );
+        await cancelRoute(routeAction.route.id, {
+          reason: value as PlanningCancelReason,
+          note,
+        });
       } else {
         if (typeof value === 'string') return;
         await reassignRoute(routeAction.route.id, value);
@@ -509,7 +502,7 @@ export function PlanningPage({
       const stopCount = routeAction.route.stops.length;
       toast.success(
         routeAction.type === 'cancel'
-          ? `ดึง Route ${shortRouteCode(routeAction.route.code)} (${stopCount} จุด) กลับมาจัดการแล้ว — แจ้งคนขับเรียบร้อย`
+          ? `ดึง Route ${shortRouteCode(routeAction.route.code)} (${stopCount} จุด) กลับเข้าคิวแล้ว — แจ้งคนขับเรียบร้อย`
           : `เปลี่ยนคนขับ Route ${shortRouteCode(routeAction.route.code)} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
       );
       setRouteAction(null);
@@ -1011,12 +1004,12 @@ export function PlanningPage({
       {routeAction?.type === 'cancel' && (
         <ResolutionDialog
           open
-          title={`ดึง Route ${shortRouteCode(routeAction.route.code)} กลับมาจัดการ`}
-          description={`นำทั้ง Route ${routeAction.route.stops.length} จุดกลับมาจัดการ โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
+          title={`ดึง Route ${shortRouteCode(routeAction.route.code)} กลับเข้าคิว`}
+          description={`ยกเลิกทั้ง Route ${routeAction.route.stops.length} จุด ล้างแผนเดิม และคืนเข้าคิวจัดส่งในครั้งเดียว พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={planningCancelReasons}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
-          confirmLabel="ยืนยันดึงกลับมาจัดการ"
+          confirmLabel="ยืนยันดึงกลับเข้าคิว"
           confirmVariant="destructive"
           onCancel={() => setRouteAction(null)}
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}

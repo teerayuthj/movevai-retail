@@ -65,6 +65,7 @@ export type PlanningCancelReason =
   | 'production_delay'
   | 'customer_reschedule'
   | 'duplicate'
+  | 'messenger_not_accepting'
   | 'other';
 
 export type DeliveryPlan = {
@@ -512,6 +513,7 @@ export const planningCancelReasonLabel: Record<PlanningCancelReason, string> = {
   production_delay: 'ผลิตไม่ทัน',
   customer_reschedule: 'ลูกค้าเลื่อนนัด',
   duplicate: 'งานซ้ำ',
+  messenger_not_accepting: 'Messenger ไม่รับงาน',
   other: 'อื่นๆ',
 };
 

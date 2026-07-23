@@ -156,7 +156,7 @@ export function RouteBuilder({ locationSearch, onOpenPlanning, onOpenTracking }:
           <DeliveryCalendar
             drivers={drivers}
             refreshKey={calendarRefreshKey}
-            restrictSource="ad_hoc_route"
+            calendarScope="route_builder"
             onOpenManage={(orderId) =>
               onOpenPlanning(orderId ? `?order=${encodeURIComponent(orderId)}` : undefined)
             }

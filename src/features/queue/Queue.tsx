@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { AutoAssignPreviewDialog } from '@/components/delivery/AutoAssignPreviewDialog';
 import { OrderTimeline } from '@/components/OrderTimeline';
 import { MobileDetailSheet } from '@/components/MobileDetailSheet';
@@ -676,7 +677,12 @@ export function QueuePage({ locationSearch, onOpenInbox, onOpenTracking }: Queue
       {/* มือถือ: เลือกคนขับ + มอบหมาย/สร้าง Route แบบเต็มจอ */}
       <MobileDetailSheet
         open={!!selectedOrder && mobileDetailOpen}
-        title={<span className="font-mono">{selectedOrder?.orderNo}</span>}
+        title={
+          <span className="inline-flex items-center gap-1 font-mono">
+            {selectedOrder?.orderNo}
+            <CopyOrderNoButton orderNo={selectedOrder?.orderNo} />
+          </span>
+        }
         subtitle={selectedOrder ? statusLabel[selectedOrder.status] : undefined}
         onClose={() => setMobileDetailOpen(false)}
         footer={assignmentActions}

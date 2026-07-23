@@ -1,12 +1,15 @@
 import { useState, type ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { DriverAvatar } from '@/components/DriverAvatar';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import { type Order, statusLabel } from '@/data/orderTypes';
 import { formatPlanningDateTime, getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import { groupRouteOrdersIntoJobs } from '@/lib/deliveryJobs';
 import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ChevronUp, Navigation, Route } from 'lucide-react';
+import { useRetailStore } from '@/state/retailStore';
+import { ChevronDown, ChevronUp, Navigation, Route, UserRound } from 'lucide-react';
 
 type TrackingRouteCardProps = {
   orders: Order[];
@@ -28,12 +31,36 @@ function stopName(order: Order) {
 function routeTitle(orders: Order[]) {
   const first = orders[0];
   const dispatch = first.metadataJson?.dispatch;
-  return (
+  const custom =
     dispatch?.messengerTitle?.trim() ||
     dispatch?.routeTemplateName?.trim() ||
-    dispatch?.title?.trim() ||
-    `เที่ยว ${stopName(first)} → ${stopName(orders[orders.length - 1])}`
-  );
+    dispatch?.title?.trim();
+  if (custom) return custom;
+  const firstName = stopName(first);
+  const lastName = stopName(orders[orders.length - 1]);
+  // เที่ยวจุดเดียว (เช่นสร้างจากศูนย์จัดส่ง) ต้น–ปลายคือลูกค้าคนเดียวกัน
+  // ถ้าแสดง "ชื่อ → ชื่อ" จะดูเป็นข้อมูลผิด — แสดงจุดหมายเดียวพอ
+  if (orders.length === 1 || firstName === lastName) {
+    const leg = first.metadataJson?.dispatch?.routeLeg === 'pickup' ? 'รับ' : 'ส่ง';
+    return `${leg} · ${firstName}`;
+  }
+  return `${firstName} → ${lastName}`;
+}
+
+// สรุปสถานะรวมของเที่ยวจากสถานะรายจุด — เรียงตามความสำคัญที่คนดูหน้า monitoring อยากรู้ก่อน
+function routeStatusSummary(orders: Order[]): {
+  label: string;
+  variant: 'info' | 'warning' | 'success' | 'muted';
+} {
+  if (orders.some((order) => order.status === 'in_transit'))
+    return { label: statusLabel.in_transit, variant: 'info' };
+  if (orders.some((order) => order.status === 'assigned'))
+    return { label: statusLabel.assigned, variant: 'muted' };
+  if (orders.some((order) => order.status === 'pending_confirmation'))
+    return { label: statusLabel.pending_confirmation, variant: 'warning' };
+  if (orders.every((order) => order.status === 'delivered'))
+    return { label: statusLabel.delivered, variant: 'success' };
+  return { label: statusLabel[orders[0].status], variant: 'muted' };
 }
 
 /**
@@ -50,11 +77,16 @@ export function TrackingRouteCard({
   settledLabel,
   nowMs,
 }: TrackingRouteCardProps) {
+  const { drivers } = useRetailStore();
   const sortedOrders = [...orders].sort(
     (a, b) => (a.deliveryRoute?.sequence ?? 0) - (b.deliveryRoute?.sequence ?? 0),
   );
   const first = sortedOrders[0];
   const route = first.deliveryRoute;
+  const driverOrder = sortedOrders.find((order) => order.assignedDriverId);
+  const driver = drivers.find((item) => item.id === driverOrder?.assignedDriverId) ?? null;
+  const driverName = driver?.name ?? driverOrder?.assignedDriverName ?? null;
+  const status = routeStatusSummary(sortedOrders);
   const routeJobs = groupRouteOrdersIntoJobs(sortedOrders);
   const [expanded, setExpanded] = useState(false);
   // นับความคืบหน้าเป็น "งาน" (จุดส่ง) ไม่ใช่ราย leg — งานถือว่าเสร็จเมื่อจุดส่งปิดแล้ว
@@ -88,25 +120,64 @@ export function TrackingRouteCard({
       )}
     >
       <div className="p-4 pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
-              <Route className="h-3.5 w-3.5" /> เที่ยววิ่ง
-              <span className="font-mono">{route ? shortRouteCode(route.code) : 'Route'}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            {driver ? (
+              <DriverAvatar driver={driver} className="h-8 w-8" />
+            ) : driverName ? (
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                {driverName.trim().charAt(0)}
+              </span>
+            ) : (
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground">
+                <UserRound className="h-4 w-4" />
+              </span>
+            )}
+            <div className="min-w-0">
+              {driverName ? (
+                <>
+                  <div className="truncate text-sm font-semibold">{driverName}</div>
+                  <div className="text-[10px] text-muted-foreground">
+                    คนขับ{driver?.phone ? ` · ${driver.phone}` : ''}
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm font-medium text-muted-foreground">ยังไม่มอบหมายคนขับ</div>
+              )}
             </div>
-            <div className="mt-1 truncate text-sm font-semibold">{routeTitle(sortedOrders)}</div>
           </div>
-          <Badge
-            variant={overdueMinutes > 0 ? 'destructive' : 'info'}
-            className="shrink-0 text-[10px]"
-          >
-            {completed}/{routeJobs.length} จุด
+          <Badge variant={status.variant} className="shrink-0 text-[10px]">
+            {status.label}
           </Badge>
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-muted-foreground">
+          <Route className="h-3.5 w-3.5" /> เที่ยววิ่ง
+          <span className="font-mono">{route ? shortRouteCode(route.code) : 'Route'}</span>
+          <CopyRouteCodeButton code={route?.code} />
+        </div>
+        <div className="mt-0.5 truncate text-sm font-semibold">{routeTitle(sortedOrders)}</div>
+
+        <div className="mt-2 flex items-center gap-2">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-muted">
+            <div
+              className={cn(
+                'h-full rounded-full transition-all',
+                overdueMinutes > 0 ? 'bg-destructive' : 'bg-success',
+              )}
+              style={{
+                width: `${routeJobs.length > 0 ? Math.round((completed / routeJobs.length) * 100) : 0}%`,
+              }}
+            />
+          </div>
+          <span className="shrink-0 font-mono text-[10px] font-semibold tabular-nums text-muted-foreground">
+            {completed}/{routeJobs.length} งาน
+          </span>
         </div>
 
         <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
           <span>
-            {routeJobs.length} งาน · {pickupCount > 0 ? `รับ ${pickupCount} · ` : ''}ส่ง{' '}
+            {sortedOrders.length} จุด · {pickupCount > 0 ? `รับ ${pickupCount} · ` : ''}ส่ง{' '}
             {sortedOrders.length - pickupCount}
           </span>
           {first.deliveryPlan && (

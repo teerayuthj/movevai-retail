@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   type FailNextAction,
@@ -372,6 +372,7 @@ function ImageField({
   onClear: () => void;
 }) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   return (
     <>
@@ -402,9 +403,22 @@ function ImageField({
               <FileImage className="h-6 w-6 text-muted-foreground" />
             </div>
           )}
-          <Input
+          <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => inputRef.current?.click()}
+            >
+              {value ? 'เปลี่ยนรูป' : 'เลือกรูป'}
+            </Button>
+            <span className="text-xs text-muted-foreground">รองรับไฟล์ JPG/PNG</span>
+          </div>
+          <input
+            ref={inputRef}
             type="file"
             accept="image/*"
+            className="hidden"
             onChange={(event) => onFile(event.target.files?.[0])}
           />
         </div>

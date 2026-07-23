@@ -13,6 +13,7 @@ import type { PlanningRoute } from '@/lib/retailApi';
 import { cn } from '@/lib/utils';
 import { formatRouteDistance } from '@/lib/routeDistance';
 import { shortRouteCode } from '@/lib/routeCode';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import { BellRing, Ban, Clock, Info, RefreshCw, Route, UserCog } from 'lucide-react';
 
 const ACTIVE_ORDER_STATUSES = new Set(['in_transit', 'pending_confirmation', 'returning']);
@@ -138,6 +139,7 @@ export function PublishedRoutesCard({
                 <div className="flex min-w-0 items-center gap-2 font-medium">
                   <Route className="h-4 w-4 shrink-0" />
                   <span className="truncate">{shortRouteCode(route.code)}</span>
+                  <CopyRouteCodeButton code={route.code} />
                 </div>
                 {cancelled ? (
                   <Badge variant="muted">
@@ -183,7 +185,7 @@ export function PublishedRoutesCard({
                   {formatPulledBackAt(route.cancelledAt) && (
                     <div className="mt-1 flex items-center gap-1 text-muted-foreground">
                       <Clock className="h-3 w-3 shrink-0" />
-                      ดึงกลับมาจัดการเมื่อ {formatPulledBackAt(route.cancelledAt)}
+                      คืนเข้าคิวเมื่อ {formatPulledBackAt(route.cancelledAt)}
                     </div>
                   )}
                   <div className="mt-1 text-muted-foreground">
@@ -237,7 +239,7 @@ export function PublishedRoutesCard({
                         className="border-destructive/40 text-destructive hover:bg-destructive/5"
                         onClick={() => onCancel(route)}
                       >
-                        <Ban className="h-3.5 w-3.5" /> ดึงกลับมาจัดการ
+                        <Ban className="h-3.5 w-3.5" /> ดึงกลับเข้าคิว
                       </Button>
                     </>
                   )}

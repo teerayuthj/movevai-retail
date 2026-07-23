@@ -21,3 +21,6 @@ android/.idea/
 
 # local npm/npx -> pnpm proxy shims (tooling convenience, not project code)
 .codex-bin/
+
+# test ค้นหาร่ม 
+/outputs/

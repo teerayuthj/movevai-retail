@@ -4,6 +4,7 @@ import { MessengerConsolePage } from '@/pages/MessengerConsole';
 import { RetailProvider } from '@/state/retailStore';
 import { Toaster } from '@/components/ui/sonner';
 import 'leaflet/dist/leaflet.css';
+import '@fontsource-variable/geist';
 import './index.css';
 import { registerAppServiceWorker } from './registerServiceWorker';
 import { setupNativeShell } from '@/lib/nativeSetup';

@@ -141,6 +141,7 @@ export function DeliveryWorkspacePage({ locationSearch, onOpenInbox, onOpenTrack
           <DeliveryCalendar
             drivers={drivers}
             refreshKey={calendarRefreshKey}
+            calendarScope="delivery_workspace"
             onOpenManage={openManage}
             onOpenTracking={(orderId) =>
               onOpenTracking(orderId ? `?order=${encodeURIComponent(orderId)}` : undefined)

@@ -378,7 +378,7 @@ export function DeliveryTrackingPage({
       }
       toast.success(
         routeAction.type === 'cancel'
-          ? `ดึง Route ${routeCode} กลับมาจัดการแล้ว — แจ้งคนขับเรียบร้อย`
+          ? `ดึง Route ${routeCode} กลับเข้าคิวแล้ว — แจ้งคนขับเรียบร้อย`
           : `เปลี่ยนคนขับ Route ${routeCode} เรียบร้อย — แจ้งคนขับใหม่แล้ว`,
       );
       setRouteAction(null);
@@ -484,7 +484,7 @@ export function DeliveryTrackingPage({
             }}
           >
             <Ban className="h-4 w-4" />
-            ดึงกลับมาจัดการ
+            ดึงกลับเข้าคิว
           </Button>
         </div>
       );
@@ -882,12 +882,12 @@ export function DeliveryTrackingPage({
       {routeAction?.type === 'cancel' && routeAction.order.deliveryRoute && (
         <ResolutionDialog
           open
-          title={`ดึง Route ${shortRouteCode(routeAction.order.deliveryRoute.code)} กลับมาจัดการ`}
-          description={`นำทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุดกลับมาจัดการ โดยเก็บวัน เวลา และ Messenger ตามแผนเดิมไว้ พร้อมแจ้งคนขับ`}
+          title={`ดึง Route ${shortRouteCode(routeAction.order.deliveryRoute.code)} กลับเข้าคิว`}
+          description={`ยกเลิกทั้ง Route ${routeAction.order.deliveryRoute.stopCount ?? 1} จุด ล้างแผนเดิม และคืนเข้าคิวจัดส่งในครั้งเดียว พร้อมแจ้งคนขับ`}
           error={routeActionError}
           reasons={PLANNING_CANCEL_REASONS}
           notePlaceholder="เช่น ลูกค้าเลื่อนนัด / สินค้าไม่พร้อม"
-          confirmLabel="ยืนยันดึงกลับมาจัดการ"
+          confirmLabel="ยืนยันดึงกลับเข้าคิว"
           confirmVariant="destructive"
           onCancel={() => setRouteAction(null)}
           onConfirm={({ reason, note }) => void confirmRouteAction(reason, note)}

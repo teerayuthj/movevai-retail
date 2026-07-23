@@ -8,6 +8,7 @@ import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { ResolutionDialog } from '@/components/ResolutionDialog';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
 import { LineOrderSource } from '@/components/LineOrderSource';
 import {
   DriverCard,
@@ -357,6 +358,7 @@ export function DeliveryManage({
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-xs font-medium">{order.orderNo}</span>
+                        <CopyOrderNoButton orderNo={order.orderNo} />
                         <Badge variant={status.variant} className="h-5 px-1.5 text-[10px]">
                           {status.label}
                         </Badge>
@@ -392,8 +394,9 @@ export function DeliveryManage({
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <CardTitle className="text-sm">สร้างงานจัดส่ง</CardTitle>
-                  <CardDescription>
+                  <CardDescription className="flex items-center gap-1">
                     {selectedOrder ? selectedOrder.orderNo : 'เลือก order จากรายการด้านซ้าย'}
+                    {selectedOrder && <CopyOrderNoButton orderNo={selectedOrder.orderNo} />}
                   </CardDescription>
                 </div>
                 {selectedOrder && <Badge variant="success">ข้อมูลครบ</Badge>}
