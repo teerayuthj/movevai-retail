@@ -2,6 +2,7 @@ import type { Order } from '@/data/orderTypes';
 import {
   getPlanningDateTimeMs,
   getAssignedOrderOverdue,
+  getOrderAppointmentDateTimeMs,
   SCHEDULED_DELIVERY_GRACE_MINUTES,
   type AssignedOrderOverdue,
 } from '@/lib/deliveryPlanning';
@@ -20,6 +21,10 @@ export function getMessengerJobScheduledAt(order: Order): number | null {
   if (!plan?.plannedDate || !plan.plannedTime) return null;
 
   return getPlanningDateTimeMs(plan.plannedDate, plan.plannedTime);
+}
+
+export function getMessengerAppointmentAt(order: Order): number | null {
+  return getOrderAppointmentDateTimeMs(order);
 }
 
 export function getMessengerJobAcceptanceOpensAt(order: Order): number | null {
@@ -44,20 +49,23 @@ export function canMessengerStartJob(order: Order, nowMs: number) {
 export function getMessengerJobTiming(order: Order, nowMs: number): MessengerJobTiming | null {
   if (order.status !== 'assigned') return null;
 
-  const scheduledAt = getMessengerJobScheduledAt(order);
-  if (scheduledAt == null) return null;
+  const appointmentAt = getMessengerAppointmentAt(order);
+  if (appointmentAt == null) return null;
 
-  const reminderAt = scheduledAt - SCHEDULED_DELIVERY_REMINDER_MINUTES * 60_000;
+  const reminderAt = appointmentAt - SCHEDULED_DELIVERY_REMINDER_MINUTES * 60_000;
   if (nowMs < reminderAt) {
-    return { phase: 'scheduled', minutes: Math.max(1, Math.ceil((scheduledAt - nowMs) / 60_000)) };
+    return {
+      phase: 'scheduled',
+      minutes: Math.max(1, Math.ceil((appointmentAt - nowMs) / 60_000)),
+    };
   }
 
-  if (nowMs >= reminderAt && nowMs < scheduledAt) {
-    return { phase: 'upcoming', minutes: Math.max(1, Math.ceil((scheduledAt - nowMs) / 60_000)) };
+  if (nowMs >= reminderAt && nowMs < appointmentAt) {
+    return { phase: 'upcoming', minutes: Math.max(1, Math.ceil((appointmentAt - nowMs) / 60_000)) };
   }
 
-  const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
-  if (nowMs >= scheduledAt && nowMs < overdueAt) {
+  const overdueAt = appointmentAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
+  if (nowMs >= appointmentAt && nowMs < overdueAt) {
     return { phase: 'grace', minutes: Math.max(1, Math.ceil((overdueAt - nowMs) / 60_000)) };
   }
 
@@ -83,10 +91,10 @@ export function getMessengerAppointmentCountdown(
   nowMs: number,
 ): MessengerAppointmentCountdown | null {
   if (order.status !== 'in_transit') return null;
-  const scheduledAt = getMessengerJobScheduledAt(order);
-  if (scheduledAt == null) return null;
+  const appointmentAt = getMessengerAppointmentAt(order);
+  if (appointmentAt == null) return null;
 
-  const diffMs = scheduledAt - nowMs;
+  const diffMs = appointmentAt - nowMs;
   if (diffMs >= 0) return { phase: 'before', minutes: Math.max(1, Math.ceil(diffMs / 60_000)) };
   return { phase: 'after', minutes: Math.floor(-diffMs / 60_000) };
 }

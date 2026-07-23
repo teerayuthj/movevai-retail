@@ -236,7 +236,8 @@ export function JobCard({
   );
   const routeNote = order.metadataJson?.dispatch?.routeNote?.trim();
 
-  const plannedTime = order.deliveryPlan?.plannedTime;
+  const departureTime = order.deliveryPlan?.plannedTime;
+  const appointmentTime = order.deliveryPlan?.appointmentTime;
   // แสดงสถานะเวลาเพียงชุดเดียวตาม action ปัจจุบัน เพื่อไม่ให้เวลานัดกับ SLA แข่งกันบน Card
   const workflowStatus: { tone: 'info' | 'warning' | 'danger'; label: string } | null =
     order.status === 'assigned' && order.deliveryRoute?.requiresAcceptance
@@ -447,20 +448,20 @@ export function JobCard({
         )}
       </div>
 
-      {(order.deliveryPlan?.plannedDate || apptStatus) && (
+      {(order.deliveryPlan?.appointmentDate || apptStatus) && (
         <div className="mt-2 flex items-start gap-2 border-b border-border/50 pb-2">
-          {order.deliveryPlan?.plannedDate ? (
+          {order.deliveryPlan?.appointmentDate ? (
             <CalendarClock className={cn('mt-0.5 h-4 w-4 shrink-0', apptToneText)} />
           ) : (
             <Clock3 className={cn('mt-0.5 h-4 w-4 shrink-0', apptToneText)} />
           )}
           <div className="min-w-0 flex-1">
-            {order.deliveryPlan?.plannedDate && (
+            {order.deliveryPlan?.appointmentDate && (
               <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]">
                 <span className="font-medium">นัดหมาย</span>
-                <span>{formatPlanningDate(order.deliveryPlan.plannedDate)}</span>
+                <span>{formatPlanningDate(order.deliveryPlan.appointmentDate)}</span>
                 <span className="font-semibold">
-                  {plannedTime ? `${plannedTime} น.` : 'ไม่ระบุเวลา'}
+                  {appointmentTime ? `${appointmentTime} น.` : 'ไม่ระบุเวลา'}
                 </span>
               </div>
             )}
@@ -468,7 +469,7 @@ export function JobCard({
               <div
                 className={cn(
                   'text-[11px] font-medium',
-                  order.deliveryPlan?.plannedDate && 'mt-0.5',
+                  order.deliveryPlan?.appointmentDate && 'mt-0.5',
                   apptToneText,
                 )}
               >
@@ -684,7 +685,7 @@ export function JobCard({
               {isFutureJob
                 ? 'ยังไม่ถึงวันนัด'
                 : startNotOpen
-                  ? `เริ่มได้เวลา ${plannedTime ?? ''} น.`
+                  ? `เริ่มได้เวลา ${departureTime ?? ''} น.`
                   : starting
                     ? isPickupStop
                       ? 'กำลังเริ่มรับของ...'

@@ -59,6 +59,17 @@ export function getNextHourTime(date = new Date()) {
   return `${`${nextHour % 24}`.padStart(2, '0')}:00`;
 }
 
+/** วันและเวลาชั่วโมงถัดไป โดยเลื่อนวันที่ให้ถูกต้องเมื่อปัดข้ามเที่ยงคืน */
+export function getNextPlanningSlot(date = new Date()) {
+  const time = getNextHourTime(date);
+  let dateKey = getLocalDateKey(date);
+  const scheduledAt = getPlanningDateTimeMs(dateKey, time);
+  if (scheduledAt != null && scheduledAt < date.getTime()) {
+    dateKey = getLocalDateKey(new Date(date.getTime() + 86_400_000));
+  }
+  return { date: dateKey, time };
+}
+
 export function formatPlanningTime(time: string | undefined) {
   return time ? `${time} น.` : undefined;
 }
@@ -120,6 +131,12 @@ export type AssignedOrderOverdue = {
   basis: 'appointment' | 'urgent_accept';
 };
 
+export function getOrderAppointmentDateTimeMs(order: Order): number | null {
+  const plan = order.deliveryPlan;
+  if (!plan?.appointmentDate || !plan.appointmentTime) return null;
+  return getPlanningDateTimeMs(plan.appointmentDate, plan.appointmentTime);
+}
+
 export function getAssignedOrderOverdue(
   order: Order,
   nowMs = Date.now(),
@@ -127,15 +144,11 @@ export function getAssignedOrderOverdue(
   if (order.status !== 'assigned') return null;
 
   // มีเวลานัดจริง → เวลานัดเป็นตัวตัดสินเสมอ (รวมงานด่วน) ให้ตรงกับ SLA ที่ admin เห็น
-  const plan = order.deliveryPlan;
-  const scheduledAt =
-    plan?.plannedDate && plan.plannedTime
-      ? getPlanningDateTimeMs(plan.plannedDate, plan.plannedTime)
-      : null;
-  if (scheduledAt != null) {
-    const overdueAt = scheduledAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
+  const appointmentAt = getOrderAppointmentDateTimeMs(order);
+  if (appointmentAt != null) {
+    const overdueAt = appointmentAt + SCHEDULED_DELIVERY_GRACE_MINUTES * 60_000;
     if (nowMs < overdueAt) return null;
-    return { minutes: Math.floor((nowMs - scheduledAt) / 60_000), basis: 'appointment' };
+    return { minutes: Math.floor((nowMs - appointmentAt) / 60_000), basis: 'appointment' };
   }
 
   // งานด่วนที่ไม่มีเวลานัด → ใช้ SLA รับงานแบบเดิม

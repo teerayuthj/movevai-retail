@@ -173,18 +173,18 @@ export function TrackingRouteCard({
         </div>
 
         <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-          {first.deliveryPlan && (
+          {first.deliveryPlan?.appointmentDate && (
             <span>
               นัด{' '}
               {formatPlanningDateTime(
-                first.deliveryPlan.plannedDate,
-                first.deliveryPlan.plannedTime,
+                first.deliveryPlan.appointmentDate,
+                first.deliveryPlan.appointmentTime,
               )}
             </span>
           )}
           {overdueMinutes > 0 && (
             <span className="font-medium text-destructive">
-              {first.deliveryPlan ? '· ' : ''}เลยเวลานัดส่ง
+              {first.deliveryPlan?.appointmentDate ? '· ' : ''}เลยเวลานัดส่ง
             </span>
           )}
         </div>

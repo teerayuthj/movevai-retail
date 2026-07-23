@@ -191,9 +191,17 @@ export function PlanningMap({
                   <div className="text-muted-foreground">{stop.order.customer.address}</div>
                   {stop.order.deliveryPlan?.plannedDate && (
                     <div className="text-muted-foreground">
-                      {formatPlanningDate(stop.order.deliveryPlan.plannedDate)}
+                      ออก {formatPlanningDate(stop.order.deliveryPlan.plannedDate)}
                       {stop.order.deliveryPlan.plannedTime
                         ? ` · ${stop.order.deliveryPlan.plannedTime} น.`
+                        : ''}
+                    </div>
+                  )}
+                  {stop.order.deliveryPlan?.appointmentDate && (
+                    <div className="text-info">
+                      นัด {formatPlanningDate(stop.order.deliveryPlan.appointmentDate)}
+                      {stop.order.deliveryPlan.appointmentTime
+                        ? ` · ${stop.order.deliveryPlan.appointmentTime} น.`
                         : ''}
                     </div>
                   )}

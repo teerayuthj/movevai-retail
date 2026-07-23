@@ -28,8 +28,8 @@ import {
   canReleasePlannedOrder,
   canPlanOrder,
   formatPlanningDateTime,
-  getNextHourTime,
-  getTodayDateKey,
+  getNextPlanningSlot,
+  getPlanningDateTimeMs,
   isUnreleasedPlannedOrder,
 } from '@/lib/deliveryPlanning';
 import { recommendDriverForOrder } from '@/lib/deliveryExecution';
@@ -73,6 +73,61 @@ function orderStatusBadge(order: Order) {
   return { label: 'รอตัดสินใจ', variant: 'secondary' as const };
 }
 
+function AppointmentFields({
+  date,
+  time,
+  onDateChange,
+  onTimeChange,
+  immediate,
+}: {
+  date: string;
+  time: string;
+  onDateChange: (value: string) => void;
+  onTimeChange: (value: string) => void;
+  immediate: boolean;
+}) {
+  return (
+    <section className="rounded-xl border border-info/30 bg-info/5 p-3">
+      <div className="flex items-start gap-2">
+        <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+        <div>
+          <div className="text-xs font-semibold text-info">นัดหมายลูกค้า</div>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">
+            {immediate
+              ? 'ใช้คำนวณ overdue · เวลาออกจะบันทึกอัตโนมัติหลังยืนยัน'
+              : 'ใช้คำนวณ overdue แยกจากวันและเวลาออก'}
+          </p>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="grid gap-2">
+          <label className="text-[11px] font-medium text-muted-foreground">วันที่นัด</label>
+          <DatePicker
+            value={date}
+            onChange={onDateChange}
+            className="w-full bg-background"
+            disablePastDates
+          />
+        </div>
+        <div className="grid gap-2">
+          <label
+            htmlFor={`workspace-appointment-time-${immediate ? 'now' : 'plan'}`}
+            className="text-[11px] font-medium text-muted-foreground"
+          >
+            เวลานัด
+          </label>
+          <Input
+            id={`workspace-appointment-time-${immediate ? 'now' : 'plan'}`}
+            type="time"
+            value={time}
+            onChange={(event) => onTimeChange(event.target.value)}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
 export function DeliveryManage({
   initialOrderId,
   initialMode,
@@ -98,8 +153,11 @@ export function DeliveryManage({
     initialMode ?? (canImmediate ? 'immediate' : 'planning'),
   );
   const [selectedDriverIds, setSelectedDriverIds] = useState<string[]>([]);
-  const [planDate, setPlanDate] = useState(getTodayDateKey());
-  const [planTime, setPlanTime] = useState(getNextHourTime());
+  const initialSlot = useMemo(() => getNextPlanningSlot(), []);
+  const [planDate, setPlanDate] = useState(initialSlot.date);
+  const [planTime, setPlanTime] = useState(initialSlot.time);
+  const [appointmentDate, setAppointmentDate] = useState(initialSlot.date);
+  const [appointmentTime, setAppointmentTime] = useState(initialSlot.time);
   const [planDriverId, setPlanDriverId] = useState('');
   const [readiness, setReadiness] = useState<DispatchReadiness>('ready');
   const [planNote, setPlanNote] = useState('');
@@ -168,13 +226,18 @@ export function DeliveryManage({
     if (isUnreleasedPlannedOrder(selectedOrder) && plan) {
       if (canPlanning) setMode('planning');
       setPlanDate(plan.plannedDate);
-      setPlanTime(plan.plannedTime ?? getNextHourTime());
+      setPlanTime(plan.plannedTime ?? getNextPlanningSlot().time);
+      setAppointmentDate(plan.appointmentDate ?? plan.plannedDate);
+      setAppointmentTime(plan.appointmentTime ?? '');
       setPlanDriverId(plan.plannedDriverId ?? '');
       setReadiness(selectedOrder.dispatchReadiness ?? 'ready');
       setPlanNote(plan.note ?? '');
     } else {
-      setPlanDate(getTodayDateKey());
-      setPlanTime(getNextHourTime());
+      const nextAppointment = getNextPlanningSlot();
+      setPlanDate(nextAppointment.date);
+      setPlanTime(nextAppointment.time);
+      setAppointmentDate(nextAppointment.date);
+      setAppointmentTime(nextAppointment.time);
       setPlanDriverId('');
       setReadiness(selectedOrder.dispatchReadiness ?? 'ready');
       setPlanNote('');
@@ -196,11 +259,23 @@ export function DeliveryManage({
       toast.error('กรุณาระบุเวลาออกก่อนบันทึกแผน');
       return;
     }
+    if (!appointmentDate || !appointmentTime) {
+      toast.error('กรุณาระบุวันและเวลานัดลูกค้าก่อนบันทึกแผน');
+      return;
+    }
+    const departureAt = getPlanningDateTimeMs(planDate, planTime);
+    const appointmentAt = getPlanningDateTimeMs(appointmentDate, appointmentTime);
+    if (departureAt == null || appointmentAt == null || appointmentAt < departureAt) {
+      toast.error('เวลานัดลูกค้าต้องไม่ก่อนเวลาออก');
+      return;
+    }
     setSaving(true);
     try {
       await planOrders([selectedOrder.id], {
         plannedDate: planDate,
         plannedTime: planTime,
+        appointmentDate,
+        appointmentTime,
         plannedDriverId: planDriverId || undefined,
         dispatchReadiness: readiness,
         note: planNote.trim() || undefined,
@@ -231,6 +306,11 @@ export function DeliveryManage({
 
   const confirmUrgent = async (input: { note?: string; driverIds: string[] }) => {
     if (!selectedOrder || input.driverIds.length === 0) return;
+    const appointmentAt = getPlanningDateTimeMs(appointmentDate, appointmentTime);
+    if (appointmentAt == null || appointmentAt < Date.now()) {
+      toast.error('เวลานัดลูกค้าต้องไม่ก่อนเวลาปัจจุบัน');
+      return;
+    }
     setUrgentLoading(true);
     setUrgentError('');
     try {
@@ -238,6 +318,8 @@ export function DeliveryManage({
         driverCode: input.driverIds[0],
         coDriverCodes: input.driverIds.slice(1),
         note: input.note,
+        appointmentDate,
+        appointmentTime,
         forceNow: true,
       });
       toast.success(`ส่งงานทันที ${selectedOrder.orderNo} ให้ Messenger แล้ว`);
@@ -438,6 +520,13 @@ export function DeliveryManage({
 
                   {mode === 'immediate' ? (
                     <div className="space-y-3">
+                      <AppointmentFields
+                        date={appointmentDate}
+                        time={appointmentTime}
+                        onDateChange={setAppointmentDate}
+                        onTimeChange={setAppointmentTime}
+                        immediate
+                      />
                       <div>
                         <div className="mb-2 text-[11px] font-medium text-muted-foreground">
                           Messenger · เลือกหลายคนได้สำหรับงานส่งร่วม
@@ -464,7 +553,17 @@ export function DeliveryManage({
                         size="action"
                         className="w-full"
                         disabled={!canUrgent}
-                        onClick={() => setUrgentOpen(true)}
+                        onClick={() => {
+                          const appointmentAt = getPlanningDateTimeMs(
+                            appointmentDate,
+                            appointmentTime,
+                          );
+                          if (appointmentAt == null || appointmentAt < Date.now()) {
+                            toast.error('กรุณาระบุเวลานัดลูกค้าที่ไม่ก่อนเวลาปัจจุบัน');
+                            return;
+                          }
+                          setUrgentOpen(true);
+                        }}
                       >
                         <Send className="h-5 w-5" /> สร้าง Route และส่งงาน
                       </Button>
@@ -493,6 +592,13 @@ export function DeliveryManage({
                           />
                         </div>
                       </div>
+                      <AppointmentFields
+                        date={appointmentDate}
+                        time={appointmentTime}
+                        onDateChange={setAppointmentDate}
+                        onTimeChange={setAppointmentTime}
+                        immediate={false}
+                      />
                       <div className="grid gap-2">
                         <label
                           htmlFor="workspace-plan-driver"
@@ -602,6 +708,8 @@ export function DeliveryManage({
         orders={orders}
         loading={urgentLoading}
         error={urgentError}
+        appointmentDate={appointmentDate}
+        appointmentTime={appointmentTime}
         onCancel={() => {
           if (!urgentLoading) setUrgentOpen(false);
         }}

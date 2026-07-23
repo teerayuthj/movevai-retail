@@ -403,12 +403,12 @@ function DeliveryTripCard({
                 {jobs.length} งาน · {pickupCount > 0 ? `รับ ${pickupCount} · ` : ''}ส่ง{' '}
                 {orders.length - pickupCount}
               </span>
-              {first?.deliveryPlan && (
+              {first?.deliveryPlan?.appointmentDate && (
                 <span>
                   · นัด{' '}
                   {formatPlanningDateTime(
-                    first.deliveryPlan.plannedDate,
-                    first.deliveryPlan.plannedTime,
+                    first.deliveryPlan.appointmentDate,
+                    first.deliveryPlan.appointmentTime,
                   )}
                 </span>
               )}

@@ -38,6 +38,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { TimePicker } from '@/components/ui/time-picker';
 import type { Driver, Order } from '@/data/orderTypes';
 import { deriveDriverDisplayStatus, formatDriverDispatchStatus } from '@/lib/deliveryExecution';
+import { getNextPlanningSlot, getPlanningDateTimeMs } from '@/lib/deliveryPlanning';
 import { RouteStopsMap } from '@/features/dispatch/components/RouteStopsMap';
 import type { RouteStop, RouteStopKind } from '@/features/dispatch/types';
 import type { RouteTemplateRun } from '@/lib/retailApi';
@@ -80,6 +81,8 @@ type BuilderDraft = {
   jobs: BuilderJob[];
   plannedDate: string;
   plannedTime: string;
+  appointmentDate: string;
+  appointmentTime: string;
   driverId: string;
   messengerTitle: string;
   note: string;
@@ -181,6 +184,7 @@ export function FreeRouteBuilderPreview({
   onCreated: (result: RouteTemplateRun) => Promise<void> | void;
 }) {
   const initialDraft = useMemo(() => loadDraft(), []);
+  const initialAppointmentSlot = useMemo(() => getNextPlanningSlot(), []);
   const [jobs, setJobs] = useState<BuilderJob[]>(() => initialDraft?.jobs ?? []);
   const [search, setSearch] = useState('');
   const [libraryTab, setLibraryTab] = useState<'all' | 'favorite'>('all');
@@ -207,6 +211,12 @@ export function FreeRouteBuilderPreview({
   const [locating, setLocating] = useState(false);
   const [plannedDate, setPlannedDate] = useState(() => initialDraft?.plannedDate ?? todayDateKey());
   const [plannedTime, setPlannedTime] = useState(() => initialDraft?.plannedTime ?? '');
+  const [appointmentDate, setAppointmentDate] = useState(
+    () => initialDraft?.appointmentDate ?? initialAppointmentSlot.date,
+  );
+  const [appointmentTime, setAppointmentTime] = useState(
+    () => initialDraft?.appointmentTime ?? initialAppointmentSlot.time,
+  );
   const [driverId, setDriverId] = useState(() => initialDraft?.driverId ?? '');
   const [messengerTitle, setMessengerTitle] = useState(() => initialDraft?.messengerTitle ?? '');
   const [note, setNote] = useState(() => initialDraft?.note ?? '');
@@ -228,6 +238,8 @@ export function FreeRouteBuilderPreview({
       jobs,
       plannedDate,
       plannedTime,
+      appointmentDate,
+      appointmentTime,
       driverId,
       messengerTitle,
       note,
@@ -239,7 +251,18 @@ export function FreeRouteBuilderPreview({
     } catch {
       /* ignore quota errors */
     }
-  }, [jobs, plannedDate, plannedTime, driverId, messengerTitle, note, mode, acceptWithinMinutes]);
+  }, [
+    jobs,
+    plannedDate,
+    plannedTime,
+    appointmentDate,
+    appointmentTime,
+    driverId,
+    messengerTitle,
+    note,
+    mode,
+    acceptWithinMinutes,
+  ]);
 
   const addresses = useMemo(() => [...savedAddressBookEntries(savedAddresses)], [savedAddresses]);
   const favoriteCount = addresses.filter((entry) => entry.favorite).length;
@@ -280,7 +303,11 @@ export function FreeRouteBuilderPreview({
   const selectedDriver = drivers.find((driver) => driver.id === driverId);
   const availableDrivers = drivers.filter((driver) => driver.status !== 'off_duty');
   const validationError = jobError(jobs);
-  const missingDispatchRequirement = !selectedDriver || (mode === 'scheduled' && !plannedTime);
+  const missingDispatchRequirement =
+    !selectedDriver ||
+    !appointmentDate ||
+    !appointmentTime ||
+    (mode === 'scheduled' && !plannedTime);
 
   // เติมจุดลงงานแรกที่ช่องประเภทเดียวกันยังว่าง ถ้าไม่มีก็เปิดงานใหม่ให้
   const placeStop = (stop: BuilderStop) => {
@@ -539,6 +566,17 @@ export function FreeRouteBuilderPreview({
       toast.error('กรุณาเลือกเวลาออกก่อนมอบงานตามวัน–เวลา');
       return false;
     }
+    if (!appointmentDate || !appointmentTime) {
+      toast.error('กรุณาระบุวันและเวลานัดลูกค้า');
+      return false;
+    }
+    const appointmentAt = getPlanningDateTimeMs(appointmentDate, appointmentTime);
+    const departureAt =
+      mode === 'scheduled' ? getPlanningDateTimeMs(plannedDate, plannedTime) : Date.now();
+    if (appointmentAt == null || departureAt == null || appointmentAt < departureAt) {
+      toast.error('เวลานัดลูกค้าต้องไม่ก่อนเวลาออกหรือเวลาส่งงาน');
+      return false;
+    }
     return true;
   };
 
@@ -561,6 +599,8 @@ export function FreeRouteBuilderPreview({
         ),
         plannedDate,
         plannedTime: plannedTime || undefined,
+        appointmentDate,
+        appointmentTime,
         driverId: driverId || undefined,
         // รับเที่ยวครั้งเดียวแล้วเริ่มทั้ง Route ทันที: messenger จัดการการรับ/ส่ง
         // ตามแต่ละจุดระหว่างวิ่ง โดยไม่ต้องกลับมากดเริ่มเที่ยวเป็นขั้นที่สอง
@@ -578,6 +618,9 @@ export function FreeRouteBuilderPreview({
       setMessengerTitle('');
       setNote('');
       setPlannedTime('');
+      const nextAppointment = getNextPlanningSlot();
+      setAppointmentDate(nextAppointment.date);
+      setAppointmentTime(nextAppointment.time);
       clearDraft();
       toast.success(
         mode === 'immediate'
@@ -1361,6 +1404,35 @@ export function FreeRouteBuilderPreview({
           </div>
         )}
 
+        <section className="mt-3 rounded-xl border border-info/25 bg-info/5 p-3">
+          <div className="flex items-center gap-1.5 text-xs font-semibold">
+            <CalendarDays className="h-3.5 w-3.5 text-info" /> นัดหมายลูกค้า
+          </div>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            <label className="text-xs font-medium">
+              วันที่นัดลูกค้า
+              <DatePicker
+                value={appointmentDate}
+                onChange={setAppointmentDate}
+                className="mt-1 w-full bg-background"
+                disablePastDates
+              />
+            </label>
+            <label className="text-xs font-medium">
+              เวลานัดลูกค้า
+              <TimePicker
+                value={appointmentTime}
+                onChange={setAppointmentTime}
+                className="mt-1 w-full"
+                required
+              />
+            </label>
+          </div>
+          <p className="mt-2 text-[10px] text-muted-foreground">
+            ใช้เวลานี้คำนวณสถานะเลยกำหนด · ไม่ใช้เวลาออกแทนเวลานัด
+          </p>
+        </section>
+
         <label className="mt-3 block text-xs font-medium">
           <span className="inline-flex items-center gap-1">
             <UserRound className="h-3.5 w-3.5" /> คนขับ (จำเป็น)
@@ -1478,10 +1550,14 @@ export function FreeRouteBuilderPreview({
 
             <div className="mt-2 rounded-md bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground">
               {mode === 'immediate' ? (
-                <span>ส่งวันนี้ · Messenger ต้องรับงานภายใน {acceptWithinMinutes} นาที</span>
+                <span>
+                  ส่งทันที · นัดลูกค้า {appointmentDate} {appointmentTime} น. · Messenger
+                  ต้องรับงานภายใน {acceptWithinMinutes} นาที
+                </span>
               ) : (
                 <span>
-                  วันออกงาน {plannedDate} · {plannedTime}
+                  วันออกงาน {plannedDate} · {plannedTime} น. · นัดลูกค้า {appointmentDate}{' '}
+                  {appointmentTime} น.
                 </span>
               )}
             </div>
@@ -1526,8 +1602,8 @@ export function FreeRouteBuilderPreview({
             plannedDate={mode === 'scheduled' ? plannedDate : undefined}
             detail={
               mode === 'immediate'
-                ? `ต้องรับงานภายใน ${acceptWithinMinutes} นาที`
-                : `เวลาออก ${plannedTime}`
+                ? `นัดลูกค้า ${appointmentDate} ${appointmentTime} น.`
+                : `ออก ${plannedTime} น. · นัด ${appointmentDate} ${appointmentTime} น.`
             }
           />
         </ConfirmDispatchDialog>

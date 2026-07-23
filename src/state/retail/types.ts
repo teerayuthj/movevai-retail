@@ -72,6 +72,8 @@ export type ConfirmDeliveryInput = {
 export type PlanOrdersInput = {
   plannedDate: string;
   plannedTime?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
   plannedDriverId?: string;
   dispatchReadiness?: DispatchReadiness;
   note?: string;
@@ -147,6 +149,8 @@ export type RetailStore = RetailState & {
       acceptWithinMinutes?: number;
       startWithinMinutes?: number;
       startPolicy?: 'manual' | 'accept_starts';
+      appointmentDate?: string;
+      appointmentTime?: string;
       forceNow?: boolean;
     },
   ) => Promise<PlanningRoute>;

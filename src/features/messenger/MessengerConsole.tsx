@@ -124,7 +124,7 @@ function InTransitJobSheet({
   // เวลาเริ่มส่ง = ตัวเลขนิ่ง, เวลานัด = นับถอยหลัง — จงใจไม่โชว์นาฬิกาจับเวลาให้คนขับ
   const startedAtLabel = formatInTransitStartTime(order);
   const countdown = getMessengerAppointmentCountdown(order, nowMs);
-  const plannedTime = order.deliveryPlan?.plannedTime;
+  const appointmentTime = order.deliveryPlan?.appointmentTime;
   // เลยเวลานัด = ส้ม (เตือน), ยังไม่ถึง = ฟ้า (ปกติ) — ให้ตรงกับกล่องนัดส่งใน JobCard
   const apptTone: 'info' | 'warning' = countdown?.phase === 'after' ? 'warning' : 'info';
   const apptToneText = apptTone === 'warning' ? 'text-warning' : 'text-info';
@@ -218,7 +218,7 @@ function InTransitJobSheet({
             </Badge>
           </div>
 
-          {order.deliveryPlan?.plannedDate && (
+          {order.deliveryPlan?.appointmentDate && (
             <div
               className={cn(
                 'mt-3 flex items-center gap-2 rounded-xl border px-3 py-2',
@@ -233,10 +233,10 @@ function InTransitJobSheet({
                   ? countdown.phase === 'before'
                     ? `อีก ${formatElapsedDuration(countdown.minutes)} ถึงเวลานัด`
                     : `เลยเวลานัด ${formatElapsedDuration(countdown.minutes)}`
-                  : formatPlanningDate(order.deliveryPlan.plannedDate)}
+                  : formatPlanningDate(order.deliveryPlan.appointmentDate)}
               </span>
               <span className={cn('shrink-0 text-[13px] font-semibold', apptToneText)}>
-                {plannedTime ? `นัด ${plannedTime} น.` : 'ไม่ระบุเวลา'}
+                {appointmentTime ? `นัด ${appointmentTime} น.` : 'ไม่ระบุเวลา'}
               </span>
             </div>
           )}

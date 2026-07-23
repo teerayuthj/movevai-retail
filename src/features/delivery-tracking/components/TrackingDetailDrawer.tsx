@@ -153,12 +153,12 @@ export function TrackingDetailDrawer({
                   <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
                     <Route className="h-3.5 w-3.5" /> เส้นทางและจุดส่ง
                   </div>
-                  {order.deliveryPlan && (
+                  {order.deliveryPlan?.appointmentDate && (
                     <div className="mt-1 text-[11px] text-muted-foreground">
                       นัด{' '}
                       {formatPlanningDateTime(
-                        order.deliveryPlan.plannedDate,
-                        order.deliveryPlan.plannedTime,
+                        order.deliveryPlan.appointmentDate,
+                        order.deliveryPlan.appointmentTime,
                       )}
                     </div>
                   )}

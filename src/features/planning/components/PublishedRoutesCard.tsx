@@ -159,7 +159,7 @@ export function PublishedRoutesCard({
               </div>
               <div className="mt-1.5 flex items-center gap-1.5 text-sm font-medium text-foreground">
                 <Clock className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                นัดส่ง {formatPlanningDate(route.plannedDate)} ·{' '}
+                เวลาออก {formatPlanningDate(route.plannedDate)} ·{' '}
                 {route.plannedTime ? `${route.plannedTime} น.` : 'ไม่ระบุเวลา'}
               </div>
               {route.plannedDistanceMeters != null && route.plannedDistanceMeters > 0 && (

@@ -19,12 +19,17 @@ function driverNameById(current: RetailState, driverId: string | undefined) {
 function buildPlanDetails(
   plannedDate: string,
   plannedTime: string | undefined,
+  appointmentDate: string | undefined,
+  appointmentTime: string | undefined,
   plannedDriverName: string | undefined,
   readiness: DispatchReadiness,
   note?: string,
 ) {
   return [
     `วันที่ส่ง: ${formatPlanningDateTime(plannedDate, plannedTime)}`,
+    appointmentDate && appointmentTime
+      ? `นัดลูกค้า: ${formatPlanningDateTime(appointmentDate, appointmentTime)}`
+      : 'ยังไม่ระบุเวลานัดลูกค้า',
     plannedDriverName ? `คนขับ: ${plannedDriverName}` : 'ยังไม่เลือกคนขับ',
     `ความพร้อมสินค้า: ${dispatchReadinessLabel[readiness]}`,
     note ? `หมายเหตุ: ${note}` : undefined,
@@ -51,6 +56,8 @@ export function planOrdersState(
       const nextPlan = {
         plannedDate: input.plannedDate,
         plannedTime: input.plannedTime,
+        appointmentDate: input.appointmentDate,
+        appointmentTime: input.appointmentTime,
         plannedDriverId: input.plannedDriverId,
         releaseState: 'planned' as const,
         note: input.note ?? previousPlan?.note,
@@ -74,6 +81,28 @@ export function planOrdersState(
           label: 'เวลาจัดส่ง',
           before: formatPlanningTime(previousPlan?.plannedTime),
           after: formatPlanningTime(nextPlan.plannedTime) ?? 'ไม่ระบุเวลา',
+        });
+      }
+
+      if (previousPlan?.appointmentDate !== nextPlan.appointmentDate) {
+        changes.push({
+          field: 'deliveryPlan.appointmentDate',
+          label: 'วันนัดลูกค้า',
+          before: previousPlan?.appointmentDate
+            ? formatPlanningDate(previousPlan.appointmentDate)
+            : undefined,
+          after: nextPlan.appointmentDate
+            ? formatPlanningDate(nextPlan.appointmentDate)
+            : 'ไม่ระบุ',
+        });
+      }
+
+      if (previousPlan?.appointmentTime !== nextPlan.appointmentTime) {
+        changes.push({
+          field: 'deliveryPlan.appointmentTime',
+          label: 'เวลานัดลูกค้า',
+          before: formatPlanningTime(previousPlan?.appointmentTime),
+          after: formatPlanningTime(nextPlan.appointmentTime) ?? 'ไม่ระบุ',
         });
       }
 
@@ -124,6 +153,8 @@ export function planOrdersState(
         details: buildPlanDetails(
           nextPlan.plannedDate,
           nextPlan.plannedTime,
+          nextPlan.appointmentDate,
+          nextPlan.appointmentTime,
           driverNameById(current, nextPlan.plannedDriverId),
           nextReadiness,
           nextPlan.note,

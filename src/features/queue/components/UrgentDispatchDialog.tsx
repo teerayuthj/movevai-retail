@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, Navigation2, Send, Users, X } from 'lucide-react';
+import { AlertTriangle, CalendarClock, Navigation2, Send, Users, X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +7,7 @@ import { DriverAvatar } from '@/components/DriverAvatar';
 import { DriverWorkloadChips } from '@/components/delivery/DeliveryExecutionShared';
 import type { Driver, Order } from '@/data/orderTypes';
 import { getDriverWorkloadSummary } from '@/lib/deliveryExecution';
+import { formatPlanningDateTime } from '@/lib/deliveryPlanning';
 
 type Props = {
   open: boolean;
@@ -16,6 +17,8 @@ type Props = {
   orders: Order[];
   loading: boolean;
   error?: string;
+  appointmentDate?: string;
+  appointmentTime?: string;
   onCancel: () => void;
   /** driverIds เรียงตาม role แล้ว — index 0 = คนขับหลัก (สลับได้ใน dialog) */
   onConfirm: (input: { note?: string; driverIds: string[] }) => void;
@@ -28,6 +31,8 @@ export function UrgentDispatchDialog({
   orders,
   loading,
   error,
+  appointmentDate,
+  appointmentTime,
   onCancel,
   onConfirm,
 }: Props) {
@@ -99,6 +104,21 @@ export function UrgentDispatchDialog({
             <div className="font-mono text-xs font-medium">{order.orderNo}</div>
             <div className="mt-1 font-medium">{order.customer.name}</div>
           </div>
+
+          {appointmentDate && appointmentTime && (
+            <div className="flex items-start gap-2 rounded-lg border border-info/30 bg-info/5 p-3 text-sm">
+              <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+              <div>
+                <div className="text-[11px] font-medium text-muted-foreground">นัดหมายลูกค้า</div>
+                <div className="font-semibold text-info">
+                  {formatPlanningDateTime(appointmentDate, appointmentTime)}
+                </div>
+                <div className="mt-0.5 text-[11px] text-muted-foreground">
+                  เวลาออกจะบันทึกเมื่อกดยืนยันส่งทันที
+                </div>
+              </div>
+            </div>
+          )}
 
           <div>
             <div className="text-[11px] font-medium text-muted-foreground">

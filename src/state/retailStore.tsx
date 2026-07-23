@@ -672,6 +672,8 @@ export function RetailProvider({
         orderIds: synced.map((order) => order.id),
         plannedDate: input.plannedDate,
         plannedTime: input.plannedTime,
+        appointmentDate: input.appointmentDate,
+        appointmentTime: input.appointmentTime,
         driverCode: input.plannedDriverId,
         dispatchReadiness: input.dispatchReadiness,
         note: input.note,
@@ -718,15 +720,22 @@ export function RetailProvider({
       const first = selected[0];
       const plannedDate = first?.deliveryPlan?.plannedDate;
       const plannedTime = first?.deliveryPlan?.plannedTime;
+      const appointmentDate = first?.deliveryPlan?.appointmentDate;
+      const appointmentTime = first?.deliveryPlan?.appointmentTime;
       const driverCode = first?.deliveryPlan?.plannedDriverId;
       if (!plannedDate || !driverCode) {
         throw new Error('กรุณาบันทึกวันส่งและ Messenger ก่อน Publish');
+      }
+      if (!appointmentDate || !appointmentTime) {
+        throw new Error('กรุณาระบุวันและเวลานัดลูกค้าก่อน Publish');
       }
       if (
         selected.some(
           (order) =>
             order.deliveryPlan?.plannedDate !== plannedDate ||
-            order.deliveryPlan?.plannedDriverId !== driverCode,
+            order.deliveryPlan?.plannedDriverId !== driverCode ||
+            order.deliveryPlan?.appointmentDate !== appointmentDate ||
+            order.deliveryPlan?.appointmentTime !== appointmentTime,
         )
       ) {
         throw new Error('orders ใน Route ต้องเป็นวันส่งและ Messenger เดียวกัน');
@@ -735,6 +744,8 @@ export function RetailProvider({
         orderIds,
         plannedDate,
         plannedTime,
+        appointmentDate,
+        appointmentTime,
         driverCode,
         note: first.deliveryPlan?.note,
         origin: await getAdminRouteOrigin(),
@@ -778,6 +789,8 @@ export function RetailProvider({
         return planOrders([orderId], {
           plannedDate: order.deliveryPlan.plannedDate,
           plannedTime: order.deliveryPlan.plannedTime,
+          appointmentDate: order.deliveryPlan.appointmentDate,
+          appointmentTime: order.deliveryPlan.appointmentTime,
           plannedDriverId: order.deliveryPlan.plannedDriverId,
           dispatchReadiness: readiness,
           note: note ?? order.deliveryPlan.note,

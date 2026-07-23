@@ -71,6 +71,8 @@ export type PlanningCancelReason =
 export type DeliveryPlan = {
   plannedDate: string; // local date key in YYYY-MM-DD
   plannedTime?: string; // local time in HH:mm (24h)
+  appointmentDate?: string; // วันที่นัดลูกค้า (แยกจากวันออก)
+  appointmentTime?: string; // เวลานัดลูกค้าใน HH:mm (24h)
   plannedDriverId?: string;
   releaseState: 'planned' | 'released';
   releasedAt?: string;
@@ -280,6 +282,8 @@ export type OrderActivityChangeField =
   | 'dispatchReadiness'
   | 'deliveryPlan.plannedDate'
   | 'deliveryPlan.plannedTime'
+  | 'deliveryPlan.appointmentDate'
+  | 'deliveryPlan.appointmentTime'
   | 'deliveryPlan.plannedDriverId'
   | 'deliveryPlan.releaseState';
 

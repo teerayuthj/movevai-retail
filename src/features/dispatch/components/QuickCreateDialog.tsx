@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   ArrowDown,
   BookmarkPlus,
+  CalendarClock,
   ChevronDown,
   ChevronRight,
   MapPin,
@@ -18,13 +19,18 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { DatePicker } from '@/components/ui/date-picker';
 import { Select } from '@/components/ui/select';
 import type { Driver, Order } from '@/data/orderTypes';
 import { createDispatchJobs } from '@/features/dispatch/dispatchJobs';
 import type { DispatchCreationOutcome, DispatchJobType } from '@/features/dispatch/types';
 import { dispatchJobTypeLabel } from '@/features/dispatch/types';
 import { formatDriverDispatchStatus } from '@/lib/deliveryExecution';
-import { getTodayDateKey } from '@/lib/deliveryPlanning';
+import {
+  getNextPlanningSlot,
+  getPlanningDateTimeMs,
+  getTodayDateKey,
+} from '@/lib/deliveryPlanning';
 import {
   createQuickRoutePreset,
   createRouteAddress,
@@ -492,9 +498,12 @@ export function QuickCreateDialog({
   onClose,
   onCreated,
 }: Props) {
+  const initialAppointmentSlot = useMemo(() => getNextPlanningSlot(), []);
   const [jobType, setJobType] = useState<Exclude<DispatchJobType, 'order'>>('other');
   const [title, setTitle] = useState('งานด่วน');
   const [driverId, setDriverId] = useState('');
+  const [appointmentDate, setAppointmentDate] = useState(initialAppointmentSlot.date);
+  const [appointmentTime, setAppointmentTime] = useState(initialAppointmentSlot.time);
   const [pickup, setPickup] = useState<SelectedPoint | null>(null);
   const [dropoff, setDropoff] = useState<SelectedPoint | null>(null);
   const [routePresets, setRoutePresets] = useState<QuickRoutePreset[]>([]);
@@ -524,6 +533,9 @@ export function QuickCreateDialog({
     setJobType('other');
     setTitle('งานด่วน');
     setDriverId('');
+    const nextAppointment = getNextPlanningSlot();
+    setAppointmentDate(nextAppointment.date);
+    setAppointmentTime(nextAppointment.time);
     setPickup(null);
     setDropoff(null);
     setSelectedPresetId(null);
@@ -619,6 +631,15 @@ export function QuickCreateDialog({
       toast.error('เลือกจุดส่งก่อน');
       return false;
     }
+    if (!appointmentDate || !appointmentTime) {
+      toast.error('ระบุวันและเวลานัดลูกค้าก่อน');
+      return false;
+    }
+    const appointmentAt = getPlanningDateTimeMs(appointmentDate, appointmentTime);
+    if (appointmentAt == null || appointmentAt < Date.now()) {
+      toast.error('เวลานัดลูกค้าต้องไม่ก่อนเวลาปัจจุบัน');
+      return false;
+    }
     return true;
   };
 
@@ -640,6 +661,8 @@ export function QuickCreateDialog({
         method: 'immediate',
         driver: selectedDriver,
         plannedDate: getTodayDateKey(),
+        appointmentDate,
+        appointmentTime,
         acceptWithinMinutes: URGENT_ACCEPT_WITHIN_MINUTES,
         startWithinMinutes: 0,
         startPolicy: 'accept_starts',
@@ -825,6 +848,37 @@ export function QuickCreateDialog({
               onChange={(event) => setTitle(event.target.value)}
               placeholder="ระบุของหรือสิ่งที่ต้องทำ (ไม่บังคับ)"
             />
+          </section>
+
+          <section className="rounded-2xl border border-info/30 bg-info/5 p-4">
+            <div className="flex items-start gap-2">
+              <CalendarClock className="mt-0.5 h-4 w-4 shrink-0 text-info" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold">นัดหมายลูกค้า</h3>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  ใช้คำนวณ overdue ส่วนเวลาออกจะบันทึกอัตโนมัติหลังยืนยันส่งงาน
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="grid gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground">วันที่นัด</label>
+                <DatePicker
+                  value={appointmentDate}
+                  onChange={setAppointmentDate}
+                  className="w-full"
+                />
+              </div>
+              <div className="grid gap-1.5">
+                <label className="text-xs font-medium text-muted-foreground">เวลานัด</label>
+                <input
+                  type="time"
+                  value={appointmentTime}
+                  onChange={(event) => setAppointmentTime(event.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs focus-visible:outline-hidden focus-visible:ring-1 focus-visible:ring-ring"
+                />
+              </div>
+            </div>
           </section>
 
           <section className="rounded-xl bg-warning/10 px-3 py-2.5 text-xs text-foreground">
