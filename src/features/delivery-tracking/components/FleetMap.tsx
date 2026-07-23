@@ -21,6 +21,7 @@ import { BANGKOK_CENTER, isPlausibleThaiCoord } from '@/features/messenger/geoco
 import { useRouteStops } from '@/features/messenger/hooks/useRouteStops';
 import type { Order } from '@/data/orderTypes';
 import { shortRouteCode } from '@/lib/routeCode';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import {
   AlertCircle,
   Clock3,
@@ -699,9 +700,12 @@ export function FleetMap({
                       ? `GPS ${formatLastSeen(item.presence?.location?.recordedAt)}`
                       : locationPermissionLabel(item.presence?.locationPermission)}
                   </div>
-                  <div className="mt-0.5 text-[10px] text-muted-foreground">
-                    {item.assignment ? shortRouteCode(item.assignment.code) : 'ไม่มี Route'} ·
-                    Tracking {item.tracking.active ? 'เปิด' : 'ปิด'}
+                  <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+                    {item.assignment ? shortRouteCode(item.assignment.code) : 'ไม่มี Route'}
+                    {item.assignment && (
+                      <CopyRouteCodeButton code={item.assignment.code} className="h-3.5 w-3.5" />
+                    )}
+                    · Tracking {item.tracking.active ? 'เปิด' : 'ปิด'}
                   </div>
                 </div>
                 <Badge

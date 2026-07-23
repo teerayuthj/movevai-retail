@@ -58,6 +58,11 @@ export type DeliveryCalendarOrder = {
   items: DeliveryCalendarOrderItem[];
 };
 
+export type DeliveryCalendarLineProfile = {
+  displayName: string;
+  pictureUrl?: string;
+};
+
 export type DeliveryCalendarItem = {
   id: string;
   entityId: string;
@@ -74,6 +79,8 @@ export type DeliveryCalendarItem = {
   coDrivers: { code: string; name: string }[];
   orderCount: number;
   orders: DeliveryCalendarOrder[];
+  // มีเฉพาะ endpoint ของ Delivery Workspace และมีหนึ่งโปรไฟล์ต่อเที่ยว
+  lineProfile?: DeliveryCalendarLineProfile;
   publishedAt?: string;
   requiresAcceptance: boolean;
   // ช่องทางที่สร้างเที่ยว เช่น 'ad_hoc_route' (สร้างเที่ยววิ่ง), 'quick_create'
@@ -352,19 +359,29 @@ export async function fetchPlanningRoutes(date?: string) {
   return routes.map(normalizeRoute);
 }
 
-export async function fetchDeliveryCalendar(input: {
+type DeliveryCalendarRequest = {
   dateFrom: string;
   dateTo: string;
   driverCode?: string;
-}) {
+};
+
+function fetchScopedDeliveryCalendar(path: string, input: DeliveryCalendarRequest) {
   const search = new URLSearchParams({
     dateFrom: input.dateFrom,
     dateTo: input.dateTo,
   });
   if (input.driverCode) search.set('driverCode', input.driverCode);
   return request<DeliveryCalendarResponse>(
-    `${APP_API_BASE}/planning/calendar?${search.toString()}`,
+    `${APP_API_BASE}/planning/calendar/${path}?${search.toString()}`,
   );
+}
+
+export function fetchDeliveryWorkspaceCalendar(input: DeliveryCalendarRequest) {
+  return fetchScopedDeliveryCalendar('delivery-workspace', input);
+}
+
+export function fetchRouteBuilderCalendar(input: DeliveryCalendarRequest) {
+  return fetchScopedDeliveryCalendar('route-builder', input);
 }
 
 export async function retryPlanningRoutePush(routeId: string) {

@@ -18,6 +18,15 @@
 }
 
 @theme {
+  /*
+   * Typography contract for every surface (admin, messenger, and customer tracking).
+   * Geist covers Latin/numerals; the Thai fallbacks keep Thai copy readable on every
+   * platform when a glyph is not available in Geist.
+   */
+  --font-sans:
+    'Geist Variable', 'Noto Sans Thai', 'Sarabun', ui-sans-serif, system-ui, -apple-system,
+    sans-serif;
+
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
@@ -323,13 +332,7 @@
     font-feature-settings:
       'rlig' 1,
       'calt' 1;
-    font-family:
-      ui-sans-serif,
-      system-ui,
-      -apple-system,
-      'Noto Sans Thai',
-      'Sarabun',
-      sans-serif;
+    font-family: var(--font-sans);
   }
 }
 /*
@@ -337,7 +340,6 @@
    */
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', 'Noto Sans Thai', 'Sarabun', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

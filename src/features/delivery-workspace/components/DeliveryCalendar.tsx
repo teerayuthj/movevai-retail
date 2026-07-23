@@ -6,25 +6,33 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock3,
-  Eye,
   Loader2,
   MapPin,
+  MessageCircle,
   Package,
   Phone,
   RefreshCw,
   Route,
+  UserRound,
   UsersRound,
   X,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import { DriverAvatar } from '@/components/DriverAvatar';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select } from '@/components/ui/select';
 import type { Driver } from '@/data/orderTypes';
-import { fetchDeliveryCalendar, type DeliveryCalendarItem } from '@/lib/retailApi';
+import {
+  fetchDeliveryWorkspaceCalendar,
+  fetchRouteBuilderCalendar,
+  type DeliveryCalendarItem,
+} from '@/lib/retailApi';
 import { getTodayDateKey } from '@/lib/deliveryPlanning';
 import { shortRouteCode } from '@/lib/routeCode';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import { cn } from '@/lib/utils';
 
 type CalendarFilter = 'all' | 'planned' | 'released' | 'urgent' | 'completed' | 'cancelled';
@@ -32,11 +40,9 @@ type CalendarFilter = 'all' | 'planned' | 'released' | 'urgent' | 'completed' | 
 type Props = {
   drivers: Driver[];
   refreshKey: number;
+  calendarScope: 'delivery_workspace' | 'route_builder';
   onOpenManage: (orderId?: string, mode?: 'immediate' | 'planning') => void;
   onOpenTracking: (orderId?: string) => void;
-  // จำกัดให้เห็นเฉพาะเที่ยวที่สร้างจากช่องทางนี้ (createdVia) เช่น 'ad_hoc_route'
-  // สำหรับปฏิทินในหน้าสร้างเที่ยววิ่ง; ถ้าไม่ส่งมา = เห็นทุกช่องทาง (ศูนย์จัดส่ง)
-  restrictSource?: string;
 };
 
 // จำนวนเที่ยวที่โชว์ต่อวันก่อนยุบส่วนที่เหลือเป็นปุ่ม "+N เที่ยว"
@@ -89,10 +95,14 @@ function calendarItemType(item: DeliveryCalendarItem) {
 export function DeliveryCalendar({
   drivers,
   refreshKey,
+  calendarScope,
   onOpenManage,
   onOpenTracking,
-  restrictSource,
 }: Props) {
+  const showLineProfile = calendarScope === 'delivery_workspace';
+  // Driver.id ฝั่ง frontend คือ driver code — ใช้จับคู่ item.driver.code เพื่อดึงรูป/เบอร์โทร
+  const driverRecordFor = (code?: string) =>
+    code ? (drivers.find((driver) => driver.id === code) ?? null) : null;
   const initialWeek = startOfWeek(parseISO(getTodayDateKey()), { weekStartsOn: 1 });
   const [weekStart, setWeekStart] = useState(initialWeek);
   const [driverCode, setDriverCode] = useState('');
@@ -114,23 +124,23 @@ export function DeliveryCalendar({
     setLoading(true);
     setError('');
     try {
-      const response = await fetchDeliveryCalendar({
+      const fetchCalendar =
+        calendarScope === 'delivery_workspace'
+          ? fetchDeliveryWorkspaceCalendar
+          : fetchRouteBuilderCalendar;
+      const response = await fetchCalendar({
         dateFrom,
         dateTo,
         driverCode: driverCode || undefined,
       });
-      setItems(
-        restrictSource
-          ? response.items.filter((item) => item.createdVia === restrictSource)
-          : response.items,
-      );
+      setItems(response.items);
     } catch (loadError) {
       setItems([]);
       setError(loadError instanceof Error ? loadError.message : 'โหลดภาพรวมปฏิทินไม่สำเร็จ');
     } finally {
       setLoading(false);
     }
-  }, [dateFrom, dateTo, driverCode, restrictSource]);
+  }, [calendarScope, dateFrom, dateTo, driverCode]);
 
   useEffect(() => {
     void loadCalendar();
@@ -171,12 +181,9 @@ export function DeliveryCalendar({
               {format(days[0], 'd MMM', { locale: th })}–
               {format(days[6], 'd MMM yyyy', { locale: th })}
             </h2>
-            <Badge variant="secondary" className="gap-1">
-              <Eye className="h-3 w-3" /> ดูอย่างเดียว
-            </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            {restrictSource === 'ad_hoc_route'
+            {calendarScope === 'route_builder'
               ? 'แสดงเฉพาะเที่ยวที่สร้างจากหน้าสร้างเที่ยววิ่ง'
               : 'แสดงแผนและ Route ที่สร้างจากมุมมอง “จัดการงาน” แล้ว'}
           </p>
@@ -300,8 +307,8 @@ export function DeliveryCalendar({
                     </div>
                     <div className="space-y-2">
                       {shownItems.map((item) => {
-                        const status = calendarStatus(item);
                         const selected = selectedItem?.id === item.id;
+                        const driverRecord = driverRecordFor(item.driver?.code);
                         return (
                           <Popover
                             key={item.id}
@@ -329,20 +336,58 @@ export function DeliveryCalendar({
                                     {item.plannedTime ?? 'ไม่ระบุเวลา'}
                                   </span>
                                 </div>
-                                <div className="mt-1 truncate text-xs font-medium">
-                                  {item.driver?.name ?? 'รอเลือก Messenger'}
+                                <div className="mt-1.5 flex items-center gap-1.5">
+                                  {driverRecord ? (
+                                    <DriverAvatar driver={driverRecord} className="h-6 w-6" />
+                                  ) : item.driver ? (
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-semibold text-primary">
+                                      {item.driver.name.trim().charAt(0)}
+                                    </span>
+                                  ) : (
+                                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground">
+                                      <UserRound className="h-3 w-3" />
+                                    </span>
+                                  )}
+                                  <span className="min-w-0">
+                                    {item.driver ? (
+                                      <>
+                                        <span className="block truncate text-xs font-semibold">
+                                          {item.driver.name}
+                                        </span>
+                                        <span className="block text-[9px] leading-tight text-muted-foreground">
+                                          คนขับ
+                                        </span>
+                                      </>
+                                    ) : (
+                                      <span className="block truncate text-xs font-medium text-muted-foreground">
+                                        รอเลือก Messenger
+                                      </span>
+                                    )}
+                                  </span>
                                 </div>
-                                <div className="mt-2 flex flex-wrap gap-1">
-                                  <Badge
-                                    variant={status.variant}
-                                    className="h-5 px-1.5 text-[10px]"
-                                  >
-                                    {status.label}
-                                  </Badge>
-                                  <Badge variant="secondary" className="h-5 px-1.5 text-[10px]">
-                                    {item.orderCount} จุด
-                                  </Badge>
-                                </div>
+                                {showLineProfile && item.lineProfile && (
+                                  <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                                    <Avatar className="h-6 w-6 border border-[#06c755]/20">
+                                      {item.lineProfile.pictureUrl && (
+                                        <AvatarImage
+                                          src={item.lineProfile.pictureUrl}
+                                          alt={`รูป LINE ของ ${item.lineProfile.displayName}`}
+                                        />
+                                      )}
+                                      <AvatarFallback className="bg-[#06c755]/15 text-[#07883d]">
+                                        <MessageCircle className="h-3 w-3" />
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <span className="min-w-0">
+                                      <span className="block truncate text-xs font-semibold">
+                                        {item.lineProfile.displayName}
+                                      </span>
+                                      <span className="block text-[9px] leading-tight text-muted-foreground">
+                                        ชื่อจาก LINE
+                                      </span>
+                                    </span>
+                                  </div>
+                                )}
                               </button>
                             </PopoverTrigger>
                             <PopoverContent
@@ -366,8 +411,9 @@ export function DeliveryCalendar({
                                       <h3 className="break-words text-base font-semibold leading-tight">
                                         {calendarItemTitle(item)}
                                       </h3>
-                                      <p className="mt-1 font-mono text-xs font-medium text-muted-foreground">
+                                      <p className="mt-1 flex items-center gap-1 font-mono text-xs font-medium text-muted-foreground">
                                         {shortRouteCode(item.code)}
+                                        <CopyRouteCodeButton code={item.code} />
                                       </p>
                                     </div>
                                     <Button
@@ -397,20 +443,72 @@ export function DeliveryCalendar({
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="flex gap-2.5">
-                                    <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-                                    <div>
-                                      <div className="font-medium">
+                                  <div className="flex items-center gap-2.5">
+                                    {driverRecord ? (
+                                      <DriverAvatar driver={driverRecord} className="h-8 w-8" />
+                                    ) : item.driver ? (
+                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary">
+                                        {item.driver.name.trim().charAt(0)}
+                                      </span>
+                                    ) : (
+                                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground">
+                                        <UserRound className="h-4 w-4" />
+                                      </span>
+                                    )}
+                                    <div className="min-w-0 flex-1">
+                                      <div className="truncate font-medium">
                                         {item.driver?.name ?? 'ยังไม่เลือก Messenger'}
                                       </div>
-                                      {item.coDrivers.length > 0 && (
-                                        <div className="mt-0.5 text-xs text-muted-foreground">
-                                          ร่วมส่ง:{' '}
-                                          {item.coDrivers.map((driver) => driver.name).join(', ')}
+                                      {item.driver && (
+                                        <div className="text-xs text-muted-foreground">
+                                          คนขับ
+                                          {driverRecord?.phone ? ` · ${driverRecord.phone}` : ''}
                                         </div>
                                       )}
                                     </div>
+                                    {driverRecord?.phone && (
+                                      <Button
+                                        variant="outline"
+                                        size="icon-xs"
+                                        asChild
+                                        aria-label="โทรหาคนขับ"
+                                      >
+                                        <a href={`tel:${driverRecord.phone}`}>
+                                          <Phone className="h-3.5 w-3.5" />
+                                        </a>
+                                      </Button>
+                                    )}
                                   </div>
+                                  {item.coDrivers.length > 0 && (
+                                    <div className="flex items-center gap-1.5 pl-[42px] text-xs text-muted-foreground">
+                                      <UsersRound className="h-3.5 w-3.5 shrink-0" />
+                                      ร่วมส่ง:{' '}
+                                      {item.coDrivers.map((driver) => driver.name).join(', ')}
+                                    </div>
+                                  )}
+                                  {showLineProfile && item.lineProfile && (
+                                    <div className="flex items-center gap-2.5">
+                                      <Avatar className="h-8 w-8 border border-[#06c755]/20">
+                                        {item.lineProfile.pictureUrl && (
+                                          <AvatarImage
+                                            src={item.lineProfile.pictureUrl}
+                                            alt={`รูป LINE ของ ${item.lineProfile.displayName}`}
+                                          />
+                                        )}
+                                        <AvatarFallback className="bg-[#06c755]/15 text-[#07883d]">
+                                          <MessageCircle className="h-4 w-4" />
+                                        </AvatarFallback>
+                                      </Avatar>
+                                      <div className="min-w-0 flex-1">
+                                        <div className="truncate font-medium">
+                                          {item.lineProfile.displayName}
+                                        </div>
+                                        <div className="text-xs text-muted-foreground">
+                                          ผู้ส่งจาก LINE
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                 </section>
 
                                 <section className="rounded-[0.9rem] bg-muted/70 px-3 py-3">

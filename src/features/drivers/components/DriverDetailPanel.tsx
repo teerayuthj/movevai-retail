@@ -25,6 +25,8 @@ import {
 import { formatPlanningDateTime, getAssignedOrderOverdueMinutes } from '@/lib/deliveryPlanning';
 import { shortRouteCode } from '@/lib/routeCode';
 import { cn } from '@/lib/utils';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import type { DriverStats, DriverStatsPeriodDays } from '@/lib/retailApi';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -390,6 +392,11 @@ function DeliveryTripCard({
               <span className="truncate font-mono">
                 {route ? shortRouteCode(route.code) : first?.orderNo}
               </span>
+              {route ? (
+                <CopyRouteCodeButton code={route.code} />
+              ) : (
+                <CopyOrderNoButton orderNo={first?.orderNo} />
+              )}
             </div>
             <div className="mt-1 flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
               <span>

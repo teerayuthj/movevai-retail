@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { CustomerTrackingPage } from '@/pages/CustomerTracking';
 import { Toaster } from '@/components/ui/sonner';
+import '@fontsource-variable/geist';
 import './index.css';
 
 // Entry แยกของ surface "ลูกค้า" (/track, /customer-track)

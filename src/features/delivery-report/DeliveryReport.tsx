@@ -34,6 +34,8 @@ import {
 } from '@/lib/acceptanceMetrics';
 import { downloadCsv } from '@/lib/export';
 import { shortRouteCode } from '@/lib/routeCode';
+import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import { cn } from '@/lib/utils';
 import { formatElapsedDuration, getDeliveryDurationMinutes } from '@/lib/deliveryExecution';
 import { MessengerOrderMapPage } from '@/features/messenger/components/MessengerOrderMapPage';
@@ -687,6 +689,7 @@ export function DeliveryReportPage() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs font-semibold">{order.orderNo}</span>
+                      <CopyOrderNoButton orderNo={order.orderNo} />
                       <Badge
                         variant={statusBadgeVariant(order.status)}
                         className="h-5 px-1.5 text-[10px]"
@@ -828,7 +831,12 @@ export function DeliveryReportPage() {
 
       <DetailDrawer
         open={!!selectedRow}
-        title={<span className="font-mono">{selectedRow?.order.orderNo}</span>}
+        title={
+          <span className="inline-flex items-center gap-1 font-mono">
+            {selectedRow?.order.orderNo}
+            <CopyOrderNoButton orderNo={selectedRow?.order.orderNo} />
+          </span>
+        }
         subtitle={
           selectedRow ? `รายงานงานส่ง · ${statusLabel[selectedRow.order.status]}` : undefined
         }
@@ -880,10 +888,11 @@ export function DeliveryReportPage() {
               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                 <div>
                   <div className="text-muted-foreground">Route</div>
-                  <div>
+                  <div className="flex items-center gap-1">
                     {selectedRow.order.deliveryRoute
                       ? shortRouteCode(selectedRow.order.deliveryRoute.code)
                       : '—'}
+                    <CopyRouteCodeButton code={selectedRow.order.deliveryRoute?.code} />
                   </div>
                 </div>
                 <div>

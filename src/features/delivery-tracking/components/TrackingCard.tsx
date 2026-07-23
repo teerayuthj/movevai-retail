@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { CopyOrderNoButton } from '@/components/CopyOrderNoButton';
+import { CopyRouteCodeButton } from '@/components/CopyRouteCodeButton';
 import {
   type FailReason,
   type Order,
@@ -189,7 +190,14 @@ export function TrackingCard({
               overdueMinutes != null ? 'text-destructive' : 'text-muted-foreground',
             )}
           >
-            {order.deliveryRoute ? shortRouteCode(order.deliveryRoute.code) : 'Route'} · นัดส่ง{' '}
+            {order.deliveryRoute ? shortRouteCode(order.deliveryRoute.code) : 'Route'}
+            {order.deliveryRoute && (
+              <CopyRouteCodeButton
+                code={order.deliveryRoute.code}
+                className="ml-0.5 inline-flex h-4 w-4 align-middle"
+              />
+            )}{' '}
+            · นัดส่ง{' '}
             {formatPlanningDateTime(order.deliveryPlan.plannedDate, order.deliveryPlan.plannedTime)}
           </div>
         )}
