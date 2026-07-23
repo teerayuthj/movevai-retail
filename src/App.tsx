@@ -163,6 +163,7 @@ function AdminSurface({ page, locationSearch, navigateToPage }: AdminSurfaceProp
                   locationSearch={locationSearch}
                   onOpenInbox={(search) => navigateToPage('inbox', { search })}
                   onOpenTracking={(search) => navigateToPage('delivery_tracking', { search })}
+                  onOpenRouteBuilder={(search) => navigateToPage('route_builder', { search })}
                 />
               )}
               {page === 'delivery_tracking' && (

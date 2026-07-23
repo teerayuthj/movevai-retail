@@ -1,4 +1,5 @@
 import type { Order } from '@/data/orderTypes';
+import { isAdHocRouteOrder } from '@/lib/orderSourceLink';
 
 export const SCHEDULED_DELIVERY_GRACE_MINUTES = 15;
 const PLANNING_TIME_ZONE = 'Asia/Bangkok';
@@ -183,6 +184,7 @@ export function isUnreleasedPlannedOrder(order: Order) {
 export function canPlanOrder(order: Order) {
   return (
     isInternalDriverOrder(order) &&
+    !isAdHocRouteOrder(order) &&
     order.status === 'ready' &&
     order.deliveryPlan?.releaseState !== 'released'
   );
@@ -197,6 +199,7 @@ export function isUnscheduledPlanningOrder(order: Order) {
 export function isVisibleInExecutionQueue(order: Order) {
   return (
     isInternalDriverOrder(order) &&
+    !isAdHocRouteOrder(order) &&
     !isUnreleasedPlannedOrder(order) &&
     order.deliveryPlan?.releaseState !== 'released' &&
     !order.deliveryRoute

@@ -5,6 +5,10 @@ export function hasCsvImportSource(order: Order) {
   return Boolean(importMeta?.batchId && importMeta.fileName);
 }
 
+export function isAdHocRouteOrder(order: Order) {
+  return order.metadataJson?.dispatch?.createdVia === 'ad_hoc_route';
+}
+
 export function buildInboxOrderEditSearch(order: Order) {
   const importMeta = order.metadataJson?.import;
   if (!importMeta?.batchId) {

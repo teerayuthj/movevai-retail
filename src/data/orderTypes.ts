@@ -389,6 +389,29 @@ export type OrderMetadata = {
     routeRunKey?: string;
     routeTemplateRunId?: string;
     adHocRouteRunId?: string;
+    routeDraft?: {
+      plannedDate: string;
+      plannedTime?: string;
+      appointmentDate: string;
+      appointmentTime: string;
+      dispatchMode: 'planning' | 'scheduled' | 'immediate';
+      driverCode?: string;
+      acceptWithinMinutes: number;
+    };
+    returnedFromRoute?: {
+      routeId: string;
+      routeCode: string;
+      returnedAt: string;
+      reason: PlanningCancelReason;
+      note?: string;
+      driverCode?: string;
+      driverName?: string;
+      plannedDate: string;
+      plannedTime?: string;
+      appointmentDate?: string;
+      appointmentTime?: string;
+      dispatchMode?: 'scheduled' | 'urgent';
+    };
     routeGroup?: string;
     /** หมายเหตุที่ Dispatch ใส่ให้ Messenger เห็นตลอดทั้งเที่ยว */
     routeNote?: string;
