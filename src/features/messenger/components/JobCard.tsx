@@ -39,6 +39,7 @@ import {
 } from '../messengerSchedule';
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { navigationUrl } from '../geocode';
+import { shortRouteCode } from '@/lib/routeCode';
 import type { AssignedOrderOverdue } from '@/lib/deliveryPlanning';
 import type { MessengerOrderRole } from '@/lib/messengerJobs';
 import { dispatchJobTypeLabel, getDispatchJobType } from '@/features/dispatch/types';
@@ -289,7 +290,11 @@ export function JobCard({
   return (
     <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
-        <span className="font-mono text-xs font-medium">{order.orderNo ?? order.code}</span>
+        <span className="font-mono text-xs font-medium">
+          {order.deliveryRoute?.code
+            ? shortRouteCode(order.deliveryRoute.code)
+            : (order.orderNo ?? order.code)}
+        </span>
         <div className="flex items-center gap-1.5">
           <Badge variant="muted" className="h-5 px-1.5 text-[10px]">
             <JobTypeIcon className="h-3 w-3" /> {dispatchJobTypeLabel[jobType]}

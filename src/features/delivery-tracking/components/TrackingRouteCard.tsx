@@ -97,9 +97,6 @@ export function TrackingRouteCard({
       job.stops[job.stops.length - 1];
     return ['pending_confirmation', 'delivered'].includes(dropoff.status);
   }).length;
-  const pickupCount = sortedOrders.filter(
-    (order) => order.metadataJson?.dispatch?.routeLeg === 'pickup',
-  ).length;
   const overdueMinutes = Math.max(
     ...sortedOrders.map((order) => getAssignedOrderOverdueMinutes(order, nowMs) ?? 0),
   );
@@ -176,13 +173,9 @@ export function TrackingRouteCard({
         </div>
 
         <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
-          <span>
-            {sortedOrders.length} จุด · {pickupCount > 0 ? `รับ ${pickupCount} · ` : ''}ส่ง{' '}
-            {sortedOrders.length - pickupCount}
-          </span>
           {first.deliveryPlan && (
             <span>
-              · นัด{' '}
+              นัด{' '}
               {formatPlanningDateTime(
                 first.deliveryPlan.plannedDate,
                 first.deliveryPlan.plannedTime,
@@ -190,7 +183,9 @@ export function TrackingRouteCard({
             </span>
           )}
           {overdueMinutes > 0 && (
-            <span className="font-medium text-destructive">· เลยเวลานัดส่ง</span>
+            <span className="font-medium text-destructive">
+              {first.deliveryPlan ? '· ' : ''}เลยเวลานัดส่ง
+            </span>
           )}
         </div>
 
