@@ -19,6 +19,7 @@ import { formatTHB } from '@/data/orderTypes';
 import type { DriverActivityItem, DriverStats, DriverStatsPeriodDays } from '@/lib/retailApi';
 import { formatElapsedDuration } from '@/lib/deliveryExecution';
 import { shortRouteCode } from '@/lib/routeCode';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge, type BadgeProps } from '@/components/ui/badge';
 import { Select } from '@/components/ui/select';
@@ -45,6 +46,13 @@ function formatDateTime(value: string) {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString('th-TH', {
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -160,6 +168,9 @@ export function DriverAuditPanel({
   const [expandedCompletedId, setExpandedCompletedId] = useState<string | null>(null);
   const completedActivities =
     stats?.activities.filter((item) => item.type === 'route_completed') ?? [];
+  const immediateAttentionCount = stats
+    ? stats.acceptance.overdueUnacceptedRoutes + stats.appointmentStart.overdueUnstartedRoutes
+    : 0;
 
   useEffect(() => {
     setVisibleActivityCount(25);
@@ -249,18 +260,28 @@ export function DriverAuditPanel({
                     <div className="flex items-center gap-1.5 text-sm font-medium">
                       <AlertTriangle className="h-4 w-4" /> ต้องจัดการตอนนี้
                     </div>
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {stats.acceptance.overdueUnacceptedRoutes > 0
-                        ? `มี ${stats.acceptance.overdueUnacceptedRoutes} เที่ยวที่ยังไม่รับเกินกำหนด`
-                        : 'ไม่มีเที่ยวค้างรับเกินกำหนด'}
-                    </p>
+                    {immediateAttentionCount > 0 ? (
+                      <div className="mt-2 space-y-1 text-xs text-muted-foreground">
+                        {stats.appointmentStart.overdueUnstartedRoutes > 0 && (
+                          <div>
+                            เลยเวลานัดแต่ยังไม่เริ่ม {stats.appointmentStart.overdueUnstartedRoutes}{' '}
+                            เที่ยว
+                          </div>
+                        )}
+                        {stats.acceptance.overdueUnacceptedRoutes > 0 && (
+                          <div>
+                            ยังไม่กดรับเกินกำหนด {stats.acceptance.overdueUnacceptedRoutes} เที่ยว
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        ไม่มีเที่ยวค้างรับหรือค้างเริ่มเกินกำหนด
+                      </p>
+                    )}
                   </div>
-                  <Badge
-                    variant={stats.acceptance.overdueUnacceptedRoutes > 0 ? 'warning' : 'success'}
-                  >
-                    {stats.acceptance.overdueUnacceptedRoutes > 0
-                      ? `${stats.acceptance.overdueUnacceptedRoutes} รายการ`
-                      : 'ปกติ'}
+                  <Badge variant={immediateAttentionCount > 0 ? 'warning' : 'success'}>
+                    {immediateAttentionCount > 0 ? `${immediateAttentionCount} รายการ` : 'ปกติ'}
                   </Badge>
                 </div>
               </div>
@@ -311,6 +332,114 @@ export function DriverAuditPanel({
                 </div>
               ))}
             </div>
+
+            <section className="rounded-lg border bg-muted/10 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h4 className="flex items-center gap-1.5 text-sm font-medium">
+                    <CalendarClock className="h-4 w-4" /> การเริ่มงานเทียบเวลานัดลูกค้า
+                  </h4>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    นับหนึ่งครั้งต่อเที่ยวของคนขับหลัก · ใช้เวลานัดแรก · grace{' '}
+                    {stats.appointmentStart.graceMinutes} นาที
+                  </p>
+                </div>
+                <Badge
+                  variant={stats.appointmentStart.overdueUnstartedRoutes > 0 ? 'warning' : 'muted'}
+                >
+                  {stats.appointmentStart.overdueUnstartedRoutes > 0
+                    ? `ค้างเริ่ม ${stats.appointmentStart.overdueUnstartedRoutes}`
+                    : 'ไม่มีงานค้างเริ่ม'}
+                </Badge>
+              </div>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  {
+                    label: 'เริ่มภายในเกณฑ์',
+                    value:
+                      stats.appointmentStart.onTimeRatePercent == null
+                        ? '—'
+                        : `${stats.appointmentStart.onTimeRatePercent}%`,
+                    hint: `${stats.appointmentStart.onTimeRoutes} เที่ยวตรงเวลา`,
+                  },
+                  {
+                    label: 'เริ่มเกินเวลานัด',
+                    value: stats.appointmentStart.lateRoutes,
+                    hint: `จาก ${stats.appointmentStart.startedRoutes} เที่ยวที่เริ่มแล้ว`,
+                  },
+                  {
+                    label: 'ยังไม่เริ่มเกินกำหนด',
+                    value: stats.appointmentStart.overdueUnstartedRoutes,
+                    hint: `${stats.appointmentStart.pendingRoutes} เที่ยวยังไม่ถึงกำหนด`,
+                  },
+                  {
+                    label: 'เวลาเริ่มช้าเฉลี่ย',
+                    value:
+                      stats.appointmentStart.averageLateMinutes == null
+                        ? '—'
+                        : formatElapsedDuration(stats.appointmentStart.averageLateMinutes),
+                    hint:
+                      stats.appointmentStart.maxLateMinutes == null
+                        ? 'ยังไม่มีเที่ยวเริ่มช้า'
+                        : `ช้าที่สุด ${formatElapsedDuration(stats.appointmentStart.maxLateMinutes)}`,
+                  },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-md bg-background p-2.5">
+                    <div className="text-[11px] text-muted-foreground">{item.label}</div>
+                    <div className="mt-0.5 text-base font-semibold tabular-nums">{item.value}</div>
+                    <div className="text-[11px] text-muted-foreground">{item.hint}</div>
+                  </div>
+                ))}
+              </div>
+
+              <h5 className="mt-4 text-sm font-medium">เหตุการณ์เกินเวลานัดล่าสุด</h5>
+              <div className="mt-2 overflow-x-auto rounded-md border bg-background">
+                {stats.recentAppointmentIncidents.length === 0 ? (
+                  <p className="p-3 text-xs text-muted-foreground">
+                    ไม่มีเหตุการณ์เริ่มงานเกินเวลานัดในช่วงนี้
+                  </p>
+                ) : (
+                  <table className="w-full min-w-[620px] text-xs">
+                    <thead className="bg-muted/40 text-left text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Route</th>
+                        <th className="px-3 py-2 font-medium">เวลานัด</th>
+                        <th className="px-3 py-2 font-medium">เริ่มงาน</th>
+                        <th className="px-3 py-2 text-right font-medium">ช้าจากนัด</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {stats.recentAppointmentIncidents.map((item) => (
+                        <tr key={item.routeId}>
+                          <td className="px-3 py-2.5 font-mono font-medium">
+                            {shortRouteCode(item.routeCode)}
+                          </td>
+                          <td className="px-3 py-2.5 tabular-nums">
+                            {formatDateTime(item.appointmentAt)}
+                          </td>
+                          <td className="px-3 py-2.5 tabular-nums">
+                            {item.startedAt ? (
+                              formatTime(item.startedAt)
+                            ) : (
+                              <span className="text-warning">ยังไม่เริ่ม</span>
+                            )}
+                          </td>
+                          <td
+                            className={cn(
+                              'px-3 py-2.5 text-right font-medium tabular-nums',
+                              item.state === 'late' ? 'text-destructive' : 'text-warning',
+                            )}
+                          >
+                            {formatElapsedDuration(item.lateMinutes)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </section>
 
             <section className="rounded-lg border bg-muted/10 p-3">
               <h4 className="text-sm font-medium">การตอบรับเที่ยว</h4>

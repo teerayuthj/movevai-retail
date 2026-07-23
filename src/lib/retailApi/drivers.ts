@@ -59,6 +59,28 @@ export type AcceptanceHistoryItem = {
   lateMinutes: number;
 };
 
+export type AppointmentStartSummary = {
+  graceMinutes: number;
+  totalRoutes: number;
+  startedRoutes: number;
+  onTimeRoutes: number;
+  lateRoutes: number;
+  overdueUnstartedRoutes: number;
+  pendingRoutes: number;
+  onTimeRatePercent: number | null;
+  averageLateMinutes: number | null;
+  maxLateMinutes: number | null;
+};
+
+export type AppointmentStartIncidentItem = {
+  routeId: string;
+  routeCode: string;
+  appointmentAt: string;
+  startedAt: string | null;
+  state: 'late' | 'overdue_unstarted';
+  lateMinutes: number;
+};
+
 export type DriverStats = {
   driver: Driver;
   period: {
@@ -87,6 +109,8 @@ export type DriverStats = {
     completedRoutes: number;
     cancelledRoutes: number;
   };
+  appointmentStart: AppointmentStartSummary;
+  recentAppointmentIncidents: AppointmentStartIncidentItem[];
   acceptance: AcceptanceSummary;
   recentAcceptances: AcceptanceHistoryItem[];
   activities: DriverActivityItem[];
